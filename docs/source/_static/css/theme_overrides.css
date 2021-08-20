@@ -1,0 +1,33 @@
+@import url("theme.css");
+
+/* override table width restrictions */
+@media screen and (min-width: 767px) {
+
+    /* for header */
+   .wy-table-responsive table p {
+      text-align: center !important;
+      vertical-align: center !important;
+   }
+
+   .wy-table-responsive table td {
+      /* !important prevents the common CSS stylesheets from overriding
+         this as on RTD they are loaded after this stylesheet */
+      white-space: normal !important;
+      word-wrap: break-word !important;
+      /* word-break: break-all !important; */
+
+      text-align: center !important;
+      vertical-align: center !important;
+   }
+
+   /* for list */
+   .wy-table-responsive table td ol {
+      display: table-cell; !important; /* to enable the style setting */
+      text-align: center !important;
+      vertical-align: center !important;
+   }
+
+   .wy-table-responsive {
+      overflow: visible !important;
+   }
+}
