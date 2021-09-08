@@ -1,3 +1,4 @@
+import copy
 import operator
 from typing import (
     Dict, Any, Callable
@@ -24,6 +25,9 @@ from torch.quantization.utils import (
 from torch.quantization.fx.qconfig_utils import (
     get_flattened_qconfig_dict
 )
+from torch.quantization.quantize_fx import (
+    _fuse_fx
+)
 
 import mqbench.nn as qnn
 import mqbench.nn.intrinsic
@@ -33,31 +37,32 @@ from mqbench.utils.registry import register_model_quantizer
 from mqbench.prepare_by_platform import BackendType
 
 
-@register_model_quantizer(BackendType.SNPE)
 @register_model_quantizer(BackendType.NNIE)
-@register_model_quantizer(BackendType.Academic)
 class ModelQuantizer(object):
     """General model quantizer class.
     First, replace common float module to nn.qat.modules to make weight fake
     quantized.
     Second, insert activation fake quantize node before specific layers. Layer
     type is defined in function_type_to_quant_input / module_type_to_quant_input.
-    We leave the output not quantized since it is next layer's input.
+    We only quantize the inputs of layers and leave the output not quantized 
+    since it is next layer's input.
     """
-    def __init__(self, extra_quantizer_dict):
+    def __init__(self, extra_quantizer_dict, extra_fuse_dict):
         self.additional_function_type = extra_quantizer_dict.get('additional_function_type', [])
         self.additional_module_type = extra_quantizer_dict.get('additional_module_type', ())
         self.exclude_module_name = extra_quantizer_dict.get('exclude_module_name', [])
+        self.extra_fuse_dict = extra_fuse_dict
 
-    def prepare(self, model: GraphModule, qconfig_dict: Dict):
-        model = self._weight_quant(model, qconfig_dict)
-        model = self._insert_fake_quantize_for_act_quant(model, qconfig_dict)
+    def prepare(self, model: GraphModule, qconfig):
+        model = _fuse_fx(model, self.extra_fuse_dict)
+        model = self._weight_quant(model, qconfig)
+        model = self._insert_fake_quantize_for_act_quant(model, qconfig)
         return model
 
     def _insert_fake_quantize_for_act_quant(
             self, 
             model: GraphModule, 
-            qconfig_dict: Any):
+            qconfig: Any):
         graph = model.graph
         nodes = list(model.graph.nodes)
 
@@ -65,7 +70,7 @@ class ModelQuantizer(object):
         node_to_quantize_output = self._find_act_quants(model)
 
         for node in node_to_quantize_output:
-            fake_quantizer = qconfig_dict.activation()
+            fake_quantizer = qconfig.activation()
             quantizer_name = node.name + quantizer_prefix
             setattr(model, quantizer_name, fake_quantizer)
             logger.info("Insert act quant {}".format(quantizer_name))
@@ -90,12 +95,53 @@ class ModelQuantizer(object):
         args_tuple = tuple(_tmp)
         return args_tuple
 
-    def _weight_quant(self, model: GraphModule, qconfig_dict: Dict):
+    def _weight_quant(self, model: GraphModule, qconfig):
         logger.info("Replace module to qat module.")
-        flattened_qconfig_dict = get_flattened_qconfig_dict({'': qconfig_dict})
+        flattened_qconfig_dict = get_flattened_qconfig_dict({'': qconfig})
         propagate_qconfig_(model, flattened_qconfig_dict)
         self._qat_swap_modules(model, self._additional_qat_module_mapping)
         return model
+
+    @property
+    def implicit_merge_patterns(self) -> list:
+        # Layers which do not need quantize among them.
+        # In reversed order!
+        return [
+            (operator.add, operator.mul)
+        ]
+
+    def _on_merge_chain(self, modules, pattern, pair, p_pos=0, v_pos=0):
+        if v_pos == len(pair):
+            return True
+        if p_pos == len(pattern):
+            return v_pos == len(pair)
+        node = pair[v_pos]
+        cur_pattern = pattern[p_pos]
+        # Means current node is matched.
+        if (node.op == "call_module" and type(modules[node.target]) == cur_pattern) or \
+                ((node.op == 'call_function' or node.op == 'call_method') and 
+                    node.target == cur_pattern):
+            # Means compairing pair.
+            if len(pattern) > p_pos and len(pair) > v_pos:
+                return self._on_merge_chain(modules, pattern, pair, p_pos + 1, v_pos + 1)
+            # Means compairing extra node.
+            matched = False
+            flatten_args = self._flatten_args(node.args)
+            for _arg in flatten_args:
+                extra_pair = (*pair, _arg)
+                if isinstance(_arg, torch.fx.node.Node) and \
+                        self._on_merge_chain(modules, pattern, extra_pair, p_pos + 1, v_pos + 1):
+                    matched = True
+            return matched
+        # Current node is not matched, skip to next.
+        else:
+            return self._on_merge_chain(modules, pattern, pair, p_pos + 1, v_pos)
+
+    def _is_implicit_merge(self, modules, pair):
+        for pattern in self.implicit_merge_patterns:
+            if self._on_merge_chain(modules, pattern, pair):
+                return True
+        return False
 
     @property
     def function_type_to_quant_input(self) -> list:
@@ -113,6 +159,8 @@ class ModelQuantizer(object):
             torch.nn.intrinsic.qat.modules.conv_fused.ConvBnReLU2d,
             torch.nn.intrinsic.qat.modules.conv_fused.ConvBn2d,
             torch.nn.qat.modules.conv.Conv2d,
+            # ConvTranspose
+            torch.nn.ConvTranspose2d,
             # Linear
             torch.nn.qat.modules.linear.Linear,
             qnn.intrinsic.qat.LinearBn1d,
@@ -153,6 +201,9 @@ class ModelQuantizer(object):
                 input_node_list = self._flatten_args(node.args)
                 for _node in input_node_list:
                     if isinstance(_node, torch.fx.node.Node):
+                        if self._is_implicit_merge(modules, (node, _node)):
+                            logger.info("Implicit merge: {} + {}".format(_node.name, node.name))
+                            continue
                         node_need_to_quantize_output.append(_node)
         return set(node_need_to_quantize_output)
 
@@ -191,13 +242,107 @@ class ModelQuantizer(object):
         return module
 
 
+@register_model_quantizer(BackendType.Academic)
+class AcademicQuantizer(ModelQuantizer):
+    """Academic setting mostly do not merge BN and leave the first and last layer to higher bits.
+    """
+    def __init__(self, extra_quantizer_dict, extra_fuse_dict):
+        super().__init__(extra_quantizer_dict, extra_fuse_dict)
+        self.io_module = {}
+        self.post_act_8bit_node_name = []
+
+    def prepare(self, model: GraphModule, qconfig):
+        self._get_io_module(model)
+        self._get_post_act_8bit_node_name(model)
+        model = self._weight_quant(model, qconfig)
+        model = self._insert_fake_quantize_for_act_quant(model, qconfig)
+        return model
+
+    def _weight_quant(self, model: GraphModule, qconfig):
+        logger.info("Replace module to qat module.")
+        wqconfig_8bit = copy.deepcopy(qconfig)
+        wqconfig_8bit.weight.p.keywords['quant_min'] = -128
+        wqconfig_8bit.weight.p.keywords['quant_max'] = 127
+        for name, module in model.named_modules():
+            if name in self.io_module.keys():
+                logger.info("Set layer {} to 8 bit.".format(name))
+                module.qconfig = wqconfig_8bit
+        flattened_qconfig_dict = get_flattened_qconfig_dict({'': qconfig})
+        propagate_qconfig_(model, flattened_qconfig_dict)
+        self._qat_swap_modules(model, self._additional_qat_module_mapping)
+        return model
+
+    @property
+    def function_type_to_quant_input(self) -> list:
+        return self.additional_function_type
+
+    @property
+    def module_type_to_quant_input(self) -> tuple:
+        return (
+            # Conv
+            torch.nn.qat.modules.conv.Conv2d,
+            # Linear
+            torch.nn.qat.modules.linear.Linear,
+        ) + self.additional_module_type
+
+    def _get_post_act_8bit_node_name(self, model):
+        for node in self.io_module.values():
+            for _arg in node.args:
+                if isinstance(_arg, torch.fx.node.Node):
+                    self.post_act_8bit_node_name.append(_arg.name)
+
+    def _get_io_module(self, model):
+        total_args = []
+        nodes = list(model.graph.nodes)
+        for node in nodes:
+            the_first_layer = False
+            for _arg in node.args:
+                if isinstance(_arg, torch.fx.node.Node):
+                    if _arg.op == 'placeholder':
+                        the_first_layer = True
+                    total_args.append(_arg.name)
+            if the_first_layer:
+                self.io_module[node.target] = node
+            if node.op == 'output':
+                for _arg in node.args:
+                    if isinstance(_arg, torch.fx.node.Node):
+                        self.io_module[_arg.target] = _arg
+
+    def _insert_fake_quantize_for_act_quant(self, model: GraphModule, qconfig):
+        graph = model.graph
+        nodes = list(model.graph.nodes)
+
+        quantizer_prefix = "_post_act_fake_quantizer"
+        node_to_quantize_output = self._find_act_quants(model)
+
+        aqconfig_8bit = copy.deepcopy(qconfig.activation)
+        aqconfig_8bit.p.keywords['quant_min'] = -128
+        aqconfig_8bit.p.keywords['quant_max'] = 127
+        for node in node_to_quantize_output:
+            if node.name in self.post_act_8bit_node_name:
+                logger.info("Set {} post act quantize to 8 bit.".format(node.name))
+                fake_quantizer = aqconfig_8bit()
+            else:
+                fake_quantizer = qconfig.activation()
+            quantizer_name = node.name + quantizer_prefix
+            setattr(model, quantizer_name, fake_quantizer)
+            logger.info("Insert act quant {}".format(quantizer_name))
+            with graph.inserting_after(node):
+                inserted_node = graph.create_node("call_module", quantizer_name, (node,), {})
+                for _node in nodes:
+                    _node.args = self._fix_succ_recursivly(_node.args, node, inserted_node)
+
+        model.recompile()
+        model.graph.lint()
+        return model
+
 @register_model_quantizer(BackendType.Tensorrt)
 class TRTModelQuantizer(ModelQuantizer):
     """The different points of TRT quantizer are how to deal with add op
     and the last layer.
     """
-    def __init__(self, extra_quantizer_dict):
-        super().__init__(extra_quantizer_dict)
+    def __init__(self, extra_quantizer_dict, extra_fuse_dict):
+        super().__init__(extra_quantizer_dict, extra_fuse_dict)
 
     @property
     def _merge_add_type(self):
@@ -222,6 +367,8 @@ class TRTModelQuantizer(ModelQuantizer):
                     node_need_to_quantize_output.extend(input_node_list)
                 else:
                     for _node in input_node_list:
+                        if self._is_implicit_merge(modules, (node, _node)):
+                            continue
                         if isinstance(_node, torch.fx.node.Node):
                             node_need_to_quantize_output.append(_node)
 
@@ -245,6 +392,7 @@ class TRTModelQuantizer(ModelQuantizer):
         return None
 
 
+@register_model_quantizer(BackendType.SNPE)
 @register_model_quantizer(BackendType.PPLW8A16)
 class TotalINTQuantizer(ModelQuantizer):
     """There is only INT8 calculations in the model.
@@ -252,8 +400,8 @@ class TotalINTQuantizer(ModelQuantizer):
     of the last layers. We quantize every activations tensors and weight
     tensors using this method.
     """
-    def __init__(self, extra_quantizer_dict):
-        super().__init__(extra_quantizer_dict)
+    def __init__(self, extra_quantizer_dict, extra_fuse_dict):
+        super().__init__(extra_quantizer_dict, extra_fuse_dict)
 
     def _find_act_quants(self, model: GraphModule) -> (set, set):
         node_need_to_quantize_output = super(). _find_act_quants(model)

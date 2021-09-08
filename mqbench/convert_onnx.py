@@ -3,6 +3,7 @@ import os
 import onnx
 from onnx import numpy_helper
 import numpy as np
+from mqbench.utils.logger import logger
 
 perchannel_fakequantizer = ['FakeQuantizeLearnablePerchannelAffine', 'FixedPerChannelAffine', 'FakeQuantizeDSQPerchannel']
 pertensor_fakequantizer = ['LearnablePerTensorAffine', 'FixedPerTensorAffine', 'FakeQuantizeDSQPertensor']
@@ -70,18 +71,21 @@ def get_constant_inputs(node, out2node):
 class OnnxPreprocess(object):
     def replace_resize_op_with_upsample(self, graph, out2node):
         nodes_to_be_removed = []
-        idx = 0 
+        idx = 0
         while idx < len(graph.node):
             node = graph.node[idx]
             if node.op_type == 'Resize':
-                print(f"Replace resize op: <{node.name}> with upsample.")
-                attrs = parse_attrs(node.attribute)
+                logger.info(f"Replace resize op: <{node.name}> with upsample.")
+                mode = 'nearest'
+                for attr in node.attribute:
+                    if attr.name == 'mode':
+                        mode = attr.s
                 upsample_node = onnx.helper.make_node('Upsample',
                                                       name=node.name,
                                                       inputs=[node.input[0], node.input[2]],
                                                       outputs=node.output,
-                                                      mode=attrs['mode'])
-                nodes_to_be_removed.append(node)  
+                                                      mode=mode)
+                nodes_to_be_removed.append(node)
                 nodes_to_be_removed.extend(get_constant_inputs(node, out2node))
                 graph.node.insert(idx, upsample_node)
                 idx += 1
@@ -97,11 +101,11 @@ class OnnxPreprocess(object):
             if node.op_type == 'Pad':
                 pads = name2data[node.input[1]]
                 if all([x == 0 for x in pads]):
-                    print(f"Remove pad op: <{node.name}>.")
+                    logger.info(f"Remove pad op: <{node.name}>.")
                     next_nodes = inp2node[node.output[0]]
                     for next_node, idx in next_nodes:
                         next_node.input[idx] = node.input[0]
-                    nodes_to_be_removed.append(node)  
+                    nodes_to_be_removed.append(node)
                     nodes_to_be_removed.extend(get_constant_inputs(node, out2node))
         for node in nodes_to_be_removed:
             graph.node.remove(node)
@@ -136,11 +140,9 @@ class NNIE_process(object):
                 interp_layer_name = node.name
                 gfpq_param_dict[interp_layer_name + '_permute_' + str(interp_layer_cnt)] = gfpq_param_dict[interp_layer_name]
                 interp_layer_cnt += 1
+        return gfpq_param_dict
 
-        with open(os.path.join('./', 'nnie_gfpq_param_dict.json'), 'w') as f:
-            json.dump({"nnie": {"gfpq_param_dict": gfpq_param_dict}}, f, indent=4)
-
-    def remove_fakequantize_and_collect_params(self, onnx_path, model_save_path="nnie_deploy_model.onnx"):
+    def remove_fakequantize_and_collect_params(self, onnx_path):
         model = onnx.load(onnx_path)
         graph = model.graph
         out2node, inp2node = update_inp2node_out2node(graph)
@@ -168,7 +170,7 @@ class NNIE_process(object):
                     new_data = np.clip(data, -clip_range, clip_range)
                     new_data = numpy_helper.from_array(new_data)
                     named_initializer[tensor_name].raw_data = new_data.raw_data
-                    print(f'clip weights {tensor_name} to range [{-clip_range}, {clip_range}].')
+                    logger.info(f'Clip weights {tensor_name} to range [{-clip_range}, {clip_range}].')
                 else:
                     # fake quantize for activations
                     clip_ranges[node.input[0]] = name2data[node.input[1]]
@@ -181,8 +183,15 @@ class NNIE_process(object):
         for node in nodes_to_be_removed:
             graph.node.remove(node)
 
-        self.gen_gfpq_param_file(graph, clip_ranges)
-        onnx.save(model, model_save_path)
+        gfpq_param_dict = self.gen_gfpq_param_file(graph, clip_ranges)
+
+        output_path = os.path.dirname(onnx_path)
+        filename = os.path.join(output_path, 'nnie_gfpq_param_dict.json')
+        with open(filename, 'w') as f:
+            json.dump({"nnie": {"gfpq_param_dict": gfpq_param_dict}}, f, indent=4)
+        filename = os.path.join(output_path, 'nnie_deploy_model.onnx')
+        onnx.save(model, filename)
+        logger.info("Finish deploy process.")
 
 remove_fakequantize_and_collect_params_nnie = NNIE_process().remove_fakequantize_and_collect_params
 
@@ -230,11 +239,11 @@ class LinearQuantizer_process(object):
         next_node.input[idx] = node.input[0]
         return redundant_nodes
 
-    def deal_with_activation_fakequant(self, node, inp2node):   
+    def deal_with_activation_fakequant(self, node, inp2node):
         next_nodes = inp2node[node.output[0]]
         for next_node, idx in next_nodes:
             next_node.input[idx] = node.input[0]
-        return 
+        return
 
     def parse_qparams(self, node, name2data):
         tensor_name, scale, zero_point = node.input[:3]
@@ -247,11 +256,11 @@ class LinearQuantizer_process(object):
             qmin = qparams['quant_min']
             qmax = qparams['quant_max']
         else:
-            print(f'qmin and qmax are not found for <{node.name}>!')
+            logger.info(f'qmin and qmax are not found for <{node.name}>!')
         return tensor_name, scale, zero_point, qmin, qmax
 
     def clip_weight(self, node, name2data, named_initializer):
-        tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data) 
+        tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
         data = name2data[tensor_name]
         clip_range_min = (qmin - zero_point) * scale
         clip_range_max = (qmax - zero_point) * scale
@@ -260,10 +269,10 @@ class LinearQuantizer_process(object):
             for c in range(data.shape[0]):
                 new_data.append(np.clip(data[c], clip_range_min[c], clip_range_max[c]))
             new_data = np.array(new_data)
-            print(f'clip weights {tensor_name} to per-cahnnel clip range.')
+            logger.info(f'Clip weights <{tensor_name}> to per-channel ranges.')
         else:
             new_data = np.clip(data, clip_range_min, clip_range_max)
-            print(f'clip weights {tensor_name} to range [{clip_range_min}, {clip_range_max}].')
+            logger.info(f'Clip weights <{tensor_name}> to range [{clip_range_min}, {clip_range_max}].')
         new_data = numpy_helper.from_array(new_data)
         named_initializer[tensor_name].raw_data = new_data.raw_data
 
@@ -271,7 +280,7 @@ class LinearQuantizer_process(object):
         def find_the_closest_clip_range(node):
             if node.input[0] in clip_ranges:
                 return node.input[0]
-            elif node.op_type in ['Flatten', 'Resize']:
+            elif node.op_type in ['Flatten', 'Resize'] and node.output[0] in inp2node:
                 return find_the_closest_clip_range(inp2node[node.output[0]][0][0])
             else:
                 return None
@@ -281,7 +290,7 @@ class LinearQuantizer_process(object):
                 tensor_name = find_the_closest_clip_range(node)
                 if tensor_name:
                     clip_ranges[node.input[0]] = clip_ranges[tensor_name]
-                    print(f'Pass <{tensor_name}> clip range to <{node.name}> input <{node.input[0]}>.')
+                    logger.info(f'Pass <{tensor_name}> clip range to <{node.name}> input <{node.input[0]}>.')
         return clip_ranges
 
     def remove_fakequantize_and_collect_params(self, onnx_path, backend):
@@ -300,22 +309,22 @@ class LinearQuantizer_process(object):
         nodes_to_be_removed = []
         for node in graph.node:
             if node.op_type in all_fakequantizer:
-                nodes_to_be_removed.append(node)  
+                nodes_to_be_removed.append(node)
                 nodes_to_be_removed.extend(get_constant_inputs(node, out2node))
 
-            if node.op_type in perchannel_fakequantizer: 
+            if node.op_type in perchannel_fakequantizer:
                 # fake quantize for weights, suppose per-channel quantize only for weight
                 redundant_nodes = self.deal_with_weight_fakequant(node, out2node, inp2node, named_initializer)
                 nodes_to_be_removed.extend(redundant_nodes)
                 self.clip_weight(node, name2data, named_initializer)
                 if backend == 'ppl':
-                    tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data) 
-                    clip_ranges[tensor_name] = {'step': [float(x) for x in scale],                           
-                                                'zero_point': [int(x) for x in zero_point],            
-                                                'min': [float(x) for x in scale * (qmin - zero_point)],       
-                                                'max': [float(x) for x in scale * (qmax - zero_point)],       
-                                                'bit': int(np.log2(qmax - qmin + 1)),     
-                                                'type': "biased",                      
+                    tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
+                    clip_ranges[tensor_name] = {'step': [float(x) for x in scale],
+                                                'zero_point': [int(x) for x in zero_point],
+                                                'min': [float(x) for x in scale * (qmin - zero_point)],
+                                                'max': [float(x) for x in scale * (qmax - zero_point)],
+                                                'bit': int(np.log2(qmax - qmin + 1)),
+                                                'type': "biased",
                                                 }
 
             elif node.op_type in pertensor_fakequantizer:
@@ -326,13 +335,13 @@ class LinearQuantizer_process(object):
                 if len(next_nodes) == 1 and next_nodes[0][1] == 1 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:
                     # fake quantize for weights
                     redundant_nodes = self.deal_with_weight_fakequant(node, out2node, inp2node, named_initializer)
-                    tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data) 
+                    tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
                     nodes_to_be_removed.extend(redundant_nodes)
                     self.clip_weight(node, name2data, named_initializer)
                 else:
                     # fake quantize for activations
                     self.deal_with_activation_fakequant(node, inp2node)
-                    tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data) 
+                    tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
                     for out in graph.output:
                         if out.name == node.output[0]:
                             out.name = tensor_name
@@ -340,18 +349,19 @@ class LinearQuantizer_process(object):
                     if backend == 'tensorrt':
                         clip_ranges[tensor_name] = float(scale * min(-qmin, qmax))
                     elif backend == 'snpe':
-                        clip_ranges[tensor_name] = {'bitwidth': int(np.log2(qmax - qmin + 1)),
-                                                    'min': float(scale * (qmin - zero_point)),
-                                                    'max': float(scale * (qmax - zero_point))
-                                                    }
+                        clip_ranges[tensor_name] = [
+                            {'bitwidth': int(np.log2(qmax - qmin + 1)),
+                             'min': float(scale * (qmin - zero_point)),
+                             'max': float(scale * (qmax - zero_point))}
+                        ]
                 if backend == 'ppl':
-                    clip_ranges[tensor_name] = {'step': float(scale),                           
-                                                'zero_point': int(zero_point),            
-                                                'min': float(scale * (qmin - zero_point)),       
-                                                'max': float(scale * (qmax - zero_point)),       
-                                                'bit': int(np.log2(qmax - qmin + 1)),     
-                                                'type': "biased",                      
-                                                }      
+                    clip_ranges[tensor_name] = {'step': float(scale),
+                                                'zero_point': int(zero_point),
+                                                'min': float(scale * (qmin - zero_point)),
+                                                'max': float(scale * (qmax - zero_point)),
+                                                'bit': int(np.log2(qmax - qmin + 1)),
+                                                'type': "biased",
+                                                }
 
         for node in nodes_to_be_removed:
             graph.node.remove(node)
@@ -363,9 +373,12 @@ class LinearQuantizer_process(object):
             context = {'activation_encodings': clip_ranges, 'param_encodings': {}}
         elif backend == 'ppl':
             context = {"ppl": clip_ranges}
-        filename = os.path.join('./', '{}_clip_ranges.json'.format(backend))
+        output_path = os.path.dirname(onnx_path)
+        filename = os.path.join(output_path, '{}_clip_ranges.json'.format(backend))
         with open(filename, 'w') as f:
             json.dump(context, f, indent=4)
-        onnx.save(model, '{}_deploy_model.onnx'.format(backend))
+        filename = os.path.join(output_path, '{}_deploy_model.onnx'.format(backend))
+        onnx.save(model, filename)
+        logger.info("Finish deploy process.")
 
 remove_fakequantize_and_collect_params = LinearQuantizer_process().remove_fakequantize_and_collect_params

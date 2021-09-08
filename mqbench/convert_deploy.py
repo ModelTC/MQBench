@@ -6,6 +6,7 @@ from torch.fx import GraphModule
 import mqbench.custom_symbolic_opset  # noqa: F401
 import mqbench.fusion_method          # noqa: F401
 from mqbench.prepare_by_platform import BackendType
+from mqbench.utils import deepcopy_graphmodule
 from mqbench.utils.logger import logger
 from mqbench.utils.registry import (
     BACKEND_DEPLOY_FUNCTION,
@@ -37,12 +38,16 @@ def convert_merge_bn(model: GraphModule, **kwargs):
 @register_deploy_function(BackendType.PPLW8A16)
 @register_deploy_function(BackendType.Tensorrt)
 @register_deploy_function(BackendType.NNIE)
-def convert_onnx(model: GraphModule, input_shape_dict, onnx_model_path='./test.onnx', **kwargs):
+def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_path, **kwargs):
     logger.info("Export to onnx.")
-    device = next(model.parameters()).device
-    dummy_input = {name: torch.rand(shape).to(device) for name, shape in input_shape_dict.items()}
-    torch.onnx.export(model, tuple(dummy_input.values()), onnx_model_path,
-                      input_names=list(dummy_input.keys()),
+    input_names = None
+    if dummy_input is None:
+        device = next(model.parameters()).device
+        dummy_input = {name: torch.rand(shape).to(device) for name, shape in input_shape_dict.items()}
+        input_names = list(dummy_input.keys())
+        dummy_input = tuple(dummy_input.values())
+    torch.onnx.export(model, dummy_input, onnx_model_path,
+                      input_names=input_names,
                       opset_version=11,
                       enable_onnx_checker=False)
 
@@ -72,7 +77,7 @@ def deploy_qparams_pplw8a16(model: GraphModule, onnx_model_path, **kwargs):
 
 
 def convert_deploy(model: GraphModule, backend_type: BackendType,
-                   input_shape_dict, output_path='./',
+                   input_shape_dict=None, dummy_input=None, output_path='./',
                    model_name='mqbench_model_quantized.onnx'):
     r"""Convert model to onnx model and quantization params depends on backend.
 
@@ -94,9 +99,11 @@ def convert_deploy(model: GraphModule, backend_type: BackendType,
     """ 
     kwargs = {
         'input_shape_dict': input_shape_dict,
+        'dummy_input': dummy_input,
         'output_path': output_path,
         'model_name': model_name,
         'onnx_model_path': osp.join(output_path, model_name)
     }
+    deploy_model = deepcopy_graphmodule(model)
     for convert_function in BACKEND_DEPLOY_FUNCTION[backend_type]:
-        convert_function(model, **kwargs)
+        convert_function(deploy_model, **kwargs)

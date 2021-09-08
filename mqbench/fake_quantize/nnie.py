@@ -15,7 +15,8 @@ class NNIEFakeQuantize(QuantizeBase):
                 self.activation_post_process(X.detach())
             data_max = torch.max(-self.activation_post_process.min_val, self.activation_post_process.max_val)
             self.data_max = torch.max(data_max, self.data_max)
-        X = NNIEQuantizeFunc.apply(X, self.data_max)
+        if self.fake_quant_enabled[0] == 1:
+            X = NNIEQuantizeFunc.apply(X, self.data_max)
         return X
 
 

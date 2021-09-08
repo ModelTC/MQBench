@@ -154,6 +154,42 @@ class EMAMinMaxObserver(ObserverBase):
         return x
 
 
+class EMAQuantileObserver(ObserverBase):
+    """Moving average quantile among batches.
+    """
+
+    def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine, reduce_range=False,
+                 quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False, ema_ratio=0.9, threshold=0.99999, bins=2048):
+        super(EMAQuantileObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max,
+                                                  ch_axis, pot_scale)
+        assert self.ch_axis == -1, "Quantile observer only support in per-tensor scheme."
+        self.ema_ratio = ema_ratio
+        self.threshold = threshold
+        self.bins = bins
+
+    def forward(self, x_orig):
+        r"""Records the running minimum and maximum of ``x``."""
+        if x_orig.numel() == 0:
+            return x_orig
+        x = x_orig.to(self.min_val.dtype)
+        min_val_cur, max_val_cur = torch._aminmax(x)
+        hist = torch.histc(torch.abs(x), bins=self.bins, min=0., max=torch.max(-min_val_cur, max_val_cur))
+        cur_total = 0
+        clip_value = torch.max(-min_val_cur, max_val_cur)
+        for i, cnt in enumerate(hist):
+            if cur_total + cnt >= self.threshold * x.numel():
+                clip_value = (i + 0.5) * (max_val_cur / self.bins)
+                break
+
+        if self.max_val.numel() <= 1 and self.max_val.isinf():
+            self.min_val = max(min_val_cur, -clip_value)
+            self.max_val = min(max_val_cur, clip_value)
+        else:
+            self.min_val = self.min_val * self.ema_ratio + max(min_val_cur, -clip_value) * (1.0 - self.ema_ratio)
+            self.max_val = self.max_val * self.ema_ratio + min(max_val_cur, clip_value) * (1.0 - self.ema_ratio)
+        return x
+
+
 class ClipStdObserver(ObserverBase):
     """Clip std.
     """
@@ -241,8 +277,8 @@ class LSQPlusObserver(ObserverBase):
     LSQ+ observer.
     '''
 
-    def __init__(self, dtype=torch.qint8, qscheme=torch.per_tensor_affine, reduce_range=False,
-                 quant_min=-128, quant_max=128, ch_axis=-1, pot_scale=False):
+    def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine, reduce_range=False,
+                 quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False):
 
         super(LSQPlusObserver, self).__init__(dtype, qscheme, reduce_range, 
                                               quant_min, quant_max, ch_axis, pot_scale)

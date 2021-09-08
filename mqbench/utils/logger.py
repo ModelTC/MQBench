@@ -2,8 +2,8 @@ import logging
 import sys
 
 
-QBENCH_LOGGER_NAME = "QBENCH"
-logger = logging.getLogger(QBENCH_LOGGER_NAME)
+MQBENCH_LOGGER_NAME = "MQBENCH"
+logger = logging.getLogger(MQBENCH_LOGGER_NAME)
 logger.propagate = False
 stdout_handler = logging.StreamHandler(sys.stdout)
 fmt = logging.Formatter("[%(name)s] %(levelname)s: %(message)s")

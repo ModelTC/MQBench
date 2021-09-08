@@ -1,13 +1,17 @@
+import copy
+
 import torch
+from torch.fx import GraphModule
 
 USE_LINK = False
 USE_DDP = False
 
 try:
     import spring.linklink as link
+    assert link.is_initialized()
     USE_LINK = True
-except ModuleNotFoundError:
-    import torch.distributed as dist
+except (ModuleNotFoundError, AssertionError):
+    import torch.distributed
     if torch.distributed.is_initialized():
         USE_DDP = True
 
@@ -47,3 +51,17 @@ class no_jit_trace:
 
 def is_tracing_state():
     return torch._C._get_tracing_state()
+
+
+def deepcopy_graphmodule(gm: GraphModule):
+    """Rewrite the deepcopy of GraphModule. (Copy its 'graph'.)
+
+    Args:
+        gm (GraphModule): 
+
+    Returns:
+        GraphModule: A deepcopied gm.
+    """
+    copied_gm = copy.deepcopy(gm)
+    copied_gm.graph = copy.deepcopy(gm.graph)
+    return copied_gm

@@ -1,4 +1,3 @@
-import copy
 import os
 import numpy as np
 from typing import Callable, Dict
@@ -8,7 +7,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.fx import GraphModule, Node
 
-from .observer import MinMaxObserver, ObserverBase
+from mqbench.observer import MinMaxObserver, ObserverBase
+from mqbench.utils import deepcopy_graphmodule
 
 _ADAROUND_SUPPORT_TYPE = (nn.Conv2d, nn.Linear, )
 
@@ -95,7 +95,7 @@ def adaround(model: GraphModule, train_data, n_samples: int = 128,
     cali_data = get_cali_samples(train_data, n_samples)
 
     # apply rewritten deepcopy of GraphModule
-    quant_model = _deepcopy_graphmodule(model)
+    quant_model = deepcopy_graphmodule(model)
     quant_model.eval()
     model.eval()
 
@@ -175,18 +175,6 @@ def adaround(model: GraphModule, train_data, n_samples: int = 128,
 
     return quant_model
 
-def _deepcopy_graphmodule(gm: GraphModule):
-    """Rewrite the deepcopy of GraphModule. (Copy its 'graph'.)
-
-    Args:
-        gm (GraphModule): 
-
-    Returns:
-        GraphModule: A deepcopied gm.
-    """
-    copied_gm = copy.deepcopy(gm)
-    copied_gm.graph = copy.deepcopy(gm.graph)
-    return copied_gm
 
 def _insert_observer(gm: GraphModule, insert_type="input"):
     """Insert observers to record the input and output of target layers.

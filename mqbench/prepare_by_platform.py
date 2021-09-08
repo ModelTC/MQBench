@@ -3,7 +3,7 @@ from typing import Any, Dict
 
 import torch
 from torch.fx.symbolic_trace import symbolic_trace
-from torch.quantization.quantize_fx import _swap_ff_with_fxff, _fuse_fx
+from torch.quantization.quantize_fx import _swap_ff_with_fxff
 from torch.quantization import QConfig
 
 from mqbench.fake_quantize import (
@@ -18,7 +18,8 @@ from mqbench.observer import (
     ClipStdObserver,
     LSQObserver,
     MinMaxObserver,
-    EMAMinMaxObserver
+    EMAMinMaxObserver,
+    EMAQuantileObserver
 )
 from mqbench.fuser_method_mappings import fuse_custom_config_dict
 from mqbench.utils.logger import logger
@@ -79,28 +80,28 @@ ParamsTable = {
                                a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
                                default_weight_quantize=LearnableFakeQuantize,
                                default_act_quantize=LearnableFakeQuantize,
-                               default_weight_observer=LSQObserver,
-                               default_act_observer=LSQObserver),
+                               default_weight_observer=MinMaxObserver,
+                               default_act_observer=EMAMinMaxObserver),
     BackendType.SNPE:     dict(qtype='affine',     # noqa: E241
                                w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
                                a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
                                default_weight_quantize=LearnableFakeQuantize,
                                default_act_quantize=LearnableFakeQuantize,
-                               default_weight_observer=LSQObserver,
-                               default_act_observer=LSQObserver),
+                               default_weight_observer=MinMaxObserver,
+                               default_act_observer=EMAMinMaxObserver),
     BackendType.PPLW8A16: dict(qtype='affine',     # noqa: E241
                                w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
                                a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=16),
                                default_weight_quantize=LearnableFakeQuantize,
                                default_act_quantize=LearnableFakeQuantize,
-                               default_weight_observer=LSQObserver,
-                               default_act_observer=LSQObserver)
+                               default_weight_observer=MinMaxObserver,
+                               default_act_observer=EMAMinMaxObserver)
 }
 
 ObserverDict = {
     'MinMaxObserver':        MinMaxObserver,                                # noqa: E241
     'EMAMinMaxObserver':     EMAMinMaxObserver,    # More general choice.   # noqa: E241
-    'QuantileObserver':      None,                 # TODO quantile.         # noqa: E241
+    'EMAQuantileObserver':   EMAQuantileObserver,  # Quantile observer.     # noqa: E241
     'ClipStdObserver':       ClipStdObserver,      # Usually used for DSQ.  # noqa: E241
     'LSQObserver':           LSQObserver           # Usually used for LSQ.  # noqa: E241
 }
@@ -114,7 +115,7 @@ FakeQuantizeDict = {
     'PACTFakeQuantize':      PACTFakeQuantize        # PACT                         # noqa: E241
 }
 
-def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams):
+def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
     """
 
     Args:
@@ -139,18 +140,26 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams):
                 same with w_qscheme.
             }
         }
-    """    
+    """
     w_observer = extra_qparams.get('w_observer', None)
     if w_observer:
+        assert w_observer in ObserverDict, \
+            'Do not support observer name: {}'.format(w_observer)
         w_observer = ObserverDict[w_observer]
     a_observer = extra_qparams.get('a_observer', None)
     if a_observer:
+        assert a_observer in ObserverDict, \
+            'Do not support observer name: {}'.format(w_observer)
         a_observer = ObserverDict[a_observer]
     w_fakequantize = extra_qparams.get('w_fakequantize', None)
     if w_fakequantize:
+        assert w_fakequantize in FakeQuantizeDict, \
+            'Do not support fakequantize name: {}'.format(w_fakequantize)
         w_fakequantize = FakeQuantizeDict[w_fakequantize]
     a_fakequantize = extra_qparams.get('a_fakequantize', None)
-    if w_fakequantize:
+    if a_fakequantize:
+        assert a_fakequantize in FakeQuantizeDict, \
+            'Do not support fakequantize name: {}'.format(a_fakequantize)
         a_fakequantize = FakeQuantizeDict[a_fakequantize]
     backend_params = ParamsTable[deploy_backend]
 
@@ -185,9 +194,9 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams):
     a_fakeq_params = extra_qparams.get('a_fakeq_params', {})
     # Observer dot not need extra params for now.
     if not w_observer:
-        w_observer = MinMaxObserver
+        w_observer = backend_params['default_weight_observer']
     if not a_observer:
-        a_observer = EMAMinMaxObserver
+        a_observer = backend_params['default_act_observer']
 
     # Create qconfig.
     w_qconfig = w_fakequantize.with_args(observer=w_observer, **w_fakeq_params, **w_qscheme.to_observer_params())
@@ -205,11 +214,30 @@ def prepare_qat_fx_by_platform(
         model: torch.nn.Module,
         deploy_backend: BackendType,
         prepare_custom_config_dict: Dict[str, Any] = {}):
+    """
+    Args:
+        model (torch.nn.Module):
+        deploy_backend (BackendType):
+
+    >>> prepare_custom_config_dict : {
+            extra_qconfig_dict : Dict, Find explainations in get_qconfig_by_platform,
+            extra_quantizer_dict: Extra params for quantizer.
+            preserve_attr: Dict, Specify attribute of model which should be preserved 
+                after prepare. Since symbolic_trace only store attributes which is 
+                in forward. If model.func1 and model.backbone.func2 should be preserved,
+                {"": ["func1"], "backbone": ["func2"] } should work.
+            Attr below is inherited from Pytorch.
+            concrete_args: Specify input for model tracing.
+            extra_fuse_dict: Specify extra fusing patterns and functions.
+        }
+
+    """
     assert model.training, 'prepare_qat_fx_custom only works for models in  ' + \
         'train mode'
 
     logger.info("Quantize model using {} scheme.".format(deploy_backend))
 
+    _swap_ff_with_fxff(model)
     # Get Qconfig
     extra_qconfig_dict = prepare_custom_config_dict.get('extra_qconfig_dict', {})
     qconfig = get_qconfig_by_platform(deploy_backend, extra_qconfig_dict)
@@ -229,13 +257,11 @@ def prepare_qat_fx_by_platform(
     graph_module = symbolic_trace(model, concrete_args=concrete_args)
     # Model fusion.
     extra_fuse_dict = prepare_custom_config_dict.get('extra_fuse_dict', {})
-    _swap_ff_with_fxff(graph_module)
     extra_fuse_dict.update(fuse_custom_config_dict)
-    graph_module = _fuse_fx(graph_module, extra_fuse_dict)
     # Prepare
     import mqbench.custom_quantizer  # noqa: F401
     extra_quantizer_dict = prepare_custom_config_dict.get('extra_quantizer_dict', {})
-    quantizer = DEFAULT_MODEL_QUANTIZER[deploy_backend](extra_quantizer_dict)
+    quantizer = DEFAULT_MODEL_QUANTIZER[deploy_backend](extra_quantizer_dict, extra_fuse_dict)
     prepared = quantizer.prepare(graph_module, qconfig)
     # Restore attr.
     if 'preserve_attr' in prepare_custom_config_dict:
