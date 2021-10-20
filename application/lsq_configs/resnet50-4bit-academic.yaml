@@ -1,0 +1,35 @@
+arch: resnet50                  # model architecture
+model_path:                     # pretrained full-precision ckpt
+deploy: False 
+evaluate: False
+pretrained: True
+resume:                         # resume qat ckpt
+
+epochs: 150
+start_epoch: 0
+batch_size: 384                 # 48 * 8 gpu
+optim: adam
+lr: 0.0001
+lr_scheduler: Cosine            # T = 150_epochs
+weight_decay: 0.000
+
+# The following configs in 'qparams' can be loaded as 
+# extra_qparams["extra_qconfig_dict"] for preparation in academic setting
+quantization:
+  enabled: True
+  type: Academic
+  qparams:
+    w_observer: LSQObserver
+    w_fakequantize: LearnableFakeQuantize
+    w_qscheme:
+      bit: 4
+      symmetry: True
+      per_channel: False
+      pot_scale: False
+    a_observer: LSQObserver
+    a_fakequantize: LearnableFakeQuantize
+    a_qscheme:
+      bit: 4
+      symmetry: False
+      per_channel: False
+      pot_scale: False
