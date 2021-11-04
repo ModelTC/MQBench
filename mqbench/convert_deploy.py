@@ -17,12 +17,15 @@ from mqbench.convert_onnx import (
     remove_fakequantize_and_collect_params_nnie,
     remove_fakequantize_and_collect_params
 )
+from mqbench.deploy import ONNXQNNPass
 
 
+@register_deploy_function(BackendType.ONNX_QNN)
 @register_deploy_function(BackendType.SNPE)
 @register_deploy_function(BackendType.PPLW8A16)
 @register_deploy_function(BackendType.Tensorrt)
 @register_deploy_function(BackendType.NNIE)
+@register_deploy_function(BackendType.Vitis)
 def convert_merge_bn(model: GraphModule, **kwargs):
     logger.info("Merge BN for deploy.")
     nodes = list(model.graph.nodes)
@@ -33,11 +36,13 @@ def convert_merge_bn(model: GraphModule, **kwargs):
                 FUSED_MODULE_CONVERT_FUNCTION[type(modules[node.target])](model, node)
 
 
+@register_deploy_function(BackendType.ONNX_QNN)
 @register_deploy_function(BackendType.Academic)
 @register_deploy_function(BackendType.SNPE)
 @register_deploy_function(BackendType.PPLW8A16)
 @register_deploy_function(BackendType.Tensorrt)
 @register_deploy_function(BackendType.NNIE)
+@register_deploy_function(BackendType.Vitis)
 def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_path, **kwargs):
     logger.info("Export to onnx.")
     input_names = None
@@ -46,10 +51,13 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
         dummy_input = {name: torch.rand(shape).to(device) for name, shape in input_shape_dict.items()}
         input_names = list(dummy_input.keys())
         dummy_input = tuple(dummy_input.values())
-    torch.onnx.export(model, dummy_input, onnx_model_path,
-                      input_names=input_names,
-                      opset_version=11,
-                      enable_onnx_checker=False)
+    with torch.no_grad():
+        torch.onnx.export(model, dummy_input, onnx_model_path,
+                          input_names=input_names,
+                          opset_version=11,
+                          do_constant_folding=True,
+                          custom_opsets={'' : 11},
+                          enable_onnx_checker=False)
 
 
 @register_deploy_function(BackendType.NNIE)
@@ -64,6 +72,12 @@ def deploy_qparams_tensorrt(model: GraphModule, onnx_model_path, **kwargs):
     remove_fakequantize_and_collect_params(onnx_model_path, backend='tensorrt')
 
 
+@register_deploy_function(BackendType.Vitis)
+def deploy_qparams_vitis(model: GraphModule, onnx_model_path, **kwargs):
+    logger.info("Extract qparams for Vitis-DPU.")
+    remove_fakequantize_and_collect_params(onnx_model_path, backend='vitis')
+
+
 @register_deploy_function(BackendType.SNPE)
 def deploy_qparams_snpe(model: GraphModule, onnx_model_path, **kwargs):
     logger.info("Extract qparams for SNPE.")
@@ -74,6 +88,12 @@ def deploy_qparams_snpe(model: GraphModule, onnx_model_path, **kwargs):
 def deploy_qparams_pplw8a16(model: GraphModule, onnx_model_path, **kwargs):
     logger.info("Extract qparams for PPLW8A16.")
     remove_fakequantize_and_collect_params(onnx_model_path, backend='ppl')
+
+
+@register_deploy_function(BackendType.ONNX_QNN)
+def deploy_qparams_tvm(model: GraphModule, onnx_model_path, model_name, **kwargs):
+    logger.info("Convert to ONNX QNN.")
+    ONNXQNNPass(onnx_model_path).run()
 
 
 def convert_deploy(model: GraphModule, backend_type: BackendType,
@@ -102,7 +122,8 @@ def convert_deploy(model: GraphModule, backend_type: BackendType,
         'dummy_input': dummy_input,
         'output_path': output_path,
         'model_name': model_name,
-        'onnx_model_path': osp.join(output_path, model_name)
+        'onnx_model_path': osp.join(output_path, model_name),
+        'model_name': model_name
     }
     deploy_model = deepcopy_graphmodule(model)
     for convert_function in BACKEND_DEPLOY_FUNCTION[backend_type]:

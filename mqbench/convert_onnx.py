@@ -1,12 +1,18 @@
 import json
 import os
 import onnx
-from onnx import numpy_helper
 import numpy as np
+from onnx import numpy_helper
 from mqbench.utils.logger import logger
 
+try:
+    from .convert_xir import XIR_process
+    USE_XIR = True
+except (ModuleNotFoundError, AssertionError, ImportError):
+    USE_XIR = False
+
 perchannel_fakequantizer = ['FakeQuantizeLearnablePerchannelAffine', 'FixedPerChannelAffine', 'FakeQuantizeDSQPerchannel']
-pertensor_fakequantizer = ['LearnablePerTensorAffine', 'FixedPerTensorAffine', 'FakeQuantizeDSQPertensor']
+pertensor_fakequantizer = ['LearnablePerTensorAffine', 'FixedPerTensorAffine', 'FakeQuantizeDSQPertensor', 'FakeQuantizeTqtAffine']
 all_fakequantizer = perchannel_fakequantizer + pertensor_fakequantizer
 
 def update_inp2node_out2node(graph):
@@ -195,6 +201,7 @@ class NNIE_process(object):
 
 remove_fakequantize_and_collect_params_nnie = NNIE_process().remove_fakequantize_and_collect_params
 
+
 class LinearQuantizer_process(object):
     # some method like dorefa need pre-compute weights
     def weight_preprocess(self, target_tensor, out2node, inp2node, named_initializer):
@@ -326,6 +333,10 @@ class LinearQuantizer_process(object):
                                                 'bit': int(np.log2(qmax - qmin + 1)),
                                                 'type': "biased",
                                                 }
+                elif backend == 'vitis':
+                    logger.info("Vitis-DPU does not support per-channel quatization.")
+                    raise NotImplementedError("Vitis-DPU does not support per-channel quatization.")
+
 
             elif node.op_type in pertensor_fakequantizer:
                 if node.output[0] in [x.name for x in graph.output]:
@@ -362,6 +373,8 @@ class LinearQuantizer_process(object):
                                                 'bit': int(np.log2(qmax - qmin + 1)),
                                                 'type': "biased",
                                                 }
+                elif backend == 'vitis':
+                    clip_ranges[tensor_name] = {'scale': float(scale)}
 
         for node in nodes_to_be_removed:
             graph.node.remove(node)
@@ -373,12 +386,20 @@ class LinearQuantizer_process(object):
             context = {'activation_encodings': clip_ranges, 'param_encodings': {}}
         elif backend == 'ppl':
             context = {"ppl": clip_ranges}
+        elif backend == 'vitis':
+            context = {'vitis': clip_ranges}
         output_path = os.path.dirname(onnx_path)
         filename = os.path.join(output_path, '{}_clip_ranges.json'.format(backend))
         with open(filename, 'w') as f:
             json.dump(context, f, indent=4)
         filename = os.path.join(output_path, '{}_deploy_model.onnx'.format(backend))
         onnx.save(model, filename)
+        # do post processing for vitis
+        if backend == 'vitis' and USE_XIR:
+            xir_compiler = XIR_process()
+            xir_compiler.do_compile(onnx.load(onnx_path), onnx.load(filename), name=filename)
+            logger.info("Finish xmodel converting process.")
         logger.info("Finish deploy process.")
+
 
 remove_fakequantize_and_collect_params = LinearQuantizer_process().remove_fakequantize_and_collect_params

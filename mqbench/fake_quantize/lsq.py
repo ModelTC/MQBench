@@ -54,7 +54,8 @@ class LearnableFakeQuantize(QuantizeBase):
                'scale={}, zero_point={}'.format(
                    self.fake_quant_enabled, self.observer_enabled,
                    self.quant_min, self.quant_max,
-                   self.dtype, self.qscheme, self.ch_axis, self.scale, self.zero_point)
+                   self.dtype, self.qscheme, self.ch_axis, self.scale if self.ch_axis == -1 else 'List',
+                   self.zero_point if self.ch_axis == -1 else 'List')
 
     def forward(self, X):
         # Learnable fake quantize have to zero_point.float() to make it learnable.

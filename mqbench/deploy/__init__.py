@@ -1,0 +1,1 @@
+from .deploy_onnx_qnn import ONNXQNNPass

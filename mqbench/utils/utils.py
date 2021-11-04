@@ -11,7 +11,7 @@ try:
     assert link.is_initialized()
     USE_LINK = True
 except (ModuleNotFoundError, AssertionError):
-    import torch.distributed
+    import torch.distributed as dist
     if torch.distributed.is_initialized():
         USE_DDP = True
 
@@ -21,17 +21,23 @@ def sync_tensor(tensor):
     global USE_DDP
     if USE_LINK:
         if tensor.is_cuda is True:
-            world_size = link.get_world_size()
-            link.allreduce(tensor / world_size)
+            tensor.data = tensor.data / link.get_world_size()
+            link.allreduce(tensor.data)
     elif USE_DDP:
-        world_size = dist.get_world_size()
-        dist.allreduce(tensor / world_size)
+        tensor.data = tensor.data / dist.get_world_size()
+        dist.all_reduce(tensor.data)
+    return tensor
 
 
-def pot_quantization(tensor: torch.Tensor):
+def pot_quantization(tensor: torch.Tensor, mode='round'):
     log2t = torch.log2(tensor)
-    log2t = (torch.round(log2t) - log2t).detach() + log2t
+    if mode == 'round':
+        log2t = (torch.round(log2t) - log2t).detach() + log2t
+    else:
+        assert mode == 'floor' 
+        log2t = (torch.floor(log2t) - log2t).detach() + log2t
     return 2 ** log2t
+
 
 
 def is_symmetric_quant(qscheme: 'torch.qscheme') -> bool:

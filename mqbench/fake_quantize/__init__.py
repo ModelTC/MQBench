@@ -4,3 +4,4 @@ from .fixed import FixedFakeQuantize
 from .lsq import LearnableFakeQuantize
 from .nnie import NNIEFakeQuantize
 from .pact import PACTFakeQuantize
+from .tqt import TqtFakeQuantize

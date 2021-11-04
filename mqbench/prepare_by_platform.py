@@ -12,13 +12,16 @@ from mqbench.fake_quantize import (
     FixedFakeQuantize,
     DoReFaFakeQuantize,
     DSQFakeQuantize,
-    PACTFakeQuantize
+    PACTFakeQuantize,
+    TqtFakeQuantize
 )
 from mqbench.observer import (
     ClipStdObserver,
     LSQObserver,
+    MinMaxFloorObserver,
     MinMaxObserver,
     EMAMinMaxObserver,
+    EMAMinMaxFloorObserver,
     EMAQuantileObserver
 )
 from mqbench.fuser_method_mappings import fuse_custom_config_dict
@@ -32,6 +35,8 @@ class BackendType(Enum):
     SNPE = 'SNPE'
     PPLW8A16 = 'PPLW8A16'
     NNIE = 'NNIE'
+    Vitis = 'Vitis'
+    ONNX_QNN = 'ONNX_QNN'
 
 
 class QuantizeScheme(object):
@@ -95,7 +100,21 @@ ParamsTable = {
                                default_weight_quantize=LearnableFakeQuantize,
                                default_act_quantize=LearnableFakeQuantize,
                                default_weight_observer=MinMaxObserver,
-                               default_act_observer=EMAMinMaxObserver)
+                               default_act_observer=EMAMinMaxObserver),
+    BackendType.Vitis: dict(qtype='affine',     # noqa: E241
+                            w_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=True, bit=8),
+                            a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=True, bit=8),
+                            default_weight_quantize=TqtFakeQuantize,
+                            default_act_quantize=TqtFakeQuantize,
+                            default_weight_observer=MinMaxFloorObserver,
+                            default_act_observer=EMAMinMaxFloorObserver),
+    BackendType.ONNX_QNN: dict(qtype='affine',     # noqa: E241
+                               w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
+                               a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
+                               default_weight_quantize=LearnableFakeQuantize,
+                               default_act_quantize=LearnableFakeQuantize,
+                               default_weight_observer=MinMaxObserver,
+                               default_act_observer=MinMaxObserver)
 }
 
 ObserverDict = {
@@ -210,7 +229,7 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
     return QConfig(activation=a_qconfig, weight=w_qconfig)
 
 
-def prepare_qat_fx_by_platform(
+def prepare_by_platform(
         model: torch.nn.Module,
         deploy_backend: BackendType,
         prepare_custom_config_dict: Dict[str, Any] = {}):
@@ -232,15 +251,14 @@ def prepare_qat_fx_by_platform(
         }
 
     """
-    assert model.training, 'prepare_qat_fx_custom only works for models in  ' + \
-        'train mode'
+    model_mode = 'Training' if model.training else 'Eval'
+    logger.info("Quantize model Scheme: {} Mode: {}".format(deploy_backend, model_mode))
 
-    logger.info("Quantize model using {} scheme.".format(deploy_backend))
-
-    _swap_ff_with_fxff(model)
     # Get Qconfig
     extra_qconfig_dict = prepare_custom_config_dict.get('extra_qconfig_dict', {})
     qconfig = get_qconfig_by_platform(deploy_backend, extra_qconfig_dict)
+
+    _swap_ff_with_fxff(model)
     # Preserve attr.
     preserve_attr_dict = dict()
     if 'preserve_attr' in prepare_custom_config_dict:
@@ -273,4 +291,4 @@ def prepare_qat_fx_by_platform(
             for attr in preserve_attr_list:
                 logger.info("Preserve attr: {}.{}".format(submodule_name, attr))
                 setattr(cur_module, attr, preserve_attr_dict[submodule_name][attr])
-    return prepared               
+    return prepared

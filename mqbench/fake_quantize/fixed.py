@@ -40,7 +40,8 @@ class FixedFakeQuantize(QuantizeBase):
                'scale={}, zero_point={}'.format(
                    self.fake_quant_enabled, self.observer_enabled,
                    self.quant_min, self.quant_max,
-                   self.dtype, self.qscheme, self.ch_axis, self.scale, self.zero_point)
+                   self.dtype, self.qscheme, self.ch_axis, self.scale if self.ch_axis == -1 else 'List', 
+                   self.zero_point if self.ch_axis == -1 else 'List')
 
     def _save_to_state_dict(self, destination, prefix, keep_vars):
         # We cannot currently register scalar values as buffers, so need to manually

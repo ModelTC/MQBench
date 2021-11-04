@@ -9,7 +9,7 @@ from torch.fx import (
     GraphModule
 )
 from torch.quantization import (
-    propagate_qconfig_, 
+    propagate_qconfig_,
     swap_module
 )
 from torch.nn.intrinsic import (
@@ -31,7 +31,7 @@ from torch.quantization.quantize_fx import (
 
 import mqbench.nn as qnn
 import mqbench.nn.intrinsic
-import mqbench.nn.intrinsic.qat # noqa F401
+import mqbench.nn.intrinsic.qat  # noqa F401
 from mqbench.utils.logger import logger
 from mqbench.utils.registry import register_model_quantizer
 from mqbench.prepare_by_platform import BackendType
@@ -47,10 +47,13 @@ class ModelQuantizer(object):
     We only quantize the inputs of layers and leave the output not quantized 
     since it is next layer's input.
     """
+
     def __init__(self, extra_quantizer_dict, extra_fuse_dict):
         self.additional_function_type = extra_quantizer_dict.get('additional_function_type', [])
         self.additional_module_type = extra_quantizer_dict.get('additional_module_type', ())
         self.exclude_module_name = extra_quantizer_dict.get('exclude_module_name', [])
+        self.exclude_function_type = extra_quantizer_dict.get('exclude_function_type', [])
+        self.exclude_node_name = extra_quantizer_dict.get('exclude_node_name', [])
         self.extra_fuse_dict = extra_fuse_dict
 
     def prepare(self, model: GraphModule, qconfig):
@@ -60,8 +63,8 @@ class ModelQuantizer(object):
         return model
 
     def _insert_fake_quantize_for_act_quant(
-            self, 
-            model: GraphModule, 
+            self,
+            model: GraphModule,
             qconfig: Any):
         graph = model.graph
         nodes = list(model.graph.nodes)
@@ -119,7 +122,7 @@ class ModelQuantizer(object):
         cur_pattern = pattern[p_pos]
         # Means current node is matched.
         if (node.op == "call_module" and type(modules[node.target]) == cur_pattern) or \
-                ((node.op == 'call_function' or node.op == 'call_method') and 
+                ((node.op == 'call_function' or node.op == 'call_method') and
                     node.target == cur_pattern):
             # Means compairing pair.
             if len(pattern) > p_pos and len(pair) > v_pos:
@@ -146,7 +149,7 @@ class ModelQuantizer(object):
     @property
     def function_type_to_quant_input(self) -> list:
         return [
-            operator.add, 
+            operator.add,
             operator.mul,
             torch.cat,
             torch.nn.functional.adaptive_avg_pool2d
@@ -193,10 +196,13 @@ class ModelQuantizer(object):
         modules = dict(model.named_modules())
         node_need_to_quantize_output = []
         for node in nodes:
-            if node.op == "call_module" and node.target in self.exclude_module_name:
+            if (node.op == "call_module" and node.target in self.exclude_module_name) or \
+                ((node.op == 'call_function' or node.op == 'call_method') and
+                 node.target in self.exclude_function_type) or \
+                    node.name in self.exclude_node_name:
                 continue
             if (node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_input)) or \
-                ((node.op == 'call_function' or node.op == 'call_method') and 
+                ((node.op == 'call_function' or node.op == 'call_method') and
                     node.target in self.function_type_to_quant_input):
                 input_node_list = self._flatten_args(node.args)
                 for _node in input_node_list:
@@ -246,6 +252,7 @@ class ModelQuantizer(object):
 class AcademicQuantizer(ModelQuantizer):
     """Academic setting mostly do not merge BN and leave the first and last layer to higher bits.
     """
+
     def __init__(self, extra_quantizer_dict, extra_fuse_dict):
         super().__init__(extra_quantizer_dict, extra_fuse_dict)
         self.io_module = {}
@@ -336,11 +343,13 @@ class AcademicQuantizer(ModelQuantizer):
         model.graph.lint()
         return model
 
+
 @register_model_quantizer(BackendType.Tensorrt)
 class TRTModelQuantizer(ModelQuantizer):
     """The different points of TRT quantizer are how to deal with add op
     and the last layer.
     """
+
     def __init__(self, extra_quantizer_dict, extra_fuse_dict):
         super().__init__(extra_quantizer_dict, extra_fuse_dict)
 
@@ -353,13 +362,17 @@ class TRTModelQuantizer(ModelQuantizer):
         modules = dict(model.named_modules())
         node_need_to_quantize_output = []
         for node in nodes:
-            if node.op == "call_module" and node.target in self.exclude_module_name:
+            if (node.op == "call_module" and node.target in self.exclude_module_name) or \
+                ((node.op == 'call_function' or node.op == 'call_method') and
+                 node.target in self.exclude_function_type) or \
+                    node.name in self.exclude_node_name:
                 continue
             if (node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_input)) or \
-                ((node.op == 'call_function' or node.op == 'call_method') and 
+                ((node.op == 'call_function' or node.op == 'call_method') and
                     node.target in self.function_type_to_quant_input):
                 # Add will be merged with previous conv.
-                input_node_list = self._flatten_args(node.args)
+                input_node_list = list(filter(lambda x: isinstance(x, torch.fx.node.Node),
+                                              self._flatten_args(node.args)))
                 if node.target is operator.add:
                     merge_node = self._find_add_merge_node(model, input_node_list, node)
                     if merge_node:
@@ -371,7 +384,6 @@ class TRTModelQuantizer(ModelQuantizer):
                             continue
                         if isinstance(_node, torch.fx.node.Node):
                             node_need_to_quantize_output.append(_node)
-
         return set(node_need_to_quantize_output)
 
     def _find_add_merge_node(self, model, input_node_list, node):
@@ -392,14 +404,18 @@ class TRTModelQuantizer(ModelQuantizer):
         return None
 
 
+
+@register_model_quantizer(BackendType.ONNX_QNN)
 @register_model_quantizer(BackendType.SNPE)
 @register_model_quantizer(BackendType.PPLW8A16)
+@register_model_quantizer(BackendType.Vitis)
 class TotalINTQuantizer(ModelQuantizer):
     """There is only INT8 calculations in the model.
     We quantize the input tensors of all layers and the output tensors
     of the last layers. We quantize every activations tensors and weight
     tensors using this method.
     """
+
     def __init__(self, extra_quantizer_dict, extra_fuse_dict):
         super().__init__(extra_quantizer_dict, extra_fuse_dict)
 
@@ -409,6 +425,92 @@ class TotalINTQuantizer(ModelQuantizer):
         for node in nodes:
             if node.op == 'output':
                 for output_node in self._flatten_args(node.args):
+                    assert isinstance(output_node, torch.fx.node.Node)
                     node_need_to_quantize_output.add(output_node)
 
         return set(node_need_to_quantize_output)
+
+
+@register_model_quantizer(BackendType.ONNX_QNN)
+class TVMQuantizer(ModelQuantizer):
+    """Quantize model according to TVM ONNX frontend.
+    """
+
+    def __init__(self, extra_quantizer_dict, extra_fuse_dict):
+        super().__init__(extra_quantizer_dict, extra_fuse_dict)
+
+    @property
+    def _relu_module_type(self):
+        return (torch.nn.ReLU, torch.nn.ReLU6)
+
+    @property
+    def _relu_function_type(self):
+        return (torch.nn.functional.relu, torch.nn.functional.relu6)
+
+    def _find_act_quants(self, model: GraphModule) -> (set, set):
+        nodes = list(model.graph.nodes)
+        modules = dict(model.named_modules())
+        node_need_to_quantize_output = super(). _find_act_quants(model)
+        for node in nodes:
+            if (node.op == "call_module" and node.target in self.exclude_module_name) or \
+                ((node.op == 'call_function' or node.op == 'call_method') and
+                 node.target in self.exclude_function_type) or \
+                    node.name in self.exclude_node_name:
+                continue
+            if (node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_input)) or \
+                ((node.op == 'call_function' or node.op == 'call_method') and
+                    node.target in self.function_type_to_quant_input):
+                # Add current node if not merge relu.
+                for next_node in node.users:
+                    if not ((next_node.op == 'call_function' and next_node.target in self._relu_function_type) or
+                            (next_node.op == 'call_module' and isinstance(modules[next_node.target], self._relu_module_type))):
+                        node_need_to_quantize_output.add(node)
+                    else:
+                        node_need_to_quantize_output.add(next_node)
+        return set(node_need_to_quantize_output)
+
+    def _qat_swap_modules(self, root: GraphModule, additional_qat_module_mapping: Dict[Callable, Callable]):
+        all_mappings = get_combined_dict(
+            get_default_qat_module_mappings(), additional_qat_module_mapping)
+        # There is no QLinearFC in ONNX for now.
+        del(all_mappings[torch.nn.modules.linear.Linear])
+        del(all_mappings[torch.nn.modules.linear._LinearWithBias])
+        del(all_mappings[torch.nn.intrinsic.modules.fused.LinearReLU])
+        del(all_mappings[mqbench.nn.intrinsic.modules.fused.LinearBn1d])
+        root = self._convert(root, all_mappings, inplace=True)
+        return root
+
+    @property
+    def function_type_to_quant_input(self) -> list:
+        return [
+            operator.add,
+            # TODO operator.mul,
+            # TODO torch.cat,
+            torch.nn.functional.adaptive_avg_pool2d
+            # sigmoid
+            # TODO torch.nn.functional.sigmoid
+        ]
+
+    @property
+    def module_type_to_quant_input(self) -> tuple:
+        return (
+            # Conv
+            torch.nn.intrinsic.qat.modules.conv_fused.ConvBnReLU2d,
+            torch.nn.intrinsic.qat.modules.conv_fused.ConvBn2d,
+            # Linear
+            torch.nn.qat.modules.linear.Linear,
+            qnn.intrinsic.qat.LinearBn1d,
+            # Pooling
+            torch.nn.modules.pooling.AvgPool2d,
+            torch.nn.modules.pooling.AdaptiveAvgPool2d,
+            # Prelu
+            # TODO torch.nn.PReLU,
+        )
+
+    @property
+    def implicit_merge_patterns(self) -> list:
+        # Layers which do not need quantize among them.
+        # In reversed order!
+        return [
+            (torch.nn.ReLU, operator.add)
+        ]
