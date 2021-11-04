@@ -1,7 +1,7 @@
 import torch
 import unittest
 
-from mqbench.prepare_by_platform import prepare_qat_fx_by_platform, BackendType
+from mqbench.prepare_by_platform import prepare_by_platform, BackendType
 from mqbench.convert_deploy import convert_merge_bn
 from mqbench.utils.state import enable_calibration, enable_quantization, disable_all
 
@@ -23,7 +23,7 @@ class TestMergeBN(unittest.TestCase):
         prepare_custom_config_dict = {'extra_qconfig_dict': extra_qconfig_dict}
         # First model
         model_1 = torch.hub.load('pytorch/vision', 'mobilenet_v2', pretrained=False)
-        model_1 = prepare_qat_fx_by_platform(model_1, BackendType.Tensorrt, prepare_custom_config_dict)
+        model_1 = prepare_by_platform(model_1, BackendType.Tensorrt, prepare_custom_config_dict)
         model_1.train()
         enable_calibration(model_1)
         model_1(dummy_input)

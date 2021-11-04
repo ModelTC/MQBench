@@ -1,7 +1,7 @@
 import torch
 import unittest
 
-from mqbench.prepare_by_platform import prepare_qat_fx_by_platform, BackendType
+from mqbench.prepare_by_platform import prepare_by_platform, BackendType
 from mqbench.convert_deploy import convert_deploy
 from mqbench.utils.state import enable_calibration, enable_quantization
 
@@ -30,7 +30,7 @@ class TestQuantizeBackend(unittest.TestCase):
             }
         }
         prepare_custom_config_dict = {'extra_qconfig_dict': extra_qconfig_dict}
-        model_prepared = prepare_qat_fx_by_platform(model_to_quantize, BackendType.Academic, prepare_custom_config_dict)
+        model_prepared = prepare_by_platform(model_to_quantize, BackendType.Academic, prepare_custom_config_dict)
         enable_calibration(model_prepared)
         model_prepared(dummy_input)
         enable_quantization(model_prepared)
@@ -43,7 +43,7 @@ class TestQuantizeBackend(unittest.TestCase):
         model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
-        model_prepared = prepare_qat_fx_by_platform(model_to_quantize, BackendType.Tensorrt)
+        model_prepared = prepare_by_platform(model_to_quantize, BackendType.Tensorrt)
         enable_calibration(model_prepared)
         model_prepared(dummy_input)
         enable_quantization(model_prepared)
@@ -56,7 +56,7 @@ class TestQuantizeBackend(unittest.TestCase):
         model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
-        model_prepared = prepare_qat_fx_by_platform(model_to_quantize, BackendType.NNIE)
+        model_prepared = prepare_by_platform(model_to_quantize, BackendType.NNIE)
         enable_calibration(model_prepared)
         model_prepared(dummy_input)
         enable_quantization(model_prepared)
@@ -69,7 +69,7 @@ class TestQuantizeBackend(unittest.TestCase):
         model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
-        model_prepared = prepare_qat_fx_by_platform(model_to_quantize, BackendType.SNPE)
+        model_prepared = prepare_by_platform(model_to_quantize, BackendType.SNPE)
         enable_calibration(model_prepared)
         model_prepared(dummy_input)
         enable_quantization(model_prepared)
@@ -82,7 +82,7 @@ class TestQuantizeBackend(unittest.TestCase):
         model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
-        model_prepared = prepare_qat_fx_by_platform(model_to_quantize, BackendType.PPLW8A16)
+        model_prepared = prepare_by_platform(model_to_quantize, BackendType.PPLW8A16)
         enable_calibration(model_prepared)
         model_prepared(dummy_input)
         enable_quantization(model_prepared)
@@ -90,3 +90,64 @@ class TestQuantizeBackend(unittest.TestCase):
         loss.backward()
         model_prepared.eval()
         convert_deploy(model_prepared, BackendType.PPLW8A16, {'x': [1, 3, 224, 224]}, model_name='resnet18_pplw8a16.onnx')
+
+    def test_quantize_vitis(self):
+        try:
+            import xir
+            import pytorch_nndct
+            import nndct_shared
+            USE_XIR = True
+        except (ModuleNotFoundError, AssertionError, ImportError):
+            USE_XIR = False
+
+        if USE_XIR:
+            model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
+            dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
+            model_to_quantize.train()
+            model_prepared = prepare_by_platform(model_to_quantize, BackendType.Vitis)
+            enable_calibration(model_prepared)
+            model_prepared(dummy_input)
+            enable_quantization(model_prepared)
+            loss = model_prepared(dummy_input).sum()
+            loss.backward()
+            model_prepared.eval()
+            convert_deploy(model_prepared, BackendType.Vitis, {'x': [1, 3, 224, 224]}, model_name='resnet18_vitis.onnx')
+        else:
+            pass 
+            
+    def test_quantize_onnxqnn(self):
+        model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
+        dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
+        model_to_quantize.train()
+        model_prepared = prepare_by_platform(model_to_quantize, BackendType.ONNX_QNN)
+        enable_calibration(model_prepared)
+        model_prepared(dummy_input)
+        enable_quantization(model_prepared)
+        loss = model_prepared(dummy_input).sum()
+        loss.backward()
+        model_prepared.eval()
+        convert_deploy(model_prepared, BackendType.ONNX_QNN, {'x': [1, 3, 224, 224]}, model_name='resnet18_onnx_qnn.onnx')
+
+    def test_quantize_vitis(self):
+        try:
+            import xir
+            import pytorch_nndct
+            import nndct_shared
+            USE_XIR = True
+        except (ModuleNotFoundError, AssertionError):
+            USE_XIR = False
+
+        if USE_XIR:
+            model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
+            dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
+            model_to_quantize.train()
+            model_prepared = prepare_by_platform(model_to_quantize, BackendType.Vitis)
+            enable_calibration(model_prepared)
+            model_prepared(dummy_input)
+            enable_quantization(model_prepared)
+            loss = model_prepared(dummy_input).sum()
+            loss.backward()
+            model_prepared.eval()
+            convert_deploy(model_prepared, BackendType.Vitis, {'x': [1, 3, 224, 224]}, model_name='resnet18_vitis.onnx')
+        else:
+            pass 

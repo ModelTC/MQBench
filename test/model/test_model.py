@@ -1,7 +1,7 @@
 import torch
 import unittest
 
-from mqbench.prepare_by_platform import prepare_qat_fx_by_platform, BackendType
+from mqbench.prepare_by_platform import prepare_by_platform, BackendType
 from mqbench.convert_deploy import convert_deploy
 from mqbench.utils.state import enable_calibration, enable_quantization
 from mqbench.utils.logger import logger
@@ -22,7 +22,7 @@ class TestQuantizeBackend(unittest.TestCase):
                 model_to_quantize = torch.hub.load('pytorch/vision', entrypoint, pretrained=False)
             dummy_input = torch.randn(8, 3, 224, 224, device='cpu')
             model_to_quantize.train()
-            model_prepared = prepare_qat_fx_by_platform(model_to_quantize, BackendType.PPLW8A16)
+            model_prepared = prepare_by_platform(model_to_quantize, BackendType.PPLW8A16)
             enable_calibration(model_prepared)
             model_prepared(dummy_input)
             enable_quantization(model_prepared)

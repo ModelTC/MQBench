@@ -96,7 +96,7 @@ PTQ Algorithms
 
            \[ E[ L(x,y,\mathbf{w}) - L(x,y,\mathbf{w}+\Delta \mathbf{w}) ] \approx \Delta \mathbf{w}^T g^{(\mathbf{w})} + \frac12 \Delta \mathbf{w}^T H^{(\mathbf{w})} \Delta \mathbf{w} \approx \Delta \mathbf{w}_1^2 + \Delta \mathbf{w}_2^2 + \Delta \mathbf{w}_1 \Delta \mathbf{w}_2 \]
 
-Hence, it's benifitial to learn a rounding mask for each layer. One well-designed object function is given by the authors:
+Hence, it's benificial to learn a rounding mask for each layer. One well-designed object function is given by the authors:
 
 .. raw:: latex html
 

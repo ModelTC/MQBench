@@ -1,7 +1,7 @@
 import torch
 import unittest
 
-from mqbench.prepare_by_platform import prepare_qat_fx_by_platform, BackendType
+from mqbench.prepare_by_platform import prepare_by_platform, BackendType
 from mqbench.convert_deploy import convert_deploy
 from mqbench.utils.state import enable_calibration, enable_quantization
 
@@ -18,7 +18,7 @@ class TestFakeQuantize(unittest.TestCase):
             'a_fakequantize': 'FixedFakeQuantize',
         }
         prepare_custom_config_dict = {'extra_qconfig_dict': extra_qconfig_dict}
-        model_prepared = prepare_qat_fx_by_platform(model_to_quantize, BackendType.Tensorrt, prepare_custom_config_dict)
+        model_prepared = prepare_by_platform(model_to_quantize, BackendType.Tensorrt, prepare_custom_config_dict)
         enable_calibration(model_prepared)
         model_prepared(dummy_input)
         enable_quantization(model_prepared)
@@ -38,7 +38,7 @@ class TestFakeQuantize(unittest.TestCase):
             'a_fakequantize': 'LearnableFakeQuantize',
         }
         prepare_custom_config_dict = {'extra_qconfig_dict': extra_qconfig_dict}
-        model_prepared = prepare_qat_fx_by_platform(model_to_quantize, BackendType.Tensorrt, prepare_custom_config_dict)
+        model_prepared = prepare_by_platform(model_to_quantize, BackendType.Tensorrt, prepare_custom_config_dict)
         enable_calibration(model_prepared)
         model_prepared(dummy_input)
         enable_quantization(model_prepared)
@@ -58,7 +58,7 @@ class TestFakeQuantize(unittest.TestCase):
             'a_fakequantize': 'NNIEFakeQuantize',
         }
         prepare_custom_config_dict = {'extra_qconfig_dict': extra_qconfig_dict}
-        model_prepared = prepare_qat_fx_by_platform(model_to_quantize, BackendType.NNIE, prepare_custom_config_dict)
+        model_prepared = prepare_by_platform(model_to_quantize, BackendType.NNIE, prepare_custom_config_dict)
         enable_calibration(model_prepared)
         model_prepared(dummy_input)
         enable_quantization(model_prepared)
@@ -78,7 +78,7 @@ class TestFakeQuantize(unittest.TestCase):
             'a_fakequantize': 'LearnableFakeQuantize'
         }
         prepare_custom_config_dict = {'extra_qconfig_dict': extra_qconfig_dict}
-        model_prepared = prepare_qat_fx_by_platform(model_to_quantize, BackendType.Tensorrt, prepare_custom_config_dict)
+        model_prepared = prepare_by_platform(model_to_quantize, BackendType.Tensorrt, prepare_custom_config_dict)
         enable_calibration(model_prepared)
         model_prepared(dummy_input)
         enable_quantization(model_prepared)
@@ -98,7 +98,7 @@ class TestFakeQuantize(unittest.TestCase):
             'a_fakequantize': 'PACTFakeQuantize',
         }
         prepare_custom_config_dict = {'extra_qconfig_dict': extra_qconfig_dict}
-        model_prepared = prepare_qat_fx_by_platform(model_to_quantize, BackendType.Tensorrt, prepare_custom_config_dict)
+        model_prepared = prepare_by_platform(model_to_quantize, BackendType.Tensorrt, prepare_custom_config_dict)
         enable_calibration(model_prepared)
         model_prepared(dummy_input)
         enable_quantization(model_prepared)
@@ -118,7 +118,7 @@ class TestFakeQuantize(unittest.TestCase):
             'a_fakequantize': 'DSQFakeQuantize',
         }
         prepare_custom_config_dict = {'extra_qconfig_dict': extra_qconfig_dict}
-        model_prepared = prepare_qat_fx_by_platform(model_to_quantize, BackendType.Tensorrt, prepare_custom_config_dict)
+        model_prepared = prepare_by_platform(model_to_quantize, BackendType.Tensorrt, prepare_custom_config_dict)
         enable_calibration(model_prepared)
         model_prepared(dummy_input)
         enable_quantization(model_prepared)

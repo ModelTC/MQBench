@@ -6,3 +6,4 @@ Quantization Hardware
 
    nnie
    tensorrt
+   snpe
