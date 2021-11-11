@@ -16,10 +16,12 @@ import torch.utils.data
 import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-import torchvision.models as models
+# import torchvision.models as models
+import models
 from mqbench.convert_deploy import convert_deploy
 from mqbench.prepare_by_platform import prepare_by_platform, BackendType
 from mqbench.utils.state import enable_calibration, enable_quantization, disable_all
+from mqbench.tools.replace_syncbn import replace_bn_to_syncbn
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -27,9 +29,9 @@ model_names = sorted(name for name in models.__dict__
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--train_data', metavar='DIR',
-                    help='path to dataset', required=True)
+                    help='path to dataset', default='/mnt/lustre/share/images/')
 parser.add_argument('--val_data', metavar='DIR',
-                    help='path to dataset', required=True)
+                    help='path to dataset', default='/mnt/lustre/majian/dataset/imagenet/')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     choices=model_names,
                     help='model architecture: ' +
@@ -80,23 +82,17 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'multi node data parallel training')
 
 parser.add_argument('--model_path', type=str, default=None)
-parser.add_argument('--backend', type=str, choices=['tensorrt', 'nnie', 'ppl', 'snpe'], default='tensorrt')
 parser.add_argument('--optim', type=str, default='sgd')
 parser.add_argument('--not-quant', action='store_true')
 parser.add_argument('--deploy', action='store_true')
 
-BackendMap = {'tensorrt': BackendType.Tensorrt,
-               'nnie': BackendType.NNIE,
-               'ppl': BackendType.PPLW8A16,
-               'snpe': BackendType.SNPE,
-               'vitis': BackendType.Vitis}
 
 best_acc1 = 0
 
+@link_dist
 def main():
     args = parser.parse_args()
     args.quant = not args.not_quant
-    args.backend = BackendMap[args.backend]
 
     if args.seed is not None:
         random.seed(args.seed)
@@ -132,10 +128,11 @@ def main():
 
 def main_worker(gpu, ngpus_per_node, args):
     global best_acc1
-    args.gpu = gpu
-
+    # args.gpu = gpu
+    args.gpu = dist.get_rank()
     if args.gpu is not None:
         print("Use GPU: {} for training".format(args.gpu))
+    cudnn.benchmark = True
 
     if args.distributed:
         if args.dist_url == "env://" and args.rank == -1:
@@ -144,24 +141,23 @@ def main_worker(gpu, ngpus_per_node, args):
             # For multiprocessing distributed training, rank needs to be the
             # global rank among all the processes
             args.rank = args.rank * ngpus_per_node + gpu
-        dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
-                                world_size=args.world_size, rank=args.rank)
+        # dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
+        #                         world_size=args.world_size, rank=args.rank)
 
     # create model
     if args.pretrained:
         print("=> using pre-trained model '{}'".format(args.arch))
-        model = models.__dict__[args.arch](pretrained=True)
+        model = models.__dict__[args.arch](pretrained=True, model_path=args.model_path)
     else:
         print("=> creating model '{}'".format(args.arch))
         model = models.__dict__[args.arch]()
-    # for internal cluster
-    if args.model_path:
-        state_dict = torch.load(args.model_path)
-        print(f'load pretrained checkpoint from: {args.model_path}')
-        model.load_state_dict(state_dict)
     # quantize model
     if args.quant:
-        model = prepare_by_platform(model, args.backend)
+        model = prepare_by_platform(model, BackendType.Tensorrt)
+    
+    # use SyncBN 
+    replace_bn_to_syncbn(model)
+    print('gpu = {}: {}'.format(args.gpu, model))
 
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')
@@ -177,7 +173,7 @@ def main_worker(gpu, ngpus_per_node, args):
             # ourselves based on the total number of GPUs we have
             args.batch_size = int(args.batch_size / ngpus_per_node)
             args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
-            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
+            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
         else:
             model.cuda()
             # DistributedDataParallel will divide and allocate batch_size to all
@@ -201,13 +197,13 @@ def main_worker(gpu, ngpus_per_node, args):
                                     momentum=args.momentum,
                                     weight_decay=args.weight_decay)
     elif args.optim == 'adam':
-        optimizer = torch.optim.Adam(model.parameters(), args.lr,
-                                     betas=(0.9, 0.999), eps=1e-08,
-                                     weight_decay=args.weight_decay,
+        optimizer = torch.optim.Adam(model.parameters(), args.lr, 
+                                     betas=(0.9, 0.999), eps=1e-08, 
+                                     weight_decay=args.weight_decay, 
                                      amsgrad=False)
-
+    
     # prepare dataset
-    train_loader, train_sampler, val_loader, cali_loader = prepare_dataloader(args)
+    train_loader, train_sampler, val_loader, cali_loader = prepare_dataloader(args) 
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -237,23 +233,20 @@ def main_worker(gpu, ngpus_per_node, args):
                   .format(args.resume, checkpoint['epoch'], best_acc1))
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
-    elif args.quant:
-        enable_calibration(model)
-        calibrate(cali_loader, model, args)
+    # elif args.quant:
+        # enable_calibration(model)
+        # calibrate(cali_loader, model, args)
 
-    cudnn.benchmark = True
-
-    if args.quant:
-        enable_quantization(model)
+    # if args.quant:
+    #     enable_quantization(model)
 
     if args.quant and args.deploy:
-        convert_deploy(model.eval(), args.backend, input_shape_dict={'data': [10, 3, 224, 224]})
+        convert_deploy(model.eval(), BackendType.Tensorrt, input_shape_dict={'data': [10, 3, 224, 224]})
         return
 
     if args.evaluate:
-        if args.quant:
-            from mqbench.convert_deploy import convert_merge_bn
-            convert_merge_bn(model.eval())
+        from mqbench.convert_deploy import convert_merge_bn
+        convert_merge_bn(model.eval())
         validate(val_loader, model, criterion, args)
         return
 
@@ -261,7 +254,7 @@ def main_worker(gpu, ngpus_per_node, args):
         if args.distributed:
             train_sampler.set_epoch(epoch)
         adjust_learning_rate(optimizer, epoch, args)
-
+        
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, args)
 
@@ -310,7 +303,7 @@ def prepare_dataloader(args):
     cali_batch = 10
     cali_dataset = torch.utils.data.Subset(train_dataset, indices=torch.arange(cali_batch_size * cali_batch))
     cali_loader = torch.utils.data.DataLoader(cali_dataset, batch_size=cali_batch_size, shuffle=False,
-                                                num_workers=args.workers, pin_memory=True)
+                                                num_workers=args.workers, pin_memory=True)    
 
     val_loader = torch.utils.data.DataLoader(
         datasets.ImageFolder(valdir, transforms.Compose([
@@ -457,6 +450,9 @@ class AverageMeter(object):
         fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
         return fmtstr.format(**self.__dict__)
 
+def write_log(line):
+    with open('log.txt', 'a') as f:
+        f.write(line)
 
 class ProgressMeter(object):
     def __init__(self, num_batches, meters, prefix=""):
@@ -468,6 +464,7 @@ class ProgressMeter(object):
         entries = [self.prefix + self.batch_fmtstr.format(batch)]
         entries += [str(meter) for meter in self.meters]
         print('\t'.join(entries))
+        write_log('\t'.join(entries)+'\n')
 
     def _get_batch_fmtstr(self, num_batches):
         num_digits = len(str(num_batches // 1))

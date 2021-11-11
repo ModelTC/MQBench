@@ -173,4 +173,3 @@ if __name__ == '__main__':
                  dynamic_range_file=args.clip_range_file)
     if args.evaluate:
         validate(args.trt_path, batch_size=args.batch_size, dataset_path=args.data_path)
-
