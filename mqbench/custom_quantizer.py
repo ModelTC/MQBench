@@ -120,7 +120,7 @@ class ModelQuantizer(object):
                     _tmp[k] = v
             return _tmp
         else:
-            raise NotImplementedError('{} can not be handled now.'.format(type(args_tuple)))
+            raise NotImplementedError('{} can not be handled now.'.format(type(args)))
 
     def _weight_quant(self, model: GraphModule, qconfig):
         logger.info("Replace module to qat module.")
