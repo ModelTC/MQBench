@@ -173,7 +173,6 @@ class OnnxPreprocess(object):
     def remove_fake_pad_op(self, graph, name2data, inp2node, out2node):
         nodes_to_be_removed = []
         for idx, node in enumerate(graph.node):
-            node = graph.node[idx]
             if node.op_type == 'Pad':
                 pads = name2data[node.input[1]]
                 if all([x == 0 for x in pads]):
