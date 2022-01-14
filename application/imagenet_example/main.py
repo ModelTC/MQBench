@@ -162,7 +162,6 @@ def main_worker(gpu, ngpus_per_node, args):
     # quantize model
     if args.quant:
         model = prepare_by_platform(model, args.backend)
-
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')
     elif args.distributed:

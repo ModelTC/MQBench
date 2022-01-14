@@ -1,5 +1,7 @@
 import math
+from functools import partial
 from typing import Tuple
+
 import torch
 from torch.quantization.observer import _ObserverBase
 
@@ -24,12 +26,36 @@ class ObserverBase(_ObserverBase):
     max_val: torch.Tensor
 
     def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine,
-                 reduce_range=False, quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False):
+                 reduce_range=False, quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False,
+                 factory_kwargs=None):
         super(ObserverBase, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max)
         self.ch_axis = ch_axis
         self.pot_scale = pot_scale
         self.register_buffer("min_val", torch.tensor(float("inf")))
         self.register_buffer("max_val", torch.tensor(float("-inf")))
+
+        class PerChannelLoadHook:
+            def __init__(self, module):
+                self.hook = module._register_load_state_dict_pre_hook(partial(self.hook_fn, module=module))
+
+            def hook_fn(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs,
+                        module):
+                if module.ch_axis == -1:
+                    # no per-channel parameters
+                    return
+                for module_key, param in module._buffers.items():
+                    if module_key not in ['min_val', 'max_val']:
+                        continue
+                    candidate = prefix + module_key
+                    if candidate in state_dict:
+                        input_param = state_dict[candidate]
+                        if param.shape != input_param.shape:
+                            param.data = torch.ones_like(input_param, dtype=param.dtype, device=param.device)
+
+            def close(self):
+                self.hook.remove()
+
+        self.load_state_dict_hook = PerChannelLoadHook(self)
 
     @torch.jit.export
     def calculate_qparams(self) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -96,8 +122,10 @@ class MinMaxObserver(ObserverBase):
     '''
 
     def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine,
-                 reduce_range=False, quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False):
-        super(MinMaxObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max, ch_axis, pot_scale)
+                 reduce_range=False, quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False,
+                 factory_kwargs=None):
+        super(MinMaxObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max,
+                                             ch_axis, pot_scale, factory_kwargs)
 
     def forward(self, x_orig):
         r"""Records the running minimum and maximum of ``x``."""
@@ -126,11 +154,13 @@ class MinMaxFloorObserver(ObserverBase):
     '''
 
     def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine,
-                 reduce_range=False, quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False):
-        super(MinMaxFloorObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max, ch_axis, pot_scale)
-        ''' 
-        The quant_type could be 'input', 'param', 'tensor', the co-responding 
-        range is 1, 5, 5, 
+                 reduce_range=False, quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False,
+                 factory_kwargs=None):
+        super(MinMaxFloorObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max,
+                                                  ch_axis, pot_scale, factory_kwargs)
+        '''
+        The quant_type could be 'input', 'param', 'tensor', the co-responding
+        range is 1, 5, 5,
         mth is 2, 3, 2
         '''
         self.quant_type = None
@@ -144,7 +174,7 @@ class MinMaxFloorObserver(ObserverBase):
         if self.ch_axis == -1:
             min_val_cur, max_val_cur = torch._aminmax(x)
         else:
-            logger.warn('The per-tensor observer does not support per-channel min-max!') 
+            logger.warn('The per-tensor observer does not support per-channel min-max!')
             min_val_cur, max_val_cur = torch._aminmax(x)
 
         self.min_val = min_val_cur
@@ -156,10 +186,10 @@ class MinMaxFloorObserver(ObserverBase):
         if self.quant_type is None:
             raise ValueError('You should set the observer type before forward!')
         else:
-            scale_range = 1 if self.quant_type == 'input' else 5 
-            mth = 3 if self.quant_type == 'param' else 2 
+            scale_range = 1 if self.quant_type == 'input' else 5
+            mth = 3 if self.quant_type == 'param' else 2
         scale, zero_point = self._calculate_qparams(self.min_val, self.max_val)
-        scale.data = scale.data * 0 + max(self.min_val / self.quant_min, self.max_val / self.quant_max) 
+        scale.data = scale.data * 0 + max(self.min_val / self.quant_min, self.max_val / self.quant_max)
         if scale < 2 ** -15:
             max_scale = 0
         else:
@@ -169,18 +199,18 @@ class MinMaxFloorObserver(ObserverBase):
         final_scale = max_scale
         max_scale = int(max_scale)
         for s in range(max_scale, max_scale + scale_range):
-            _s = 1 / 2 ** s 
+            _s = 1 / 2 ** s
             if mth == 3:
                 new_x = _s * torch.clamp(torch.round(self._x / _s), self.quant_min, self.quant_max)
             elif mth == 2:
-                new_x = torch.clamp(self._x / _s, self.quant_min, self.quant_max) 
+                new_x = torch.clamp(self._x / _s, self.quant_min, self.quant_max)
                 new_x = torch.where((new_x < 0) & (new_x - new_x.floor() == 0.5), new_x.ceil(), new_x.round())
-                new_x *= _s 
+                new_x *= _s
             loss = ((new_x - self._x)**2).sum()
             min_loss = min_loss.to(loss.device)
             if loss < min_loss:
                 min_loss = loss
-                final_scale = s  
+                final_scale = s
         final_scale = min(final_scale, 12)
         scale = scale.data * 0 + 1 / (2 ** final_scale)
         zero_point = torch.zeros_like(zero_point)
@@ -200,9 +230,10 @@ class EMAMinMaxObserver(ObserverBase):
     """
 
     def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine, reduce_range=False,
-                 quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False, ema_ratio=0.9):
+                 quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False, ema_ratio=0.9,
+                 factory_kwargs=None):
         super(EMAMinMaxObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max,
-                                                ch_axis, pot_scale)
+                                                ch_axis, pot_scale, factory_kwargs)
         self.ema_ratio = ema_ratio
 
     def forward(self, x_orig):
@@ -235,9 +266,10 @@ class EMAMinMaxFloorObserver(ObserverBase):
     """
 
     def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine, reduce_range=False,
-                 quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False, ema_ratio=0.9):
+                 quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False, ema_ratio=0.9,
+                 factory_kwargs=None):
         super(EMAMinMaxFloorObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max,
-                                                     ch_axis, pot_scale)
+                                                     ch_axis, pot_scale, factory_kwargs)
         self.ema_ratio = ema_ratio
         self.quant_type = None
 
@@ -250,7 +282,7 @@ class EMAMinMaxFloorObserver(ObserverBase):
         if self.ch_axis == -1:
             min_val_cur, max_val_cur = torch._aminmax(x)
         else:
-            logger.warn('The per-tensor observer does not support per-channel min-max!') 
+            logger.warn('The per-tensor observer does not support per-channel min-max!')
             min_val_cur, max_val_cur = torch._aminmax(x)
 
         if self.max_val.numel() <= 1 and self.max_val.isinf():
@@ -265,8 +297,8 @@ class EMAMinMaxFloorObserver(ObserverBase):
         if self.quant_type is None:
             raise ValueError('You should set the observer type before forward!')
         else:
-            scale_range = 1 if self.quant_type == 'input' else 5 
-            mth = 3 if self.quant_type == 'param' else 2 
+            scale_range = 1 if self.quant_type == 'input' else 5
+            mth = 3 if self.quant_type == 'param' else 2
         scale, zero_point = self._calculate_qparams(self.min_val, self.max_val)
         scale.data = scale.data * 0 + max(self.min_val / self.quant_min, self.max_val / self.quant_max)
         if scale < 2 ** -15:
@@ -274,24 +306,24 @@ class EMAMinMaxFloorObserver(ObserverBase):
         else:
             max_scale = 1 / scale
             max_scale = torch.floor(max_scale.log2())
-        max_scale = 1 / scale 
+        max_scale = 1 / scale
         max_scale = torch.floor(max_scale.log2())
         min_loss = torch.tensor([float('inf')])
         final_scale = max_scale
         max_scale = int(max_scale)
         for s in range(max_scale, max_scale + scale_range):
-            _s = 1 / 2 ** s 
+            _s = 1 / 2 ** s
             if mth == 3:
                 new_x = _s * torch.clamp(torch.round(self._x / _s), self.quant_min, self.quant_max)
             elif mth == 2:
-                new_x = torch.clamp(self._x / _s, self.quant_min, self.quant_max) 
+                new_x = torch.clamp(self._x / _s, self.quant_min, self.quant_max)
                 new_x = torch.where((new_x < 0) & (new_x - new_x.floor() == 0.5), new_x.ceil(), new_x.round())
-                new_x *= _s 
+                new_x *= _s
             loss = ((new_x - self._x)**2).sum()
             min_loss = min_loss.to(loss.device)
             if loss < min_loss:
                 min_loss = loss
-                final_scale = s  
+                final_scale = s
         final_scale = min(final_scale, 12)
         scale = scale.data * 0 + 1 / (2 ** final_scale)
         zero_point = torch.zeros_like(zero_point)
@@ -310,10 +342,10 @@ class EMAQuantileObserver(ObserverBase):
     """
 
     def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine, reduce_range=False,
-                 quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False, ema_ratio=0.9, threshold=0.99999,
-                 bins=2048):
+                 quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False, ema_ratio=0.9,
+                 threshold=0.99999, bins=2048, factory_kwargs=None):
         super(EMAQuantileObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max,
-                                                  ch_axis, pot_scale)
+                                                  ch_axis, pot_scale, factory_kwargs)
         assert self.ch_axis == -1, "Quantile observer only support in per-tensor scheme."
         self.ema_ratio = ema_ratio
         self.threshold = threshold
@@ -347,8 +379,10 @@ class ClipStdObserver(ObserverBase):
     """
 
     def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine, reduce_range=False,
-                 quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False, std_scale=2.6):
-        super(ClipStdObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max, ch_axis, pot_scale)
+                 quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False, std_scale=2.6,
+                 factory_kwargs=None):
+        super(ClipStdObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max,
+                                              ch_axis, pot_scale, factory_kwargs=None)
         self.std_scale = std_scale
 
     def forward(self, x_orig):
@@ -387,8 +421,9 @@ class LSQObserver(ObserverBase):
     '''
 
     def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine, reduce_range=False,
-                 quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False):
-        super(LSQObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max, ch_axis, pot_scale)
+                 quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False, factory_kwargs=None):
+        super(LSQObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max,
+                                          ch_axis, pot_scale, factory_kwargs)
         self.tensor_norm = None
 
     def forward(self, x_orig):
@@ -430,10 +465,10 @@ class LSQPlusObserver(ObserverBase):
     '''
 
     def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine, reduce_range=False,
-                 quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False):
+                 quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False, factory_kwargs=None):
 
-        super(LSQPlusObserver, self).__init__(dtype, qscheme, reduce_range,
-                                              quant_min, quant_max, ch_axis, pot_scale)
+        super(LSQPlusObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max,
+                                              ch_axis, pot_scale, factory_kwargs)
         self.mean = None
         self.std = None
 
@@ -479,49 +514,44 @@ class MSEObserver(ObserverBase):
     '''
 
     def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine,
-                 reduce_range=False, quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False, p=2.0):
-        super(MSEObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max, ch_axis, pot_scale)
+                 reduce_range=False, quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False, p=2.0,
+                 factory_kwargs=None):
+        super(MSEObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max,
+                                          ch_axis, pot_scale, factory_kwargs)
         self.p = p
 
-    def quantize(self, x: torch.Tensor, scale: float, zero_point: float):
-        x_int = torch.round(x / scale)
-        x_quant = torch.clamp(x_int + zero_point, self.quant_min, self.quant_max)
-        x_float_q = (x_quant - zero_point) * scale
-        return x_float_q
-
-    def lp_loss(self, pred, tgt, p=2.0):
+    def lp_loss(self, pred, tgt):
         """
         loss function measured in L_p Norm
         """
         return (pred - tgt).abs().pow(self.p).mean()
 
-    def mse(self, x: torch.Tensor, x_min: torch.Tensor, x_max: torch.Tensor):
+    def mse(self, x: torch.Tensor, x_min: torch.Tensor, x_max: torch.Tensor, iter=80):
         best_score = 1e+10
-        best_min, best_max = torch.tensor([1.0], dtype=torch.float), torch.tensor([1.0], dtype=torch.int)
+        best_min, best_max = torch.tensor([1.0], dtype=torch.float), torch.tensor([1.0], dtype=torch.float)
         best_min.copy_(x_min)
         best_max.copy_(x_max)
-        for i in range(45):
+        for i in range(iter):
             new_min = x_min * (1.0 - (i * 0.01))
             new_max = x_max * (1.0 - (i * 0.01))
             scale, zero_point = self._calculate_qparams(new_min, new_max)
-            if self.pot_scale:
-                scale = pot_quantization(scale)
-            x_q = self.quantize(x, scale.data, zero_point.data)
+            x_q = torch.fake_quantize_per_tensor_affine(
+                x, scale.item(), int(zero_point.item()),
+                self.quant_min, self.quant_max)
             score = self.lp_loss(x_q, x)
             if score < best_score:
                 best_score = score
                 best_min, best_max = new_min, new_max
-
         return best_min, best_max
 
     def forward(self, x_orig):
         r"""Records the running minimum and maximum of ``x``."""
         if x_orig.numel() == 0:
             return x_orig
-        x = x_orig.to(self.min_val.dtype)
+        x = x_orig.clone().detach().to(self.min_val.dtype)
         if self.ch_axis == -1:
             min_val_cur, max_val_cur = torch._aminmax(x)
-            min_val_cur, max_val_cur = self.mse(x_orig.clone().detach(), min_val_cur, max_val_cur)
+            min_val_cur, max_val_cur = self.mse(x, min_val_cur, max_val_cur, iter=95)
         else:
             x_dim = x.size()
             new_axis_list = [i for i in range(len(x_dim))]
@@ -531,7 +561,7 @@ class MSEObserver(ObserverBase):
             y = torch.flatten(x_channel, start_dim=1)
             min_val_cur, max_val_cur = torch._aminmax(y, 1)
             for ch, val in enumerate(min_val_cur):
-                min_val_cur[ch], max_val_cur[ch] = self.mse(x_channel, min_val_cur[ch], max_val_cur[ch])
+                min_val_cur[ch], max_val_cur[ch] = self.mse(x_channel[ch], min_val_cur[ch], max_val_cur[ch], iter=80)
 
         self.min_val = torch.min(self.min_val, min_val_cur)
         self.max_val = torch.max(self.max_val, max_val_cur)
@@ -543,16 +573,12 @@ class EMAMSEObserver(ObserverBase):
     Calculate mseobserver of whole calibration dataset.
     '''
     def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine,
-                 reduce_range=False, quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False, p=2.0, ema_ratio=0.9):
-        super(EMAMSEObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max, ch_axis, pot_scale)
+                 reduce_range=False, quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False,
+                 p=2.0, ema_ratio=0.9, factory_kwargs=None):
+        super(EMAMSEObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max,
+                                             ch_axis, pot_scale, factory_kwargs)
         self.ema_ratio = ema_ratio
         self.p = p
-
-    def quantize(self, x: torch.Tensor, scale: float, zero_point: float):
-        x_int = torch.round(x / scale)
-        x_quant = torch.clamp(x_int + zero_point, self.quant_min, self.quant_max)
-        x_float_q = (x_quant - zero_point) * scale
-        return x_float_q
 
     def lp_loss(self, pred, tgt):
         """
@@ -560,33 +586,32 @@ class EMAMSEObserver(ObserverBase):
         """
         return (pred - tgt).abs().pow(self.p).mean()
 
-    def mse(self, x: torch.Tensor, x_min: torch.Tensor, x_max: torch.Tensor):
+    def mse(self, x: torch.Tensor, x_min: torch.Tensor, x_max: torch.Tensor, iter=80):
         best_score = 1e+10
-        best_min, best_max = torch.tensor([1.0], dtype=torch.float), torch.tensor([1.0], dtype=torch.int)
+        best_min, best_max = torch.tensor([1.0], dtype=torch.float), torch.tensor([1.0], dtype=torch.float)
         best_min.copy_(x_min)
         best_max.copy_(x_max)
-        for i in range(45):
+        for i in range(iter):
             new_min = x_min * (1.0 - (i * 0.01))
             new_max = x_max * (1.0 - (i * 0.01))
             scale, zero_point = self._calculate_qparams(new_min, new_max)
-            if self.pot_scale:
-                scale = pot_quantization(scale)
-            x_q = self.quantize(x, scale.data, zero_point.data)
+            x_q = torch.fake_quantize_per_tensor_affine(
+                x, scale.item(), int(zero_point.item()),
+                self.quant_min, self.quant_max)
             score = self.lp_loss(x_q, x)
             if score < best_score:
                 best_score = score
                 best_min, best_max = new_min, new_max
-
         return best_min, best_max
 
     def forward(self, x_orig):
         r"""Records the running minimum and maximum of ``x``."""
         if x_orig.numel() == 0:
             return x_orig
-        x = x_orig.to(self.min_val.dtype)
+        x = x_orig.clone().detach().to(self.min_val.dtype)
         if self.ch_axis == -1:
             min_val_cur, max_val_cur = torch._aminmax(x)
-            min_val_cur, max_val_cur = self.mse(x_orig.clone().detach(), min_val_cur, max_val_cur)
+            min_val_cur, max_val_cur = self.mse(x, min_val_cur, max_val_cur, iter=95)
         else:
             x_dim = x.size()
             new_axis_list = [i for i in range(len(x_dim))]
@@ -596,8 +621,8 @@ class EMAMSEObserver(ObserverBase):
             y = torch.flatten(x_channel, start_dim=1)
             min_val_cur, max_val_cur = torch._aminmax(y, 1)
             for ch, val in enumerate(min_val_cur):
-                min_val_cur[ch], max_val_cur[ch] = self.mse(x_channel[ch].clone().detach(), min_val_cur[ch],
-                                                            max_val_cur[ch])
+                min_val_cur[ch], max_val_cur[ch] = self.mse(x_channel[ch], min_val_cur[ch],
+                                                            max_val_cur[ch], iter=80)
 
         if self.max_val.numel() <= 1 and self.max_val.isinf():
             self.min_val = min_val_cur

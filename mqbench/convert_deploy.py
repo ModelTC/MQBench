@@ -53,12 +53,23 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
         input_names = list(dummy_input.keys())
         dummy_input = tuple(dummy_input.values())
     with torch.no_grad():
-        torch.onnx.export(model, dummy_input, onnx_model_path,
-                          input_names=input_names,
-                          opset_version=11,
-                          do_constant_folding=True,
-                          custom_opsets={'' : 11},
-                          enable_onnx_checker=False)
+        try:
+            from torch.onnx.utils import ONNXCheckerError
+            try:
+                torch.onnx.export(model, dummy_input, onnx_model_path,
+                                  input_names=input_names,
+                                  opset_version=11,
+                                  do_constant_folding=True,
+                                  custom_opsets={'' : 11})
+            except ONNXCheckerError:
+                pass
+        except ImportError:
+            torch.onnx.export(model, dummy_input, onnx_model_path,
+                              input_names=input_names,
+                              opset_version=11,
+                              do_constant_folding=True,
+                              custom_opsets={'' : 11},
+                              enable_onnx_checker=False)
 
 
 @register_deploy_function(BackendType.NNIE)
@@ -116,7 +127,7 @@ def convert_deploy(model: GraphModule, backend_type: BackendType,
         output_path (str, optional): path to save convert results. Defaults to './'.
         model_name (str, optional): name of converted onnx model. Defaults to 'mqbench_qmodel'.
 
-    >>> note on input_shape_dict: 
+    >>> note on input_shape_dict:
         example: {'input_0': [1, 3, 224, 224]
                 'input_1': [1, 3, 112, 112]
                 }

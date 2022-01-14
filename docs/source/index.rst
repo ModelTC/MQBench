@@ -9,11 +9,12 @@ Welcome to MQBench's documentation!
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
-   
-   example/index
-   algorithm/index
-   hardware/index
-   api/modules
+
+   get_started/index
+   user_guide/index
+   developer_guide/index
+   benchmark/index
+   api_reference/index
 
 
 Indices and tables

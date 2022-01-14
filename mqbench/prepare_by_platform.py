@@ -2,7 +2,8 @@ from enum import Enum
 from typing import Any, Dict
 
 import torch
-from torch.fx.symbolic_trace import symbolic_trace
+from torch.fx import Tracer
+from torch.fx.graph_module import GraphModule
 from torch.quantization.quantize_fx import _swap_ff_with_fxff
 from torch.quantization import QConfig
 
@@ -75,13 +76,13 @@ ParamsTable = {
                                default_act_quantize=LearnableFakeQuantize,
                                default_weight_observer=MinMaxObserver,
                                default_act_observer=EMAMinMaxObserver),
-    BackendType.Vitis: dict(qtype='vitis',     # noqa: E241
-                            w_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=True, bit=8),
-                            a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=True, bit=8),
-                            default_weight_quantize=TqtFakeQuantize,
-                            default_act_quantize=TqtFakeQuantize,
-                            default_weight_observer=MinMaxFloorObserver,
-                            default_act_observer=EMAMinMaxFloorObserver),
+    BackendType.Vitis:    dict(qtype='vitis',     # noqa: E241
+                               w_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=True, bit=8),
+                               a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=True, bit=8),
+                               default_weight_quantize=TqtFakeQuantize,
+                               default_act_quantize=TqtFakeQuantize,
+                               default_weight_observer=MinMaxFloorObserver,
+                               default_act_observer=EMAMinMaxFloorObserver),
     BackendType.ONNX_QNN: dict(qtype='affine',     # noqa: E241
                                w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
                                a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
@@ -221,6 +222,39 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
     return QConfig(activation=a_qconfig, weight=w_qconfig)
 
 
+class CustomedTracer(Tracer):
+    """
+    ``Tracer`` is the class that implements the symbolic tracing functionality
+    of ``torch.fx.symbolic_trace``. A call to ``symbolic_trace(m)`` is equivalent
+    to ``Tracer().trace(m)``.
+    This Tracer override the ``is_leaf_module`` function to make symbolic trace
+    right in some cases.
+    """
+    def __init__(self, *args, customed_leaf_module=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.customed_leaf_module = customed_leaf_module
+
+    def is_leaf_module(self, m: torch.nn.Module, module_qualified_name : str) -> bool:
+        """
+        A method to specify whether a given ``nn.Module`` is a "leaf" module.
+        Leaf modules are the atomic units that appear in
+        the IR, referenced by ``call_module`` calls. By default,
+        Modules in the PyTorch standard library namespace (torch.nn)
+        are leaf modules. All other modules are traced through and
+        their constituent ops are recorded, unless specified otherwise
+        via this parameter.
+        Args:
+            m (Module): The module being queried about
+            module_qualified_name (str): The path to root of this module. For example,
+                if you have a module hierarchy where submodule ``foo`` contains
+                submodule ``bar``, which contains submodule ``baz``, that module will
+                appear with the qualified name ``foo.bar.baz`` here.
+        """
+        if self.customed_leaf_module and isinstance(m, customed_leaf_module):
+            return True
+        return m.__module__.startswith('torch.nn') and not isinstance(m, torch.nn.Sequential)
+
+
 def prepare_by_platform(
         model: torch.nn.Module,
         deploy_backend: BackendType,
@@ -264,7 +298,11 @@ def prepare_by_platform(
                 preserve_attr_dict[submodule_name][attr] = getattr(cur_module, attr)
     # Symbolic trace
     concrete_args = prepare_custom_config_dict.get('concrete_args', None)
-    graph_module = symbolic_trace(model, concrete_args=concrete_args)
+    customed_leaf_module = prepare_custom_config_dict.get('leaf_module', {})
+    tracer = CustomedTracer(customed_leaf_module=customed_leaf_module)
+    graph = tracer.trace(model, concrete_args)
+    name = model.__class__.__name__ if isinstance(model, torch.nn.Module) else model.__name__
+    graph_module = GraphModule(tracer.root, graph, name)
     # Model fusion.
     extra_fuse_dict = prepare_custom_config_dict.get('extra_fuse_dict', {})
     extra_fuse_dict.update(fuse_custom_config_dict)

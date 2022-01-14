@@ -35,12 +35,14 @@ import mqbench
 import mqbench.nn as qnn
 import mqbench.nn.intrinsic as qnni 
 import mqbench.nn.intrinsic.qat as qnniqat
+from mqbench.utils import is_symmetric_quant
 from mqbench.utils.logger import logger
 from mqbench.utils.registry import register_model_quantizer
 from mqbench.prepare_by_platform import BackendType
 from mqbench.fake_quantize.tqt import TqtFakeQuantize
 
 
+@register_model_quantizer(BackendType.Tensorrt)
 @register_model_quantizer(BackendType.NNIE)
 class ModelQuantizer(object):
     """General model quantizer class.
@@ -224,6 +226,7 @@ class ModelQuantizer(object):
                 ((node.op == 'call_function' or node.op == 'call_method') and
                  node.target in self.exclude_function_type) or \
                     node.name in self.exclude_node_name:
+                logger.info("Exclude skip: {}".format(node.name))
                 continue
             if (node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_input)) or \
                 ((node.op == 'call_function' or node.op == 'call_method') and
@@ -286,14 +289,9 @@ class AcademicQuantizer(ModelQuantizer):
     def _weight_quant(self, model: GraphModule, qconfig):
         logger.info("Replace module to qat module.")
         wqconfig_8bit = copy.deepcopy(qconfig)
-
-        wq_symmetry = True if qconfig.weight.p.keywords['qscheme'] == torch.per_channel_symmetric or qconfig.weight.p.keywords[
-            'qscheme'] == torch.per_tensor_symmetric else False
+        wq_symmetry = True if is_symmetric_quant(qconfig.weight.p.keywords['qscheme']) else False
         wqconfig_8bit.weight.p.keywords['quant_min'] = -2 ** (8 - 1) if wq_symmetry else 0
         wqconfig_8bit.weight.p.keywords['quant_max'] = 2 ** (8 - 1) - 1 if wq_symmetry else 2 ** 8 - 1
-
-        # wqconfig_8bit.weight.p.keywords['quant_min'] = -128
-        # wqconfig_8bit.weight.p.keywords['quant_max'] = 127
         for name, module in model.named_modules():
             if name in self.io_module.keys():
                 logger.info("Set layer {} to 8 bit.".format(name))
@@ -348,10 +346,7 @@ class AcademicQuantizer(ModelQuantizer):
         node_to_quantize_output = OrderedDict.fromkeys(node_to_quantize_output).keys()
 
         aqconfig_8bit = copy.deepcopy(qconfig.activation)
-
-        aq_symmetry = True if qconfig.activation.p.keywords['qscheme'] == torch.per_channel_symmetric or \
-            qconfig.activation.p.keywords['qscheme'] == torch.per_tensor_symmetric else False
-
+        aq_symmetry = True if is_symmetric_quant(qconfig.activation.p.keywords['qscheme']) else False
         aqconfig_8bit.p.keywords['quant_min'] = -2 ** (8 - 1) if aq_symmetry else 0
         aqconfig_8bit.p.keywords['quant_max'] = 2 ** (8 - 1) - 1 if aq_symmetry else 2 ** 8 - 1
         for node in node_to_quantize_output:
@@ -373,7 +368,6 @@ class AcademicQuantizer(ModelQuantizer):
         return model
 
 
-@register_model_quantizer(BackendType.Tensorrt)
 class TRTModelQuantizer(ModelQuantizer):
     """The different points of TRT quantizer are how to deal with add op
     and the last layer.
@@ -647,6 +641,7 @@ class TVMQuantizer(ModelQuantizer):
             # Conv
             torch.nn.intrinsic.qat.modules.conv_fused.ConvBnReLU2d,
             torch.nn.intrinsic.qat.modules.conv_fused.ConvBn2d,
+            torch.nn.qat.Conv2d,
             # Linear
             torch.nn.qat.modules.linear.Linear,
             qnn.intrinsic.qat.LinearBn1d,

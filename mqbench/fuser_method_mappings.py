@@ -80,6 +80,7 @@ fuse_custom_config_dict = {
         ConvBNReLUFusion,
     },
     "additional_qat_module_mappings": {
+        nn.ConvTranspose2d: qnn.qat.ConvTranspose2d,
         qnni.LinearBn1d: qnniqat.LinearBn1d,
         qnni.ConvTransposeBn2d: qnniqat.ConvTransposeBn2d,
         qnni.ConvTransposeReLU2d: qnniqat.ConvTransposeReLU2d,

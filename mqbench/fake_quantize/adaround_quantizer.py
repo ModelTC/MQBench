@@ -100,9 +100,6 @@ class AdaRoundFakeQuantize(QuantizeBase):
                 self.zero_point.resize_(_zero_point.shape)
             self.scale.copy_(_scale)
             self.zero_point.copy_(_zero_point)
-            '''we could only do this once for weight because we usually adopt MSEObserver
-            in fact the weight only need once '''
-            self.observer_enabled[0] = 0
 
         if self.fake_quant_enabled[0] == 1:
             if not self.adaround:

@@ -70,8 +70,8 @@ class CosineTempDecay:
             return self.end_b
         else:
             rel_t = (t - self.start_decay) / (self.t_max - self.start_decay)
-            return self.end_b + 0.5 * (self.start_b
-                                       - self.end_b) * (1 + np.cos(rel_t * np.pi))
+            # return self.end_b + (self.start_b - self.end_b) * max(0.0, (1 - rel_t))
+            return self.end_b + 0.5 * (self.start_b - self.end_b) * (1 + np.cos(rel_t * np.pi))
 
 
 class LossFunction:
@@ -151,7 +151,6 @@ def layer_reconstruction(layer, cached_inps, cached_oups, config):
 
         w_opt.zero_grad()
         out_quant = layer(*cur_inp)
-
         err = loss_func(out_quant, cur_out)
         err /= world_size
         err.backward()
@@ -168,24 +167,28 @@ def layer_reconstruction(layer, cached_inps, cached_oups, config):
 
 
 def adaround(model, cali_data, config):
-    # TODO: assert model is on cuda and todo: cali_data might be on cpu, put it on corresponding device
+    # assert model is on cuda
+    if not config.keep_gpu: 
+        cali_data = [inp.cpu() for inp in cali_data]
     '''set state first'''
+
+    fp32_model = model
+    fp32_model.eval()
     quant_model = deepcopy_graphmodule(model)
     quant_model.eval()
-    model.eval()
-    disable_all(model)
+    disable_all(fp32_model)
     enable_quantization(quant_model)
     torch.cuda.empty_cache()
-    nodes = list(model.graph.nodes)
-    modules = dict(model.named_modules())
+    nodes = list(quant_model.graph.nodes)
+    fp32_modules = dict(fp32_model.named_modules())
     quant_modules = dict(quant_model.named_modules())
     for node in nodes:
-        if node.op == "call_module" and isinstance(modules[node.target], _ADAROUND_SUPPORT_TYPE):
+        if node.op == "call_module" and isinstance(fp32_modules[node.target], _ADAROUND_SUPPORT_TYPE):
             '''if you want to do layer reconstruction, please do layer_reconstruction'''
             logger.info('prepare layer reconstruction for {}'.format(node.target))
-            module = modules[node.target]
+            fp32_module = fp32_modules[node.target]
             quant_module = quant_modules[node.target]
-            cached_oups = save_inp_oup_data(model, module, cali_data, store_inp=False, store_oup=True,
+            cached_oups = save_inp_oup_data(fp32_model, fp32_module, cali_data, store_inp=False, store_oup=True,
                                             keep_gpu=config.keep_gpu)
             cached_inps = save_inp_oup_data(quant_model, quant_module, cali_data, store_inp=True, store_oup=False,
                                             keep_gpu=config.keep_gpu)

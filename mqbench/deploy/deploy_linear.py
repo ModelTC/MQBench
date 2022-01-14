@@ -98,7 +98,7 @@ class LinearQuantizer_process(object):
             logger.info(f'qmin and qmax are not found for <{node.name}>!')
         return tensor_name, scale, zero_point, qmin, qmax
 
-    def clip_weight(self, node, name2data, named_initializer):
+    def clip_weight(self, node, name2data, inp2node, named_initializer):
         tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
         data = name2data[tensor_name]
         clip_range_min = (qmin - zero_point) * scale
@@ -106,7 +106,8 @@ class LinearQuantizer_process(object):
         if scale.shape[0] > 1:
             new_data = []
             transposed = False
-            if data.shape[0] != scale.shape[0]:
+            next_node = inp2node[node.output[0]]
+            if len(next_node) == 1 and next_node[0][0].op_type == 'ConvTranspose':
                 transposed = True
                 data = data.transpose(1, 0, 2, 3)
             for c in range(data.shape[0]):
@@ -161,7 +162,7 @@ class LinearQuantizer_process(object):
                 # fake quantize for weights, suppose per-channel quantize only for weight
                 redundant_nodes = self.deal_with_weight_fakequant(node, out2node, inp2node, named_initializer)
                 nodes_to_be_removed.extend(redundant_nodes)
-                self.clip_weight(node, name2data, named_initializer)
+                self.clip_weight(node, name2data, inp2node, named_initializer)
                 if backend == 'ppl':
                     tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
                     clip_ranges[tensor_name] = {'step': [float(x) for x in scale],
@@ -177,16 +178,16 @@ class LinearQuantizer_process(object):
 
 
             elif node.op_type in PERTENSOR_FAKEQUANTIZER:
-                if node.output[0] in [x.name for x in graph.output]:
+                if node.output[0] not in inp2node:
+                    assert node.output[0] in [l.name for l in graph.output]
                     inp2node[node.output[0]] = []
-
                 next_nodes = inp2node[node.output[0]]
                 if len(next_nodes) == 1 and next_nodes[0][1] == 1 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:
                     # fake quantize for weights
                     redundant_nodes = self.deal_with_weight_fakequant(node, out2node, inp2node, named_initializer)
                     tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
                     nodes_to_be_removed.extend(redundant_nodes)
-                    self.clip_weight(node, name2data, named_initializer)
+                    self.clip_weight(node, name2data, inp2node, named_initializer)
                 else:
                     # fake quantize for activations
                     self.deal_with_activation_fakequant(node, inp2node)

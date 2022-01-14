@@ -12,6 +12,7 @@ from mqbench.nn.intrinsic import LinearBn1d
 
 
 class LinearBn1d(Linear, _FusedModule):
+    _version = 2
     _FLOAT_MODULE = LinearBn1d
 
     def __init__(self,

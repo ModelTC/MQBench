@@ -25,7 +25,7 @@ MOD = TypeVar('MOD', bound=nn.modules.conv._ConvTransposeNd)
 
 class _ConvTransposeBnNd(nn.modules.conv._ConvTransposeNd, _FusedModule):
 
-    _version = 1
+    _version = 2
     _FLOAT_MODULE = MOD
 
     def __init__(
