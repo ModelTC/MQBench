@@ -219,6 +219,13 @@ class LinearQuantizer_process(object):
 
         for node in nodes_to_be_removed:
             graph.node.remove(node)
+        # delete initializer
+        out2node, inp2node = update_inp2node_out2node(graph)
+        named_initializer = prepare_initializer(graph)
+        for name, initial_data in named_initializer.items():
+            if name in (out2node.keys() | inp2node.keys()):
+                continue
+            graph.initializer.remove(initial_data)
 
         clip_ranges = self.post_process_clip_ranges(clip_ranges, graph, inp2node)
         if backend == 'tensorrt':
