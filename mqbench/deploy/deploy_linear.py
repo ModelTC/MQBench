@@ -101,8 +101,8 @@ class LinearQuantizer_process(object):
     def clip_weight(self, node, name2data, inp2node, named_initializer):
         tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
         data = name2data[tensor_name]
-        clip_range_min = (qmin - zero_point) * scale
-        clip_range_max = (qmax - zero_point) * scale
+        clip_range_min = ((qmin - zero_point) * scale).astype(data.dtype)
+        clip_range_max = ((qmax - zero_point) * scale).astype(data.dtype)
         if scale.shape[0] > 1:
             new_data = []
             transposed = False
