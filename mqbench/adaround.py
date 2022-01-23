@@ -152,7 +152,7 @@ def layer_reconstruction(layer, cached_inps, cached_oups, config):
     loss_func = LossFunction(layer=layer, weight=config.weight, max_count=config.max_count, b_range=config.b_range,
                              warm_up=config.warm_up)
 
-    assert USE_LINK or USE_DDP
+    assert USE_LINK or USE_DDP, 'either USE_LINK or USE_DDP should be True'
     world_size = link.get_world_size() if USE_LINK else dist.get_world_size()
 
     logger.info('The world size is {}.'.format(world_size))
