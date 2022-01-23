@@ -1,7 +1,19 @@
 from torch.fx import GraphModule
 from torch.nn import Module
 import torch
-import spring.linklink as link
+
+USE_LINK = False
+USE_DDP = False
+
+try:
+    import spring.linklink as link
+    assert link.is_initialized()
+    USE_LINK = True
+except (ModuleNotFoundError, AssertionError):
+    import torch.distributed as dist
+    if torch.distributed.is_initialized():
+        USE_DDP = True
+
 import numpy as np
 
 from mqbench.utils.logger import logger
@@ -125,6 +137,8 @@ class LossFunction:
 
 
 def layer_reconstruction(layer, cached_inps, cached_oups, config):
+    global USE_LINK
+    global USE_DDP
     device = next(layer.parameters()).device
     weight_quantizer = layer.weight_fake_quant
     # assert isinstance(weight_quantizer, adaround_quantizer) is True
@@ -138,7 +152,9 @@ def layer_reconstruction(layer, cached_inps, cached_oups, config):
     loss_func = LossFunction(layer=layer, weight=config.weight, max_count=config.max_count, b_range=config.b_range,
                              warm_up=config.warm_up)
 
-    world_size = link.get_world_size()
+    assert USE_LINK or USE_DDP
+    world_size = link.get_world_size() if USE_LINK else dist.get_world_size()
+
     logger.info('The world size is {}.'.format(world_size))
     '''start training'''
     logger.info('start tuning by adaround')
@@ -156,7 +172,10 @@ def layer_reconstruction(layer, cached_inps, cached_oups, config):
         err.backward()
         if world_size > 1:
             for param in w_para:
-                link.allreduce(param.grad.data)
+                if USE_LINK:
+                    link.allreduce(param.grad.data)
+                elif USE_DDP:
+                    dist.all_reduce(param.grad.data)
         w_opt.step()
         if w_scheduler:
             w_scheduler.step()
