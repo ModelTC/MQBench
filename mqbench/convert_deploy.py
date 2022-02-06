@@ -16,6 +16,7 @@ from mqbench.utils.registry import (
 from mqbench.deploy import (
     remove_fakequantize_and_collect_params_nnie,
     remove_fakequantize_and_collect_params,
+    replace_fakequantize_and_collect_params_openvino,
     ONNXQNNPass
 )
 
@@ -26,6 +27,7 @@ from mqbench.deploy import (
 @register_deploy_function(BackendType.Tensorrt)
 @register_deploy_function(BackendType.NNIE)
 @register_deploy_function(BackendType.Vitis)
+@register_deploy_function(BackendType.OPENVINO)
 def convert_merge_bn(model: GraphModule, **kwargs):
     logger.info("Merge BN for deploy.")
     nodes = list(model.graph.nodes)
@@ -44,6 +46,7 @@ def convert_merge_bn(model: GraphModule, **kwargs):
 @register_deploy_function(BackendType.Tensorrt)
 @register_deploy_function(BackendType.NNIE)
 @register_deploy_function(BackendType.Vitis)
+@register_deploy_function(BackendType.OPENVINO)
 def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_path, **kwargs):
     logger.info("Export to onnx.")
     input_names = None
@@ -70,13 +73,17 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
                               do_constant_folding=True,
                               custom_opsets={'' : 11},
                               enable_onnx_checker=False)
-
-
+           
+            
 @register_deploy_function(BackendType.NNIE)
 def deploy_qparams_nnie(model: GraphModule, onnx_model_path, model_name, **kwargs):
     logger.info("Extract qparams for NNIE.")
     remove_fakequantize_and_collect_params_nnie(onnx_model_path, model_name)
 
+@register_deploy_function(BackendType.OPENVINO)
+def deploy_qparams_openvino(model: GraphModule, onnx_model_path, model_name, **kwargs):
+    logger.info("Extract qparams for OPENVINO.")
+    replace_fakequantize_and_collect_params_openvino(onnx_model_path, model_name)
 
 @register_deploy_function(BackendType.Tensorrt)
 def deploy_qparams_tensorrt(model: GraphModule, onnx_model_path, model_name, **kwargs):
@@ -112,6 +119,7 @@ def deploy_qparams_tvm(model: GraphModule, onnx_model_path, model_name, **kwargs
 def deploy_qparams_ppl_cuda(model: GraphModule, onnx_model_path, model_name, **kwargs):
     logger.info("Extract qparams for PPL-CUDA.")
     remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='ppl-cuda')
+
 
 
 def convert_deploy(model: GraphModule, backend_type: BackendType,
