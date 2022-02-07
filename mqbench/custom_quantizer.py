@@ -686,6 +686,7 @@ class OPENVINOQuantizer(ModelQuantizer):
     @property
     def function_type_to_quant_input(self) -> list:
         return [
+            operator.add,
             torch.nn.functional.adaptive_avg_pool2d,
             'mean',
             'sum',
@@ -728,6 +729,7 @@ class OPENVINOQuantizer(ModelQuantizer):
                 torch.nn.modules.Upsample,
             ) + self.additional_module_type
     
+
     @property
     def module_type_to_quant_output(self) -> tuple:
         if self.academic_mode:
@@ -750,6 +752,18 @@ class OPENVINOQuantizer(ModelQuantizer):
                 torch.nn.intrinsic.qat.modules.conv_fused.ConvBnReLU1d,
                 torch.nn.intrinsic.qat.modules.conv_fused.ConvReLU2d,
             )
+    
+    @property
+    def function_type_maybe_unsigned(self) -> tuple:
+        return self.function_type_to_quant_input
+
+    @property
+    def function_type_to_quant_unsigned(self) -> tuple:
+        return (torch.nn.functional.relu, )
+
+    @property
+    def module_type_maybe_unsigned(self) -> tuple:
+        return (torch.nn.Upsample, )
 
     def prepare(self, model: GraphModule, qconfig):
         if not self.academic_mode:
@@ -828,11 +842,13 @@ class OPENVINOQuantizer(ModelQuantizer):
         aqconfig_8bit.p.keywords['quant_max'] = 2 ** 8 - 1
         aqconfig_8bit.p.keywords['factory_kwargs'] = {'not_calc_quant_min_max':True}
 
-        maybe_unsigned = lambda node:(node.op == 'call_function' or node.op == 'call_method') and node.target in self.function_type_to_quant_input or \
-            node.op == "call_module" and isinstance(modules[node.target], (torch.nn.Upsample, ))
+        maybe_unsigned = lambda node:(node.op == 'call_function' or node.op == 'call_method') and node.target in self.function_type_maybe_unsigned or \
+            node.op == "call_module" and isinstance(modules[node.target], self.module_type_maybe_unsigned)
+        real_unsigned = lambda node: (node.op == 'call_function' or node.op == 'call_method') and node.target in self.function_type_to_quant_unsigned or \
+            node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_unsigned)
         for node in node_to_quantize_output:
             if aq_symmetry:
-                if node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_unsigned):
+                if real_unsigned(node):
                     logger.info("Set {} post act quantize to 8 bit unsigned type.".format(node.name))
                     fake_quantizer = aqconfig_8bit()
                 elif maybe_unsigned(node):
@@ -850,7 +866,7 @@ class OPENVINOQuantizer(ModelQuantizer):
                         if isinstance(cur_node.target, str) and cur_node.target.endswith(quantizer_postfix):
                             last_fakequantize = getattr(model, cur_node.target)
                             cur_node_is_unsigned = last_fakequantize.quant_min == 0
-                        elif node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_unsigned):
+                        elif real_unsigned(node):
                             cur_node_is_unsigned = True
                         
                         if cur_node_is_unsigned is not None:
