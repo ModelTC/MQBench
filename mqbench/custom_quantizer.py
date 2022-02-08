@@ -728,19 +728,6 @@ class OPENVINOQuantizer(ModelQuantizer):
                 # TODO torch.nn.PReLU,
                 torch.nn.modules.Upsample,
             ) + self.additional_module_type
-    
-
-    @property
-    def module_type_to_quant_output(self) -> tuple:
-        if self.academic_mode:
-            return tuple()
-        else:
-            return (
-                # Conv
-                torch.nn.intrinsic.qat.modules.conv_fused.ConvBnReLU2d,
-                torch.nn.intrinsic.qat.modules.conv_fused.ConvBnReLU1d,
-                torch.nn.intrinsic.qat.modules.conv_fused.ConvReLU2d,
-            )
 
     @property
     def module_type_to_quant_unsigned(self) -> tuple:
@@ -790,10 +777,6 @@ class OPENVINOQuantizer(ModelQuantizer):
             if passed_node(node):
                 continue
             if node.op == 'placeholder':
-                node_need_to_quantize_output.append(node)
-                continue
-            # insert fakequantizer after relu
-            if node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_output):
                 node_need_to_quantize_output.append(node)
                 continue
             is_output = False
