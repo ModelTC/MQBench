@@ -804,6 +804,9 @@ class OPENVINOQuantizer(ModelQuantizer):
         wqconfig_8bit.weight.p.keywords['quant_min'] = -2 ** (numbits - 2) if wq_symmetry else 0
         wqconfig_8bit.weight.p.keywords['quant_max'] = 2 ** (numbits - 2) - 1 if wq_symmetry else 2 ** (numbits - 1) - 1
         wqconfig_8bit.weight.p.keywords['factory_kwargs'] = {'not_calc_quant_min_max': True}
+        if self.academic_mode and wq_symmetry:
+            wqconfig_8bit.weight.p.keywords['quant_min'] = -2 ** (numbits - 2) + 1
+            wqconfig_8bit.weight.p.keywords['quant_max'] = 2 ** (numbits - 2) - 1
         flattened_qconfig_dict = get_flattened_qconfig_dict({'': wqconfig_8bit})
         propagate_qconfig_(model, flattened_qconfig_dict)
         self._qat_swap_modules(model, self.additional_qat_module_mapping)
