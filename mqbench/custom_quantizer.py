@@ -672,17 +672,16 @@ class OPENVINOQuantizer(ModelQuantizer):
 
     @property
     def _passed_func_type(self):
-        academic_pass_type = (torch.nn.functional.max_pool2d,operator.getitem, getattr)
+        academic_pass_type = (torch.nn.functional.max_pool2d, operator.getitem, getattr)
         if self.academic_mode:
             return academic_pass_type
         else:
             return academic_pass_type + (torch.cat,)
-        
 
     @property
     def _passed_module_type(self):
         return (torch.nn.modules.pooling.MaxPool2d,)
-    
+
     @property
     def function_type_to_quant_input(self) -> list:
         return [
@@ -692,7 +691,7 @@ class OPENVINOQuantizer(ModelQuantizer):
             'sum',
             torch.nn.functional.interpolate
         ]
-    
+
     @property
     def module_type_to_quant_input(self) -> tuple:
         if self.academic_mode:
@@ -739,7 +738,7 @@ class OPENVINOQuantizer(ModelQuantizer):
                 torch.nn.intrinsic.qat.modules.conv_fused.ConvBnReLU1d,
                 torch.nn.intrinsic.qat.modules.conv_fused.ConvReLU2d,
             )
-    
+
     @property
     def function_type_maybe_unsigned(self) -> tuple:
         return self.function_type_to_quant_input
@@ -763,12 +762,16 @@ class OPENVINOQuantizer(ModelQuantizer):
         nodes = list(model.graph.nodes)
         modules = dict(model.named_modules())
         node_need_to_quantize_output = []
-        quanlified_node = lambda node: (node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_input)) or \
+
+        def quanlified_node(node):
+            return (node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_input)) or \
                 ((node.op == 'call_function' or node.op == 'call_method') and node.target in self.function_type_to_quant_input) or node.op == 'placeholder'
-        passed_node = lambda node: ((node.op == 'call_function' and node.target in self._passed_func_type) or
-                        (node.op == 'call_module' and isinstance(modules[node.target], self._passed_module_type)))
+
+        def passed_node(node):
+            return (node.op == 'call_function' and node.target in self._passed_func_type) or \
+                (node.op == 'call_module' and isinstance(modules[node.target], self._passed_module_type))
+
         for node in nodes:
-    
             if (node.op == "call_module" and node.target in self.exclude_module_name) or \
                 ((node.op == 'call_function' or node.op == 'call_method') and
                  node.target in self.exclude_function_type) or \
@@ -800,7 +803,7 @@ class OPENVINOQuantizer(ModelQuantizer):
         logger.info('Now all weight quantizers will effectively use only 7 bits out of 8 bits. This resolves the overflow issue problem on AVX2 and AVX-512 machines.')
         wqconfig_8bit.weight.p.keywords['quant_min'] = -2 ** (numbits - 2) if wq_symmetry else 0
         wqconfig_8bit.weight.p.keywords['quant_max'] = 2 ** (numbits - 2) - 1 if wq_symmetry else 2 ** (numbits - 1) - 1
-        wqconfig_8bit.weight.p.keywords['factory_kwargs'] = {'not_calc_quant_min_max':True}
+        wqconfig_8bit.weight.p.keywords['factory_kwargs'] = {'not_calc_quant_min_max': True}
         flattened_qconfig_dict = get_flattened_qconfig_dict({'': wqconfig_8bit})
         propagate_qconfig_(model, flattened_qconfig_dict)
         self._qat_swap_modules(model, self.additional_qat_module_mapping)
@@ -823,12 +826,16 @@ class OPENVINOQuantizer(ModelQuantizer):
         aq_symmetry = True if is_symmetric_quant(qconfig.activation.p.keywords['qscheme']) else False
         aqconfig_8bit.p.keywords['quant_min'] = 0
         aqconfig_8bit.p.keywords['quant_max'] = 2 ** 8 - 1
-        aqconfig_8bit.p.keywords['factory_kwargs'] = {'not_calc_quant_min_max':True}
+        aqconfig_8bit.p.keywords['factory_kwargs'] = {'not_calc_quant_min_max': True}
 
-        maybe_unsigned = lambda node:(node.op == 'call_function' or node.op == 'call_method') and node.target in self.function_type_maybe_unsigned or \
-            node.op == "call_module" and isinstance(modules[node.target], self.module_type_maybe_unsigned)
-        real_unsigned = lambda node: (node.op == 'call_function' or node.op == 'call_method') and node.target in self.function_type_to_quant_unsigned or \
-            node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_unsigned)
+        def maybe_unsigned(node):
+            return (node.op == 'call_function' or node.op == 'call_method') and node.target in self.function_type_maybe_unsigned or \
+                (node.op == "call_module" and isinstance(modules[node.target], self.module_type_maybe_unsigned))
+
+        def real_unsigned(node):
+            return (node.op == 'call_function' or node.op == 'call_method') and node.target in self.function_type_to_quant_unsigned or \
+                (node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_unsigned))
+
         for node in node_to_quantize_output:
             if aq_symmetry:
                 if real_unsigned(node):
@@ -851,7 +858,7 @@ class OPENVINOQuantizer(ModelQuantizer):
                             cur_node_is_unsigned = last_fakequantize.quant_min == 0
                         elif real_unsigned(node):
                             cur_node_is_unsigned = True
-                        
+
                         if cur_node_is_unsigned is not None:
                             if level not in bfs_result:
                                 if len(bfs_result) > 0:

@@ -1,6 +1,4 @@
-import json
 import os
-
 
 import onnx
 import numpy as np
@@ -11,7 +9,6 @@ from onnx import helper
 from mqbench.utils.logger import logger
 from mqbench.deploy.common import (
     update_inp2node_out2node,
-    prepare_initializer,
     prepare_data,
     OnnxPreprocess,
     ONNXGraph,
@@ -52,7 +49,6 @@ class OPENVINO_process(object):
         graph = model.graph
         out2node, inp2node = update_inp2node_out2node(graph)
         name2data = prepare_data(graph)
-        named_initializer = prepare_initializer(graph)
 
         preprocess = OnnxPreprocess()
         preprocess.remove_fake_pad_op(graph, name2data, inp2node, out2node)
@@ -65,7 +61,7 @@ class OPENVINO_process(object):
             if node.op_type in ALL_FAKEQUANTIZER:
                 nodes_to_be_removed.append(node)
                 nodes_to_be_removed.extend(get_constant_inputs(node, out2node))
-                
+
                 tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
                 qmax = int(qmax)
                 qmin = int(qmin)
@@ -77,19 +73,19 @@ class OPENVINO_process(object):
                     qmin = qmin * 2
                 output_name = node.output[0]
                 # Create a node (FakeQuantize)
-                fakeq_inputnames = [item % tensor_name for item in ['input_min_%s', 'input_max_%s','output_min_%s','output_max_%s']]
+                fakeq_inputnames = [item % tensor_name for item in ['input_min_%s', 'input_max_%s', 'output_min_%s', 'output_max_%s']]
                 node_def = helper.make_node(
-                    'FakeQuantize', # node name
-                    [tensor_name, *fakeq_inputnames], # inputs
-                    [output_name], # outputs
-                    levels=levels, # Attributes
+                    'FakeQuantize',  # node name
+                    [tensor_name, *fakeq_inputnames],  # inputs
+                    [output_name],  # outputs
+                    levels=levels,  # Attributes
                     domain="org.openvinotoolkit",
                     name=node.name
                 )
                 node_defs.append(node_def)
                 scale = np.abs(np.asarray(scale, dtype=np.float64).reshape(-1))
                 zero_point = np.clip(np.asarray(np.round(zero_point), dtype=np.int32).reshape(-1), a_min=qmin, a_max=qmax)
-                
+
                 qrange = float(qmax - qmin)
                 input_range = scale * qrange
                 input_high = (qmax - zero_point).astype(np.float64) * input_range / qrange
@@ -98,28 +94,27 @@ class OPENVINO_process(object):
 
                 try:
                     next_node = inp2node[node.output[0]][0][0]
+                    # node for save weights
                     fake_node = out2node[next_node.input[1]]
                     tensor = name2data[fake_node.input[0]]
                     shape_length = len(tensor.shape)
-                    new_shape = [-1, ] + [1,] * (shape_length - 1)
-                except:
+                    new_shape = [-1, ] + [1, ] * (shape_length - 1)
+                except Exception as e:
                     new_shape = [-1, ]
-                    
+
                 if input_low_size != 1:
                     input_low = input_low.reshape(*new_shape)
                     input_high = input_high.reshape(*new_shape)
                 input_low = input_low.astype(np.float32)
                 input_high = input_high.astype(np.float32)
-                for initializer_name,value_tensor in zip(fakeq_inputnames,[input_low, input_high, input_low, input_high]):
+                for initializer_name, value_tensor in zip(fakeq_inputnames, [input_low, input_high, input_low, input_high]):
                     if initializer_name in insert_initializer_names:
                         continue
                     initializer = numpy_helper.from_array(value_tensor)
                     initializer.name = initializer_name
-                    
                     insert_initializer_names.add(initializer_name)
                     graph.initializer.append(initializer)
-        
-        
+
         for node in nodes_to_be_removed:
             graph.node.remove(node)
         graph.node.extend(node_defs)

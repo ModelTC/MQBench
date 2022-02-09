@@ -73,8 +73,7 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
                               do_constant_folding=True,
                               custom_opsets={'' : 11},
                               enable_onnx_checker=False)
-           
-            
+
 @register_deploy_function(BackendType.NNIE)
 def deploy_qparams_nnie(model: GraphModule, onnx_model_path, model_name, **kwargs):
     logger.info("Extract qparams for NNIE.")

@@ -32,7 +32,6 @@ from mqbench.fuser_method_mappings import fuse_custom_config_dict
 from mqbench.utils.logger import logger
 from mqbench.utils.registry import DEFAULT_MODEL_QUANTIZER
 from mqbench.scheme import QuantizeScheme
-from functools import partial
 
 class BackendType(Enum):
     Academic = 'Academic'
@@ -66,8 +65,8 @@ ParamsTable = {
     BackendType.OPENVINO: dict(qtype='affine',     # noqa: E241
                                w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8),
                                a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
-                               default_weight_quantize = LearnableFakeQuantize,
-                               default_act_quantize = LearnableFakeQuantize,
+                               default_weight_quantize=LearnableFakeQuantize,
+                               default_act_quantize=LearnableFakeQuantize,
                                default_weight_observer=MinMaxObserver,
                                default_act_observer=EMAMinMaxObserver),
     BackendType.SNPE:     dict(qtype='affine',     # noqa: E241
@@ -218,7 +217,6 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
     # here, rewrited by with_args
     w_qconfig = w_fakequantize.with_args(observer=w_observer, **w_fakeq_params, **w_qscheme.to_observer_params())
     a_qconfig = a_fakequantize.with_args(observer=a_observer, **a_fakeq_params, **a_qscheme.to_observer_params())
-    
     logger.info('Weight Qconfig:\n    FakeQuantize: {} Params: {}\n'
                 '    Oberver:      {} Params: {}'.format(w_fakequantize.__name__, w_fakeq_params,
                                                          w_observer.__name__, str(w_qscheme)))
