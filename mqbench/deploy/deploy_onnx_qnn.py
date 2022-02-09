@@ -195,35 +195,41 @@ class ONNXQNNPass(object):
 
     def replace_qlinear_layer_pass(self):
         # Replace FakeQuantize
+        def search_and_replace_input(next_node, name, new_name):
+            for idx, _input_name in enumerate(next_node.input):
+                if _input_name == name:
+                    next_node.input[idx] = new_name
+
         for node in self.onnx_model.graph.node:
             if node.op_type in FAKE_QUANTIZE_OP:
                 prev_node = self.onnx_model.get_tensor_producer(node.input[0])
-                next_node = self.onnx_model.get_tensor_consumer(node.output[0])[0]
-                if prev_node != 'INPUT_TOKEN' and prev_node.op_type in self.qlinear_op_type and \
-                        next_node != 'OUTPUT_TOKEN' and next_node.op_type in self.qlinear_op_type:
-                    self.onnx_model.remove_node_purely(node)
-                    for _next_node in self.onnx_model.get_tensor_consumer(node.output[0]):
-                        assert _next_node.op_type in self.qlinear_op_type
-                        for idx, _input_name in enumerate(_next_node.input):
-                            if _input_name == node.output[0]:
-                                _next_node.input[idx] = node.input[0]
-                    self.onnx_model.topologize_graph()
-                elif prev_node != 'INPUT_TOKEN' and prev_node.op_type in self.qlinear_op_type:
-                    dequantize_linear_node = onnx.helper.make_node("DequantizeLinear", 
-                                                                   node.input[0:3],
-                                                                   node.output,
-                                                                   node.name + '_dequantized')
-                    self.onnx_model.insert_node_purely(dequantize_linear_node)
-                    self.onnx_model.remove_node_purely(node)
-                    self.onnx_model.topologize_graph()
-                else:
-                    quantize_linear_node = onnx.helper.make_node("QuantizeLinear", 
-                                                                 node.input[0:3],
-                                                                 node.output,
-                                                                 node.name + '_quantized')
-                    self.onnx_model.insert_node_purely(quantize_linear_node)
-                    self.onnx_model.remove_node_purely(node)
-                    self.onnx_model.topologize_graph()
+                next_node_list = self.onnx_model.get_tensor_consumer(node.output[0])
+                quantize_node = None
+                dequantize_node = None
+                for next_node in next_node_list:
+                    if prev_node != 'INPUT_TOKEN' and prev_node.op_type in self.qlinear_op_type and \
+                            next_node != 'OUTPUT_TOKEN' and next_node.op_type in self.qlinear_op_type:
+                        search_and_replace_input(next_node, node.output[0], node.input[0])
+                    elif prev_node != 'INPUT_TOKEN' and prev_node.op_type in self.qlinear_op_type:
+                        if dequantize_node is None:
+                            output_value_info = [f'{node.output[0]}_DequantizeLinear']
+                            dequantize_node = onnx.helper.make_node("DequantizeLinear",
+                                                                    node.input[0:3],
+                                                                    output_value_info,
+                                                                    ('input' if prev_node == 'INPUT_TOKEN' else prev_node.name) + '_dequantized')
+                            self.onnx_model.insert_node_purely(dequantize_node)
+                        search_and_replace_input(next_node, node.output[0], dequantize_node.output[0])
+                    else:
+                        if quantize_node is None:
+                            output_value_info = [f'{node.output[0]}_QuantizeLinear']
+                            quantize_node = onnx.helper.make_node("QuantizeLinear",
+                                                                  node.input[0:3],
+                                                                  output_value_info,
+                                                                  ('input' if prev_node == 'INPUT_TOKEN' else prev_node.name) + '_quantized')
+                            self.onnx_model.insert_node_purely(quantize_node)
+                        search_and_replace_input(next_node, node.output[0], quantize_node.output[0])
+                self.onnx_model.remove_node_purely(node)
+                self.onnx_model.topologize_graph()
 
     def merge_relu_pass(self):
         for node in self.onnx_model.graph.node:
