@@ -663,7 +663,7 @@ class TVMQuantizer(ModelQuantizer):
 
 @register_model_quantizer(BackendType.OPENVINO)
 class OPENVINOQuantizer(ModelQuantizer):
-    """OPENVINO type, put fakequantizer after relu and output activation is scaled to [0, 255] when qscheme is symmetric
+    """OPENVINO type, activation is scaled to [0, 255] when qscheme is symmetric
     """
 
     def __init__(self, extra_quantizer_dict, extra_fuse_dict):
@@ -672,24 +672,54 @@ class OPENVINOQuantizer(ModelQuantizer):
 
     @property
     def _passed_func_type(self):
-        academic_pass_type = (torch.nn.functional.max_pool2d, operator.getitem, getattr)
+        academic_pass_type = (operator.getitem, getattr)
         if self.academic_mode:
             return academic_pass_type
         else:
-            return academic_pass_type + (torch.cat,)
+            return academic_pass_type + (torch.cat, )
 
     @property
     def _passed_module_type(self):
-        return (torch.nn.modules.pooling.MaxPool2d,)
+        return tuple()
+
+    @property
+    def _linear_module_node(self) -> tuple:
+        return (
+            torch.nn.qat.modules.conv.Conv2d,
+            torch.nn.intrinsic.qat.modules.conv_fused.ConvBnReLU2d,
+            torch.nn.intrinsic.qat.modules.conv_fused.ConvBnReLU1d,
+            torch.nn.intrinsic.qat.modules.conv_fused.ConvReLU2d,
+            torch.nn.intrinsic.qat.modules.conv_fused.ConvBn2d,
+            torch.nn.intrinsic.qat.modules.conv_fused.ConvBn1d,
+            torch.nn.qat.modules.conv.Conv2d,
+            torch.nn.qat.modules.linear.Linear,
+        )
+
+    @property
+    def _propagated_pattern(self) -> tuple:
+        prev_nodes_pattern = {
+            'func_type': (torch.nn.functional.max_pool2d, torch.flatten),
+            'module_type': (torch.nn.modules.pooling.MaxPool2d, torch.nn.modules.Flatten)
+        }
+
+        cur_nodes_pattern = {
+            'func_type': (torch.nn.functional.conv2d, torch.nn.functional.conv1d, torch.nn.functional.conv3d, torch.matmul),
+            'module_type': self._linear_module_node,
+        }
+
+        return (prev_nodes_pattern, cur_nodes_pattern)
 
     @property
     def function_type_to_quant_input(self) -> list:
         return [
             operator.add,
             torch.nn.functional.adaptive_avg_pool2d,
+            torch.nn.functional.max_pool2d,
+            torch.nn.functional.avg_pool2d,
+            torch.flatten,
             'mean',
             'sum',
-            torch.nn.functional.interpolate
+            torch.nn.functional.interpolate,
         ]
 
     @property
@@ -700,10 +730,10 @@ class OPENVINOQuantizer(ModelQuantizer):
                 torch.nn.qat.modules.conv.Conv2d,
                 # Linear
                 torch.nn.qat.modules.linear.Linear,
-                # qnn.intrinsic.qat.LinearBn1d,
                 # Pooling
                 torch.nn.modules.pooling.AvgPool2d,
                 torch.nn.modules.pooling.AdaptiveAvgPool2d,
+                torch.nn.modules.pooling.MaxPool2d,
                 # Prelu
                 # TODO torch.nn.PReLU,
                 torch.nn.modules.Upsample,
@@ -719,10 +749,10 @@ class OPENVINOQuantizer(ModelQuantizer):
                 torch.nn.qat.modules.conv.Conv2d,
                 # Linear
                 torch.nn.qat.modules.linear.Linear,
-                # qnn.intrinsic.qat.LinearBn1d,
                 # Pooling
                 torch.nn.modules.pooling.AvgPool2d,
                 torch.nn.modules.pooling.AdaptiveAvgPool2d,
+                torch.nn.modules.pooling.MaxPool2d,
                 # Prelu
                 # TODO torch.nn.PReLU,
                 torch.nn.modules.Upsample,
@@ -734,6 +764,7 @@ class OPENVINOQuantizer(ModelQuantizer):
             return (torch.nn.modules.ReLU, )
         else:
             return (
+                torch.nn.modules.ReLU,
                 torch.nn.intrinsic.qat.modules.conv_fused.ConvBnReLU2d,
                 torch.nn.intrinsic.qat.modules.conv_fused.ConvBnReLU1d,
                 torch.nn.intrinsic.qat.modules.conv_fused.ConvReLU2d,
@@ -749,7 +780,7 @@ class OPENVINOQuantizer(ModelQuantizer):
 
     @property
     def module_type_maybe_unsigned(self) -> tuple:
-        return (torch.nn.Upsample, )
+        return (torch.nn.Upsample, torch.nn.modules.pooling.MaxPool2d, torch.nn.modules.pooling.AvgPool2d, torch.nn.modules.pooling.AdaptiveAvgPool2d)
 
     def prepare(self, model: GraphModule, qconfig):
         if not self.academic_mode:
@@ -771,6 +802,15 @@ class OPENVINOQuantizer(ModelQuantizer):
             return (node.op == 'call_function' and node.target in self._passed_func_type) or \
                 (node.op == 'call_module' and isinstance(modules[node.target], self._passed_module_type))
 
+        prev_nodes_pattern, cur_nodes_pattern = self._propagated_pattern
+
+        def node_in_pattern(node, pattern):
+            return ((node.op == 'call_function' or node.op == 'call_method') and node.target in pattern['func_type']) or \
+                (node.op == "call_module" and isinstance(modules[node.target], pattern['module_type'])) 
+
+        def propagated_pattern(prev_node, cur_node):
+            return node_in_pattern(prev_node, prev_nodes_pattern) and node_in_pattern(cur_node, cur_nodes_pattern)
+
         for node in nodes:
             if (node.op == "call_module" and node.target in self.exclude_module_name) or \
                 ((node.op == 'call_function' or node.op == 'call_method') and
@@ -787,7 +827,16 @@ class OPENVINOQuantizer(ModelQuantizer):
             for next_node in node.users:
                 if next_node.op == 'output':
                     is_output = True
+                    break
             if is_output:
+                continue
+            # check propagated pattern
+            is_propagated_pattern = False
+            for next_node in node.users:
+                if propagated_pattern(node, next_node):
+                    is_propagated_pattern = True
+                    break
+            if is_propagated_pattern:
                 continue
             for next_node in node.users:
                 if quanlified_node(next_node):
@@ -832,11 +881,11 @@ class OPENVINOQuantizer(ModelQuantizer):
         aqconfig_8bit.p.keywords['factory_kwargs'] = {'not_calc_quant_min_max': True}
 
         def maybe_unsigned(node):
-            return (node.op == 'call_function' or node.op == 'call_method') and node.target in self.function_type_maybe_unsigned or \
+            return ((node.op == 'call_function' or node.op == 'call_method') and node.target in self.function_type_maybe_unsigned) or \
                 (node.op == "call_module" and isinstance(modules[node.target], self.module_type_maybe_unsigned))
 
         def real_unsigned(node):
-            return (node.op == 'call_function' or node.op == 'call_method') and node.target in self.function_type_to_quant_unsigned or \
+            return ((node.op == 'call_function' or node.op == 'call_method') and node.target in self.function_type_to_quant_unsigned) or \
                 (node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_unsigned))
 
         for node in node_to_quantize_output:
@@ -849,11 +898,10 @@ class OPENVINOQuantizer(ModelQuantizer):
                     # bfs to determin1e whether it should be set unsigned activation
                     queue = [(node, -1)]
                     bfs_result = dict()
-                    node_type = torch.fx.node.Node
                     while len(queue) > 0:
                         cur_node, level = queue.pop(0)
                         for input_node in cur_node.args:
-                            if isinstance(input_node, node_type):
+                            if isinstance(input_node, torch.fx.node.Node):
                                 queue.append((input_node, level + 1))
                         cur_node_is_unsigned = None
                         if isinstance(cur_node.target, str) and cur_node.target.endswith(quantizer_postfix):
