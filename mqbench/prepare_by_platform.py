@@ -250,7 +250,7 @@ class CustomedTracer(Tracer):
                 submodule ``bar``, which contains submodule ``baz``, that module will
                 appear with the qualified name ``foo.bar.baz`` here.
         """
-        if self.customed_leaf_module and isinstance(m, customed_leaf_module):
+        if self.customed_leaf_module and isinstance(m, self.customed_leaf_module):
             return True
         return m.__module__.startswith('torch.nn') and not isinstance(m, torch.nn.Sequential)
 
