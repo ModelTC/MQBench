@@ -17,7 +17,8 @@ class QuantizeScheme(object):
 
     def to_observer_params(self):
         naive_para = {
-            'quant_min': -2 ** (self.bit - 1) if self.symmetry else 0,
+            'quant_min': (-2 ** (self.bit - 1) + 1 if self.kwargs.get('symmetric_range', False) else -2 ** (self.bit - 1)) \
+                if self.symmetry else 0,
             'quant_max': 2 ** (self.bit - 1) - 1 if self.symmetry else 2 ** self.bit - 1,
             'dtype': torch.qint8 if self.symmetry else torch.quint8,
             'pot_scale': self.pot_scale,

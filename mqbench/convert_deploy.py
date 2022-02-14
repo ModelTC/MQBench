@@ -64,6 +64,8 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
         dummy_input = {name: torch.rand(shape).to(device) for name, shape in input_shape_dict.items()}
         input_names = list(dummy_input.keys())
         dummy_input = tuple(dummy_input.values())
+    # Per-channel QuantizeLinear and DequantizeLinear is supported since opset 13
+    opset_version = 13 if kwargs.get('deploy_to_qlinear', False) else 11
     with torch.no_grad():
         try:
             from torch.onnx.utils import ONNXCheckerError
@@ -71,19 +73,19 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
                 torch.onnx.export(model, dummy_input, onnx_model_path,
                                   input_names=input_names,
                                   output_names=output_names,
-                                  opset_version=11,
+                                  opset_version=opset_version,
                                   dynamic_axes=dynamic_axes,
                                   do_constant_folding=True,
-                                  custom_opsets={'' : 11})
+                                  custom_opsets={'' : opset_version})
             except ONNXCheckerError:
                 pass
         except ImportError:
             torch.onnx.export(model, dummy_input, onnx_model_path,
                               input_names=input_names,
                               output_names=output_names,
-                              opset_version=11,
+                              opset_version=opset_version,
                               do_constant_folding=True,
-                              custom_opsets={'' : 11},
+                              custom_opsets={'' : opset_version},
                               enable_onnx_checker=False)
 
 
