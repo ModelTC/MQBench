@@ -22,8 +22,10 @@ jobs:
       run: |
         conda install flake8
         flake8 .
+    - name: Install MQBench
+      run: |
+        python setup.py develop
     - name: Test with pytest
       run: |
         conda install pytest
-        pip install torch==1.8.1
         pytest test --junitxml=report.xml
