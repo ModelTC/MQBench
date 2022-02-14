@@ -4,7 +4,7 @@
 </div>
 
 ------------
-
+[![Documentation Status](https://readthedocs.org/projects/mqbench/badge/?version=latest)](https://mqbench.readthedocs.io/en/latest/?badge=latest)
 
 ## Introduction
 
@@ -28,7 +28,7 @@ python setup.py install
 
 MQBench aims to support (1) various deployable quantization algorithms and (2) hardware backend libraries to facilitate the development of the community.
 
-For the detailed information, please refer to [mqbench documentation](http://mqbench.tech/assets/docs/html/).
+For the detailed information, please refer to [mqbench documentation](http://mqbench.tech/assets/docs/html/) or [latest version](https://mqbench.readthedocs.io/en/main/).
 
 
 ## Citation
