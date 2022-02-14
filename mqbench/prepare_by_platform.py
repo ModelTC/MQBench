@@ -47,14 +47,14 @@ class BackendType(Enum):
 
 ParamsTable = {
     BackendType.Academic: dict(qtype='affine'),    # noqa: E241
-    BackendType.NNIE:     dict(qtype='nnie',       # noqa: E241
-                               # NNIE actually do not need w/a qscheme. We add for initialize observer only.
-                               w_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
-                               a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
-                               default_weight_quantize=NNIEFakeQuantize,
-                               default_act_quantize=NNIEFakeQuantize,
-                               default_weight_observer=MinMaxObserver,
-                               default_act_observer=EMAMinMaxObserver),
+    BackendType.NNIE: dict(qtype='nnie',       # noqa: E241
+                           # NNIE actually do not need w/a qscheme. We add for initialize observer only.
+                           w_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
+                           a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
+                           default_weight_quantize=NNIEFakeQuantize,
+                           default_act_quantize=NNIEFakeQuantize,
+                           default_weight_observer=MinMaxObserver,
+                           default_act_observer=EMAMinMaxObserver),
     BackendType.Tensorrt: dict(qtype='affine',     # noqa: E241
                                w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8),
                                a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
@@ -62,13 +62,13 @@ ParamsTable = {
                                default_act_quantize=LearnableFakeQuantize,
                                default_weight_observer=MinMaxObserver,
                                default_act_observer=EMAMinMaxObserver),
-    BackendType.SNPE:     dict(qtype='affine',     # noqa: E241
-                               w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
-                               a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
-                               default_weight_quantize=LearnableFakeQuantize,
-                               default_act_quantize=LearnableFakeQuantize,
-                               default_weight_observer=MinMaxObserver,
-                               default_act_observer=EMAMinMaxObserver),
+    BackendType.SNPE: dict(qtype='affine',     # noqa: E241
+                           w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
+                           a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
+                           default_weight_quantize=LearnableFakeQuantize,
+                           default_act_quantize=LearnableFakeQuantize,
+                           default_weight_observer=MinMaxObserver,
+                           default_act_observer=EMAMinMaxObserver),
     BackendType.PPLW8A16: dict(qtype='affine',     # noqa: E241
                                w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
                                a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=16),
@@ -112,7 +112,7 @@ ObserverDict = {
 }
 
 FakeQuantizeDict = {
-    'FixedFakeQuantize':     FixedFakeQuantize,      # Unlearnable scale/zeropoint  # noqa: E241
+    'FixedFakeQuantize': FixedFakeQuantize,      # Unlearnable scale/zeropoint  # noqa: E241
     'LearnableFakeQuantize': LearnableFakeQuantize,  # Learnable scale/zeropoint    # noqa: E241
     'NNIEFakeQuantize':      NNIEFakeQuantize,       # Quantize function for NNIE   # noqa: E241
     'DoReFaFakeQuantize':    DoReFaFakeQuantize,     # Dorefa                       # noqa: E241
@@ -189,6 +189,17 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
     if deploy_backend == BackendType.Academic:
         w_qscheme = QuantizeScheme(**extra_qparams['w_qscheme'])
         a_qscheme = QuantizeScheme(**extra_qparams['a_qscheme'])
+    elif deploy_backend == BackendType.Tensorrt:
+        w_qscheme = extra_qparams.get('w_qscheme', None)
+        if w_qscheme is None:
+            w_qscheme = backend_params['w_qscheme']
+        else:
+            w_qscheme = QuantizeScheme(**w_qscheme)
+        a_qscheme = extra_qparams.get('a_qscheme', None)
+        if a_qscheme is None:
+            a_qscheme = backend_params['a_qscheme']
+        else:
+            a_qscheme = QuantizeScheme(**a_qscheme)
     else:
         w_qscheme = backend_params['w_qscheme']
         a_qscheme = backend_params['a_qscheme']
@@ -298,8 +309,8 @@ def prepare_by_platform(
                 preserve_attr_dict[submodule_name][attr] = getattr(cur_module, attr)
     # Symbolic trace
     concrete_args = prepare_custom_config_dict.get('concrete_args', None)
-    customed_leaf_module = prepare_custom_config_dict.get('leaf_module', {})
-    tracer = CustomedTracer(customed_leaf_module=customed_leaf_module)
+    customed_leaf_module = prepare_custom_config_dict.get('leaf_module', [])
+    tracer = CustomedTracer(customed_leaf_module=tuple(customed_leaf_module))
     graph = tracer.trace(model, concrete_args)
     name = model.__class__.__name__ if isinstance(model, torch.nn.Module) else model.__name__
     graph_module = GraphModule(tracer.root, graph, name)

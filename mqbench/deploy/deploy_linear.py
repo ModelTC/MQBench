@@ -197,7 +197,7 @@ class LinearQuantizer_process(object):
                             out.name = tensor_name
 
                     if backend == 'tensorrt':
-                        clip_ranges[tensor_name] = float(scale * min(-qmin, qmax))
+                        clip_ranges[tensor_name] = float(scale * max(-qmin, qmax))
                     elif backend == 'snpe':
                         clip_ranges[tensor_name] = [
                             {'bitwidth': int(np.log2(qmax - qmin + 1)),

@@ -16,7 +16,7 @@ from mqbench.utils.registry import (
 from mqbench.deploy import (
     remove_fakequantize_and_collect_params_nnie,
     remove_fakequantize_and_collect_params,
-    ONNXQNNPass
+    ONNXQLinearPass, ONNXQNNPass
 )
 
 @register_deploy_function(BackendType.PPLCUDA)
@@ -52,12 +52,14 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
         dummy_input = {name: torch.rand(shape).to(device) for name, shape in input_shape_dict.items()}
         input_names = list(dummy_input.keys())
         dummy_input = tuple(dummy_input.values())
+    output_names = kwargs.get('output_names', None)
     with torch.no_grad():
         try:
             from torch.onnx.utils import ONNXCheckerError
             try:
                 torch.onnx.export(model, dummy_input, onnx_model_path,
                                   input_names=input_names,
+                                  output_names=output_names,
                                   opset_version=11,
                                   do_constant_folding=True,
                                   custom_opsets={'' : 11})
@@ -66,10 +68,18 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
         except ImportError:
             torch.onnx.export(model, dummy_input, onnx_model_path,
                               input_names=input_names,
+                              output_names=output_names,
                               opset_version=11,
                               do_constant_folding=True,
                               custom_opsets={'' : 11},
                               enable_onnx_checker=False)
+
+
+@register_deploy_function(BackendType.Tensorrt)
+def convert_onnx_qlinear(model: GraphModule, onnx_model_path, model_name, **kwargs):
+    if kwargs.get('deploy_to_qlinear', False):
+        logger.info("Convert to ONNX QLinear.")
+        ONNXQLinearPass(onnx_model_path).run()
 
 
 @register_deploy_function(BackendType.NNIE)
@@ -116,7 +126,8 @@ def deploy_qparams_ppl_cuda(model: GraphModule, onnx_model_path, model_name, **k
 
 def convert_deploy(model: GraphModule, backend_type: BackendType,
                    input_shape_dict=None, dummy_input=None, output_path='./',
-                   model_name='mqbench_qmodel'):
+                   model_name='mqbench_qmodel', output_names=None,
+                   deploy_to_qlinear=False):
     r"""Convert model to onnx model and quantization params depends on backend.
 
     Args:
@@ -138,9 +149,11 @@ def convert_deploy(model: GraphModule, backend_type: BackendType,
     kwargs = {
         'input_shape_dict': input_shape_dict,
         'dummy_input': dummy_input,
+        'output_names': output_names,
         'output_path': output_path,
         'model_name': model_name,
-        'onnx_model_path': osp.join(output_path, '{}.onnx'.format(model_name))
+        'onnx_model_path': osp.join(output_path, '{}.onnx'.format(model_name)),
+        'deploy_to_qlinear': deploy_to_qlinear
     }
     deploy_model = deepcopy_graphmodule(model)
     for convert_function in BACKEND_DEPLOY_FUNCTION[backend_type]:

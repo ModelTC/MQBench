@@ -15,6 +15,7 @@ class LearnableFakeQuantize(QuantizeBase):
     In addition to the attributes in the original FakeQuantize module, the _LearnableFakeQuantize
     module also includes the following attributes to support quantization parameter learning.
     """
+
     def __init__(self, observer, scale=1., zero_point=0., use_grad_scaling=True, **observer_kwargs):
         super(LearnableFakeQuantize, self).__init__(observer, **observer_kwargs)
         self.use_grad_scaling = use_grad_scaling
@@ -124,7 +125,7 @@ def grad_scale(t, scale):
 class FakeQuantizeLearnablePerchannelAffine(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, scale, zero_point, ch_axis, quant_min, quant_max, grad_factor):
-        return _fake_quantize_learnable_per_channel_affine_training(x, scale, zero_point, ch_axis, 
+        return _fake_quantize_learnable_per_channel_affine_training(x, scale, zero_point, ch_axis,
                                                                     quant_min, quant_max, grad_factor)
 
     @staticmethod
