@@ -24,5 +24,6 @@ jobs:
         flake8 .
     - name: Test with pytest
       run: |
-        conda install torch==1.8.1 pytest
+        conda install pytest
+        pip install torch==1.8.1
         pytest test --junitxml=report.xml
