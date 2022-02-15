@@ -32,6 +32,8 @@ Deploy on OpenVINO
 
 **Deployment**:
 
+- Python tutorials (see MQBench github `application/openvino_example.ipynb`) are written for running on jupyter notebooks, including PTQ process and accuracy evaluation.
+
 - Convert PyTorch checkpoint to `openvino_deploy_model.onnx`:
 
     .. code-block:: python
@@ -49,5 +51,13 @@ Deploy on OpenVINO
         # mo --help get more information or check the docs for openvino
         mo --input_model ./openvino_deploy_model.onnx
         # after exec prev line, you will get openvino_deploy_model.xml and openvino_deploy_model.bin
-        # benchmark test 
-        benchmark_app -m ./openvino_deploy_model.xml
+        # benchmark test using one cpu
+        benchmark_app -m ./openvino_deploy_model.xml -nstream 1
+        # test result on  Intel(R) Xeon(R) CPU E5-2680 v3 @ 2.50GHz Model: resnet18
+        # Original top-1 accuracy: 69.758
+        # PTQ top-1  accuracy: 69.334
+        # deploy using openvino top-1  accuracy: 69.312
+        # cosine distance between torch model and openvino IR measured on last output:0.9975
+        # Benchmark Result
+        # Original Resnet18>> Count: 6959  iterations Duration: 60009.54 ms Latency: 8.71 ms Throughput: 115.96 FPS
+        # Quantized Version>> Count: 13094 iterations Duration: 60004.75 ms Latency: 4.44 ms Throughput: 218.22 FPS
