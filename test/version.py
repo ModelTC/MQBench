@@ -1,0 +1,2 @@
+TORCHVISION_VERSION = 'v0.9.0'
+GITHUB_RES = 'pytorch/vision:{}'.format(TORCHVISION_VERSION)

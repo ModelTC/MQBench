@@ -1,0 +1,31 @@
+name: Lint and test.
+
+on: [push]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 5
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.6
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.6
+    - name: Add conda to system path
+      run: |
+        # $CONDA is an environment variable pointing to the root of the miniconda directory
+        echo $CONDA/bin >> $GITHUB_PATH
+    - name: Lint with flake8
+      run: |
+        conda install flake8
+        flake8 .
+    - name: Install MQBench
+      run: |
+        python setup.py develop
+    - name: Test with pytest
+      run: |
+        conda install pytest
+        pytest test --junitxml=report.xml
