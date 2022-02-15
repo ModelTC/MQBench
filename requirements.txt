@@ -1,3 +1,3 @@
-torch==1.8.0
-torchvision==0.9.0
+torch==1.8.1
+torchvision
 onnx
