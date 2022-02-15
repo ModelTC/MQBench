@@ -1,4 +1,3 @@
-from importlib_metadata import entry_points
 import torch
 import unittest
 
@@ -14,6 +13,7 @@ class TestQuantizeModel(unittest.TestCase):
     def test_model_ppl(self):
         exclude_list = ['googlenet', 'deeplabv3_mobilenet_v3_large', 'inception_v3', 'lraspp_mobilenet_v3_large',
                         'mobilenet_v3_large', 'mobilenet_v3_small']
+        entrypoints = torch.hub.list('pytorch/vision', force_reload=False)
         for entrypoint in entrypoints:
             if entrypoint in exclude_list:
                 continue
