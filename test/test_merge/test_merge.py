@@ -5,6 +5,8 @@ from mqbench.prepare_by_platform import prepare_by_platform, BackendType
 from mqbench.convert_deploy import convert_merge_bn
 from mqbench.utils.state import enable_calibration, enable_quantization
 
+from ..version import GITHUB_RES
+
 
 class TestMergeBN(unittest.TestCase):
 
@@ -22,7 +24,7 @@ class TestMergeBN(unittest.TestCase):
         }
         prepare_custom_config_dict = {'extra_qconfig_dict': extra_qconfig_dict}
         # First model
-        model_1 = torch.hub.load('pytorch/vision:v0.11.0', 'mobilenet_v2', pretrained=False)
+        model_1 = torch.hub.load(GITHUB_RES, 'mobilenet_v2', pretrained=False)
         model_1 = prepare_by_platform(model_1, BackendType.Tensorrt, prepare_custom_config_dict)
         model_1.train()
         enable_calibration(model_1)

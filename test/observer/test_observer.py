@@ -5,10 +5,12 @@ from mqbench.prepare_by_platform import prepare_by_platform, BackendType
 from mqbench.convert_deploy import convert_deploy
 from mqbench.utils.state import enable_calibration, enable_quantization
 
+from ..version import GITHUB_RES
+
 
 class TestObserver(unittest.TestCase):
     def test_quantile_observer(self):
-        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         extra_qconfig_dict = {
@@ -26,7 +28,7 @@ class TestObserver(unittest.TestCase):
         loss.backward()
 
     def test_ema_observer(self):
-        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         extra_qconfig_dict = {
@@ -44,7 +46,7 @@ class TestObserver(unittest.TestCase):
         loss.backward()
 
     def test_minmax_observer(self):
-        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         extra_qconfig_dict = {
@@ -62,7 +64,7 @@ class TestObserver(unittest.TestCase):
         loss.backward()
 
     def test_lsq_observer(self):
-        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         extra_qconfig_dict = {
@@ -80,7 +82,7 @@ class TestObserver(unittest.TestCase):
         loss.backward()
     
     def test_clip_std_observer(self):
-        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         extra_qconfig_dict = {

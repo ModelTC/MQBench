@@ -5,10 +5,12 @@ from mqbench.prepare_by_platform import prepare_by_platform, BackendType
 from mqbench.convert_deploy import convert_deploy
 from mqbench.utils.state import enable_calibration, enable_quantization
 
+from ..version import GITHUB_RES
+
 
 class TestFakeQuantize(unittest.TestCase):
     def test_fixed_fake_quantize(self):
-        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         extra_qconfig_dict = {
@@ -28,7 +30,7 @@ class TestFakeQuantize(unittest.TestCase):
         convert_deploy(model_prepared, BackendType.Tensorrt, {'x': [1, 3, 224, 224]}, model_name='resnet18_fixed.onnx')
 
     def test_learnable_fake_quantize(self):
-        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         extra_qconfig_dict = {
@@ -48,7 +50,7 @@ class TestFakeQuantize(unittest.TestCase):
         convert_deploy(model_prepared, BackendType.Tensorrt, {'x': [1, 3, 224, 224]}, model_name='resnet18_lsq.onnx')
 
     def test_nnie_fake_quantize(self):
-        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         extra_qconfig_dict = {
@@ -68,7 +70,7 @@ class TestFakeQuantize(unittest.TestCase):
         convert_deploy(model_prepared, BackendType.NNIE, {'x': [1, 3, 224, 224]}, model_name='resnet18_nnie.onnx')
 
     def test_dorefa_fake_quantize(self):
-        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         extra_qconfig_dict = {
@@ -88,7 +90,7 @@ class TestFakeQuantize(unittest.TestCase):
         convert_deploy(model_prepared, BackendType.Tensorrt, {'x': [1, 3, 224, 224]}, model_name='resnet18_dorefa_trt.onnx')
 
     def test_pact_fake_quantize(self):
-        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         extra_qconfig_dict = {
@@ -108,7 +110,7 @@ class TestFakeQuantize(unittest.TestCase):
         convert_deploy(model_prepared, BackendType.Tensorrt, {'x': [1, 3, 224, 224]}, model_name='resnet18_pact_trt.onnx')
 
     def test_dsq_fake_quantize(self):
-        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         extra_qconfig_dict = {
