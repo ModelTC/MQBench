@@ -21,7 +21,7 @@ class TestQuantizeModel(unittest.TestCase):
                 model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', entrypoint, pretrained=False, pretrained_backbone=False)
             else:
                 model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', entrypoint, pretrained=False)
-            dummy_input = torch.randn(8, 3, 224, 224, device='cpu')
+            dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
             model_to_quantize.train()
             model_prepared = prepare_by_platform(model_to_quantize, BackendType.PPLW8A16)
             enable_calibration(model_prepared)
