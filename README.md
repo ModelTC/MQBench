@@ -5,6 +5,7 @@
 
 ------------
 [![Documentation Status](https://readthedocs.org/projects/mqbench/badge/?version=latest)](https://mqbench.readthedocs.io/en/latest/?badge=latest)
+[![Lint and test.](https://github.com/ModelTC/MQBench/actions/workflows/python-package-conda.yml/badge.svg?branch=main)](https://github.com/ModelTC/MQBench/actions/workflows/python-package-conda.yml)
 
 ## Introduction
 
