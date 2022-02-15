@@ -34,5 +34,5 @@ class TestQuantizeModel(unittest.TestCase):
                 loss = output['out'].sum()
             loss.backward()
             model_prepared.eval()
-            convert_deploy(model_prepared, BackendType.PPLW8A16, {'x': [1, 3, 224, 224]}, model_name='{}.onnx'.format(entrypoint))
-            os.remove('{}.onnx'.format(entrypoint))
+            # convert_deploy(model_prepared, BackendType.PPLW8A16, {'x': [1, 3, 224, 224]}, model_name='{}.onnx'.format(entrypoint))
+            # os.remove('{}.onnx'.format(entrypoint))
