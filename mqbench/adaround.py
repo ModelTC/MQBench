@@ -1,8 +1,7 @@
-import numpy as np
+import torch
 from torch.fx import GraphModule, Node
 from torch import fx, nn
 from torch.nn import Module
-import torch
 
 USE_LINK = False
 USE_DDP = False
