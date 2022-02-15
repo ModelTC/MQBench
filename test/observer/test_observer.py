@@ -8,7 +8,7 @@ from mqbench.utils.state import enable_calibration, enable_quantization
 
 class TestObserver(unittest.TestCase):
     def test_quantile_observer(self):
-        model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         extra_qconfig_dict = {
@@ -26,7 +26,7 @@ class TestObserver(unittest.TestCase):
         loss.backward()
 
     def test_ema_observer(self):
-        model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         extra_qconfig_dict = {
@@ -44,7 +44,7 @@ class TestObserver(unittest.TestCase):
         loss.backward()
 
     def test_minmax_observer(self):
-        model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         extra_qconfig_dict = {
@@ -62,7 +62,7 @@ class TestObserver(unittest.TestCase):
         loss.backward()
 
     def test_lsq_observer(self):
-        model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         extra_qconfig_dict = {
@@ -80,7 +80,7 @@ class TestObserver(unittest.TestCase):
         loss.backward()
     
     def test_clip_std_observer(self):
-        model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         extra_qconfig_dict = {

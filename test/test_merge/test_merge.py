@@ -22,7 +22,7 @@ class TestMergeBN(unittest.TestCase):
         }
         prepare_custom_config_dict = {'extra_qconfig_dict': extra_qconfig_dict}
         # First model
-        model_1 = torch.hub.load('pytorch/vision', 'mobilenet_v2', pretrained=False)
+        model_1 = torch.hub.load('pytorch/vision:v0.11.0', 'mobilenet_v2', pretrained=False)
         model_1 = prepare_by_platform(model_1, BackendType.Tensorrt, prepare_custom_config_dict)
         model_1.train()
         enable_calibration(model_1)

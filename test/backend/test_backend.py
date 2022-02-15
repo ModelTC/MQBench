@@ -8,7 +8,7 @@ from mqbench.utils.state import enable_calibration, enable_quantization
 
 class TestQuantizeBackend(unittest.TestCase):
     def test_quantize_acedemic(self):
-        model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         extra_qconfig_dict = {
@@ -40,7 +40,7 @@ class TestQuantizeBackend(unittest.TestCase):
         convert_deploy(model_prepared, BackendType.Academic, {'x': [1, 3, 224, 224]}, model_name='resnet18_acedemic_4bit.onnx')
 
     def test_quantize_tensorrt(self):
-        model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         model_prepared = prepare_by_platform(model_to_quantize, BackendType.Tensorrt)
@@ -53,7 +53,7 @@ class TestQuantizeBackend(unittest.TestCase):
         convert_deploy(model_prepared, BackendType.Tensorrt, {'x': [1, 3, 224, 224]}, model_name='resnet18_trt.onnx')
 
     def test_quantize_nnie(self):
-        model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         model_prepared = prepare_by_platform(model_to_quantize, BackendType.NNIE)
@@ -66,7 +66,7 @@ class TestQuantizeBackend(unittest.TestCase):
         convert_deploy(model_prepared, BackendType.NNIE, {'x': [1, 3, 224, 224]}, model_name='resnet18_nnie.onnx')
 
     def test_quantize_snpe(self):
-        model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         model_prepared = prepare_by_platform(model_to_quantize, BackendType.SNPE)
@@ -79,7 +79,7 @@ class TestQuantizeBackend(unittest.TestCase):
         convert_deploy(model_prepared, BackendType.SNPE, {'x': [1, 3, 224, 224]}, model_name='resnet18_snpe.onnx')
 
     def test_quantize_pplw8a16(self):
-        model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         model_prepared = prepare_by_platform(model_to_quantize, BackendType.PPLW8A16)
@@ -101,7 +101,7 @@ class TestQuantizeBackend(unittest.TestCase):
             USE_XIR = False
 
         if USE_XIR:
-            model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
+            model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
             dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
             model_to_quantize.train()
             model_prepared = prepare_by_platform(model_to_quantize, BackendType.Vitis)
@@ -116,7 +116,7 @@ class TestQuantizeBackend(unittest.TestCase):
             pass 
             
     def test_quantize_onnxqnn(self):
-        model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         model_prepared = prepare_by_platform(model_to_quantize, BackendType.ONNX_QNN)
@@ -130,7 +130,7 @@ class TestQuantizeBackend(unittest.TestCase):
 
     def test_quantize_ppl_cuda(self):
         import numpy as np
-        model_to_quantize = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
+        model_to_quantize = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         model_prepared = prepare_by_platform(model_to_quantize, BackendType.PPLCUDA)

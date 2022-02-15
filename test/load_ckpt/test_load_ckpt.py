@@ -17,7 +17,7 @@ class TestLoadCheckPoint(unittest.TestCase):
         }
         prepare_custom_config_dict = {'extra_qconfig_dict': extra_qconfig_dict}
         # First model
-        model_1 = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
+        model_1 = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
         model_1 = prepare_by_platform(model_1, BackendType.Tensorrt, prepare_custom_config_dict)
         model_1.train()
         enable_calibration(model_1)
@@ -27,7 +27,7 @@ class TestLoadCheckPoint(unittest.TestCase):
         prev_output = model_1(dummy_input)
         torch.save(model_1.state_dict(), 'saved_model.ckpt')
         # Second model
-        model_2 = torch.hub.load('pytorch/vision', 'resnet18', pretrained=False)
+        model_2 = torch.hub.load('pytorch/vision:v0.11.0', 'resnet18', pretrained=False)
         model_2 = prepare_by_platform(model_2, BackendType.Tensorrt, prepare_custom_config_dict)
         state_dict = torch.load('saved_model.ckpt')
         model_2.load_state_dict(state_dict)
