@@ -33,7 +33,6 @@ from mqbench.utils.logger import logger
 from mqbench.utils.registry import DEFAULT_MODEL_QUANTIZER
 from mqbench.scheme import QuantizeScheme
 
-
 class BackendType(Enum):
     Academic = 'Academic'
     Tensorrt = 'Tensorrt'
@@ -43,6 +42,7 @@ class BackendType(Enum):
     Vitis = 'Vitis'
     ONNX_QNN = 'ONNX_QNN'
     PPLCUDA = 'PPLCUDA'
+    OPENVINO = 'OPENVINO'
 
 
 ParamsTable = {
@@ -56,6 +56,13 @@ ParamsTable = {
                                default_weight_observer=MinMaxObserver,
                                default_act_observer=EMAMinMaxObserver),
     BackendType.Tensorrt: dict(qtype='affine',     # noqa: E241
+                               w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8),
+                               a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
+                               default_weight_quantize=LearnableFakeQuantize,
+                               default_act_quantize=LearnableFakeQuantize,
+                               default_weight_observer=MinMaxObserver,
+                               default_act_observer=EMAMinMaxObserver),
+    BackendType.OPENVINO: dict(qtype='affine',     # noqa: E241
                                w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8),
                                a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
                                default_weight_quantize=LearnableFakeQuantize,

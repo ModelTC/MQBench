@@ -28,6 +28,7 @@ class ObserverBase(_ObserverBase):
     def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine,
                  reduce_range=False, quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False,
                  factory_kwargs=None):
+        self.not_calc_quant_min_max = factory_kwargs.pop('not_calc_quant_min_max', False) if isinstance(factory_kwargs, dict) else False
         super(ObserverBase, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max)
         self.ch_axis = ch_axis
         self.pot_scale = pot_scale
@@ -93,6 +94,8 @@ class ObserverBase(_ObserverBase):
                 quant_min, quant_max = 0, qrange_len - 1
             if self.reduce_range:
                 quant_min, quant_max = quant_min // 2, quant_max // 2
+            if self.not_calc_quant_min_max:
+                quant_min, quant_max = self.quant_min, self.quant_max
         else:
             # Fallback onto default 8-bit qmin and qmax calculation if dynamic range is not used.
             if self.dtype == torch.qint8:

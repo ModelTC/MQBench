@@ -109,7 +109,8 @@ class ONNXGraph(object):
             self.remove_node_purely(node)
         self.topologize_graph()
         # Delete redundant initializers.
-        for initializer_name in self.initializer:
+        initializers = copy.deepcopy(self.initializer)
+        for initializer_name in initializers:
             if initializer_name not in self.input_map:
                 self.del_initializer(initializer_name)
         # Make node in topology order.
