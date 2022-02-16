@@ -6,3 +6,4 @@ from .nnie import NNIEFakeQuantize
 from .pact import PACTFakeQuantize
 from .tqt import TqtFakeQuantize
 from .adaround_quantizer import AdaRoundFakeQuantize
+from .qdrop_quantizer import QDropFakeQuantize

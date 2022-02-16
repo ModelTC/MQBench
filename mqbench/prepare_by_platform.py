@@ -16,6 +16,7 @@ from mqbench.fake_quantize import (
     PACTFakeQuantize,
     TqtFakeQuantize,
     AdaRoundFakeQuantize,
+    QDropFakeQuantize,
 )
 from mqbench.observer import (
     ClipStdObserver,
@@ -126,7 +127,8 @@ FakeQuantizeDict = {
     'DSQFakeQuantize':       DSQFakeQuantize,        # DSQ                          # noqa: E241
     'PACTFakeQuantize':      PACTFakeQuantize,       # PACT                         # noqa: E241
     'TqtFakeQuantize':       TqtFakeQuantize,        # TQT                          # noqa: E241
-    'AdaRoundFakeQuantize':  AdaRoundFakeQuantize                                   # noqa: E241
+    'AdaRoundFakeQuantize':  AdaRoundFakeQuantize,   # AdaRound                     # noqa: E241
+    'QDropFakeQuantize':     QDropFakeQuantize,      # BRECQ & QDrop                # noqa: E241
 }
 
 
@@ -196,6 +198,17 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
     if deploy_backend == BackendType.Academic:
         w_qscheme = QuantizeScheme(**extra_qparams['w_qscheme'])
         a_qscheme = QuantizeScheme(**extra_qparams['a_qscheme'])
+    elif deploy_backend == BackendType.Tensorrt:
+        w_qscheme = extra_qparams.get('w_qscheme', None)
+        if w_qscheme is None:
+            w_qscheme = backend_params['w_qscheme']
+        else:
+            w_qscheme = QuantizeScheme(**w_qscheme)
+        a_qscheme = extra_qparams.get('a_qscheme', None)
+        if a_qscheme is None:
+            a_qscheme = backend_params['a_qscheme']
+        else:
+            a_qscheme = QuantizeScheme(**a_qscheme)
     else:
         w_qscheme = backend_params['w_qscheme']
         a_qscheme = backend_params['a_qscheme']
@@ -257,7 +270,7 @@ class CustomedTracer(Tracer):
                 submodule ``bar``, which contains submodule ``baz``, that module will
                 appear with the qualified name ``foo.bar.baz`` here.
         """
-        if self.customed_leaf_module and isinstance(m, customed_leaf_module):
+        if self.customed_leaf_module and isinstance(m, self.customed_leaf_module):
             return True
         return m.__module__.startswith('torch.nn') and not isinstance(m, torch.nn.Sequential)
 
@@ -305,8 +318,8 @@ def prepare_by_platform(
                 preserve_attr_dict[submodule_name][attr] = getattr(cur_module, attr)
     # Symbolic trace
     concrete_args = prepare_custom_config_dict.get('concrete_args', None)
-    customed_leaf_module = prepare_custom_config_dict.get('leaf_module', {})
-    tracer = CustomedTracer(customed_leaf_module=customed_leaf_module)
+    customed_leaf_module = prepare_custom_config_dict.get('leaf_module', [])
+    tracer = CustomedTracer(customed_leaf_module=tuple(customed_leaf_module))
     graph = tracer.trace(model, concrete_args)
     name = model.__class__.__name__ if isinstance(model, torch.nn.Module) else model.__name__
     graph_module = GraphModule(tracer.root, graph, name)

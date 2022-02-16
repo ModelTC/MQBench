@@ -5,4 +5,4 @@ How to conduct PTQ
    :titlesonly:
 
    Naive PTQ <PTQ/naive.rst>
-   AdaRound <PTQ/adaround.rst>
+   Advanced PTQ <PTQ/advanced.rst>

@@ -40,6 +40,7 @@ def convert_qnniqat_linearbn(model, fused_node):
     setattr(modules[linear_parent_name], linear_name, fused_linear)
 
 
+@register_convert_function(qnniqat.ConvFreezebn2d)
 @register_convert_function(nniqat.ConvBn2d)
 def convert_nniqat_convbn(model, fused_node):
     modules = dict(model.named_modules())
@@ -61,6 +62,7 @@ def convert_nniqat_convbn(model, fused_node):
     setattr(modules[conv_parent_name], conv_name, fused_conv)
 
 
+@register_convert_function(qnniqat.ConvFreezebnReLU2d)
 @register_convert_function(nniqat.ConvBnReLU2d)
 def convert_nniqat_convbnrelu(model, fused_node):
     convert_nniqat_convbn(model, fused_node)

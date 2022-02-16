@@ -30,14 +30,40 @@ Generally, we follow the `PyTorch official example <https://github.com/pytorch/e
 | AdaRound      | EMAMSE        | Academic | 4    | 8    | 70.35    | 76.87    | 71.82           | 72.32       | 73.58       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
 
-- Backend: TensorRT
 
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| W_calibration | A_calibration | Backend  | wbit | abit | resnet18 | resnet50 | mobilenetv2_1.0 | regnetx600m | regnetx800m |
+| W_calibration | A_calibration | Backend  | wbit | abit | resnet18 | resnet50 | mobilenetv2_1.0 | regnetx600m | regnetx800m |   
 +===============+===============+==========+======+======+==========+==========+=================+=============+=============+
-| None          | None          | TensorRT | 32   | 32   | 70.63    | 77.94    | 72.68           | 73.60       | 74.83       |
+| None          | None          | Academic | 32   | 32   | 71.06    | 77.00    | 72.68           | 73.60       | 74.83       |     
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| MinMax        | EMAMinMax     | TensorRT | 8    | 8    | 70.33    | 76.72    | 72.50           | 73.28       | 74.75       |
+| AdaRound      | EMAMSE        | Academic | 4    | 4    | 68.67    | 74.21    | 65.11           | 70.24       | 71.54       |    
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| MSE           | EMAMSE        | TensorRT | 8    | 8    | 70.55    | 77.79    | 72.56           | 73.41       | 74.70       |
+| BRECQ         | EMAMSE        | Academic | 4    | 4    | 68.52    | 74.47    | 66.90           | 70.30       | 72.04       |     
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
+| QDrop         | EMAMSE        | Academic | 4    | 4    | 68.84    | 74.97    | 67.60           | 70.85       | 72.62       |    
++---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
+| AdaRound      | EMAMSE        | Academic | 2    | 4    | 62.31    | 65.23    | 34.14           | 57.14       | 58.33       |     
++---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
+| BRECQ         | EMAMSE        | Academic | 2    | 4    | 63.56    | 68.64    | 49.18           | 62.36       | 64.53       |     
++---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
+| QDrop         | EMAMSE        | Academic | 2    | 4    | 64.49    | 69.30    | 51.37           | 63.51       | 65.84       |     
++---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
+| AdaRound      | EMAMSE        | Academic | 3    | 3    | 64.18    | 66.76    | 28.41           | 59.57       | 61.45       |    
++---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
+| BRECQ         | EMAMSE        | Academic | 3    | 3    | 64.24    | 70.09    | 48.65           | 62.83       | 65.49       |   
++---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
+| QDrop         | EMAMSE        | Academic | 3    | 3    | 65.42    | 70.81    | 53.09           | 64.78       | 67.45       |
++---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
+
+.. note::
+  Although AdaRound and BRECQ first learn the weight rounding with FP32 activation then determine the quantization parameters,
+  we find let weight face activation quantization behaves better,
+  extremely for ultra-low bit as proposed in QDrop.
+  Therefore, here we take the same training strategy as QDrop for fair comparisons among these three methods.
+  Hyperparameters are also kept the same except that AdaRound uses 10000 iters to do layer reconstruction 
+  and BRECQ, QDrop use 20000 iters for block reconstruction.
+
+.. note::
+  About block partition in MobileNetV2 in BRECQ and QDrop, we achieve it somewhere different with their original paper
+  for the sake of more general and automatic partition way.
+

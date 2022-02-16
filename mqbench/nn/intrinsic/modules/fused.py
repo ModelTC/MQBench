@@ -1,7 +1,7 @@
 
 from torch.nn.intrinsic import _FusedModule
 from torch.nn import Linear, BatchNorm1d, BatchNorm2d, ReLU, ConvTranspose2d, Conv2d
-
+from mqbench.nn.modules import FrozenBatchNorm2d
 
 class LinearBn1d(_FusedModule):
     r"""This is a sequential container which calls the Linear and Batch Norm 1d modules.
@@ -56,3 +56,18 @@ class ConvReLU2d(_FusedModule):
             'Incorrect types for input modules{}{}'.format(
                 type(conv), type(relu))
         super().__init__(conv, relu)
+
+
+class ConvFreezebn2d(_FusedModule):
+    def __init__(self, conv, bn):
+        assert type(conv) == Conv2d and type(bn) == FrozenBatchNorm2d, \
+            'Incorrect types for input modules{}{}'.format(
+                type(conv), type(bn))
+        super().__init__(conv, bn)
+
+class ConvFreezebnReLU2d(_FusedModule):
+    def __init__(self, conv, bn, relu):
+        assert type(conv) == Conv2d and type(bn) == FrozenBatchNorm2d and type(relu) == ReLU, \
+            'Incorrect types for input modules{}{}{}'.format(
+                type(conv), type(bn), type(relu))
+        super().__init__(conv, bn, relu)

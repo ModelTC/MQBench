@@ -48,10 +48,12 @@ class ONNXGraph(object):
                 data_type = TensorProto.FLOAT
             if value_tensor.dtype == np.uint8:
                 data_type = TensorProto.UINT8
-            initializer = onnx.helper.make_tensor(name=initializer_name, 
-                                                  data_type=data_type, 
-                                                  dims=[], 
-                                                  vals=value_tensor, 
+            if value_tensor.dtype == np.int8:
+                data_type = TensorProto.INT8
+            initializer = onnx.helper.make_tensor(name=initializer_name,
+                                                  data_type=data_type,
+                                                  dims=[] if value_tensor.size == 1 else list(value_tensor.shape),
+                                                  vals=value_tensor,
                                                   raw=False)
         initializer.name = initializer_name
         if idx is not None:

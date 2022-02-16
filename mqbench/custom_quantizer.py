@@ -31,7 +31,6 @@ from torch.quantization.quantize_fx import (
     _fuse_fx
 )
 
-import mqbench
 import mqbench.nn as qnn
 import mqbench.nn.intrinsic as qnni 
 import mqbench.nn.intrinsic.qat as qnniqat
@@ -60,6 +59,7 @@ class ModelQuantizer(object):
         self.additional_fuser_method_mapping = extra_fuse_dict.get('additional_fuser_method_mapping', {})
         self.additional_fusion_pattern = extra_fuse_dict.get('additional_fusion_pattern', {})
         self.additional_qat_module_mapping = extra_fuse_dict.get('additional_qat_module_mapping', {})
+        self.additional_node_name = extra_quantizer_dict.get('additional_node_name', [])
         self.exclude_module_name = extra_quantizer_dict.get('exclude_module_name', [])
         self.exclude_function_type = extra_quantizer_dict.get('exclude_function_type', [])
         self.exclude_node_name = extra_quantizer_dict.get('exclude_node_name', [])
@@ -222,15 +222,15 @@ class ModelQuantizer(object):
         modules = dict(model.named_modules())
         node_need_to_quantize_output = []
         for node in nodes:
-            if (node.op == "call_module" and node.target in self.exclude_module_name) or \
+            if ((node.op == "call_module" and node.target in self.exclude_module_name) or
                 ((node.op == 'call_function' or node.op == 'call_method') and
-                 node.target in self.exclude_function_type) or \
-                    node.name in self.exclude_node_name:
+                 node.target in self.exclude_function_type) or
+                    node.name in self.exclude_node_name) and node.name not in self.additional_node_name:
                 logger.info("Exclude skip: {}".format(node.name))
                 continue
             if (node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_input)) or \
                 ((node.op == 'call_function' or node.op == 'call_method') and
-                    node.target in self.function_type_to_quant_input):
+                    node.target in self.function_type_to_quant_input) or node.name in self.additional_node_name:
                 input_node_list = self._flatten_args(node.args)
                 for _node in input_node_list:
                     if isinstance(_node, torch.fx.node.Node):
@@ -262,7 +262,10 @@ class ModelQuantizer(object):
             if not isinstance(mod, _FusedModule):
                 self._convert(mod, mapping, True, new_scope)
             reassign[name] = swap_module(mod, mapping, {})
-
+            if isinstance(mod, torch.nn.ConvTranspose2d):
+                if hasattr(reassign[name], "weight_fake_quant") and reassign[name].weight_fake_quant.ch_axis != -1:
+                    reassign[name].weight_fake_quant.ch_axis = 1
+                    reassign[name].weight_fake_quant.activation_post_process.ch_axis = 1
         for key, value in reassign.items():
             module._modules[key] = value
 
@@ -385,14 +388,14 @@ class TRTModelQuantizer(ModelQuantizer):
         modules = dict(model.named_modules())
         node_need_to_quantize_output = []
         for node in nodes:
-            if (node.op == "call_module" and node.target in self.exclude_module_name) or \
+            if ((node.op == "call_module" and node.target in self.exclude_module_name) or
                 ((node.op == 'call_function' or node.op == 'call_method') and
-                 node.target in self.exclude_function_type) or \
-                    node.name in self.exclude_node_name:
+                 node.target in self.exclude_function_type) or
+                    node.name in self.exclude_node_name) and node.name not in self.additional_node_name:
                 continue
             if (node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_input)) or \
                 ((node.op == 'call_function' or node.op == 'call_method') and
-                    node.target in self.function_type_to_quant_input):
+                    node.target in self.function_type_to_quant_input) or node.name in self.additional_node_name:
                 # Add will be merged with previous conv.
                 input_node_list = list(filter(lambda x: isinstance(x, torch.fx.node.Node),
                                               self._flatten_args(node.args)))
@@ -459,7 +462,7 @@ class TotalINTQuantizer(ModelQuantizer):
     def _find_act_quants(self, model: GraphModule) -> list:
         nodes = list(model.graph.nodes)
         modules = dict(model.named_modules())
-        node_need_to_quantize_output = super(). _find_act_quants(model)
+        node_need_to_quantize_output = super()._find_act_quants(model)
         for node in nodes:
             if (node.op == "call_module" and node.target in self.exclude_module_name) or \
                 ((node.op == 'call_function' or node.op == 'call_method') and
@@ -594,7 +597,7 @@ class TVMQuantizer(ModelQuantizer):
     def _find_act_quants(self, model: GraphModule) -> (set, set):
         nodes = list(model.graph.nodes)
         modules = dict(model.named_modules())
-        node_need_to_quantize_output = super(). _find_act_quants(model)
+        node_need_to_quantize_output = super()._find_act_quants(model)
         for node in nodes:
             if (node.op == "call_module" and node.target in self.exclude_module_name) or \
                 ((node.op == 'call_function' or node.op == 'call_method') and
@@ -620,7 +623,7 @@ class TVMQuantizer(ModelQuantizer):
         del(all_mappings[torch.nn.modules.linear.Linear])
         del(all_mappings[torch.nn.modules.linear._LinearWithBias])
         del(all_mappings[torch.nn.intrinsic.modules.fused.LinearReLU])
-        del(all_mappings[mqbench.nn.intrinsic.modules.fused.LinearBn1d])
+        del(all_mappings[qnni.modules.fused.LinearBn1d])
         root = self._convert(root, all_mappings, inplace=True)
         return root
 

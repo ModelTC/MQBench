@@ -1,5 +1,9 @@
-AdaRound
+Advanced PTQ
 ========
+This part, we introduce some advanced post-training quantization methods including AdaRound, BRECQ and QDrop.
+Fair experimental comparisons can be found in Benchmark.
+
+**Adaround**
 
 `AdaRound <https://arxiv.org/pdf/2004.10568.pdf>`_ aims to find the global optimal strategy of rounding the quantized values. In common sense, rounding-to-nearest is optimal for each individual value, but through threoretical analysis on the quantization loss, it's not the case for the entire network or the whole layer. The second order term in the difference contains cross term of the round error, illustrated in a layer of two weights:
 
@@ -63,3 +67,27 @@ where :math:`h(\mathbf{V}_{i,j})=clip(\sigma(\mathbf{V}_{i,j})(\zeta-\gamma)+\ga
 
     # deploy model, remove fake quantize nodes and dump quantization params like clip ranges.
     convert_deploy(model.eval(), BackendType.Tensorrt, input_shape_dict={'data': [10, 3, 224, 224]})
+
+
+**BRECQ**
+
+Unlike AdaRound, which learn to reconstruct the output and tune the weight layer by layer,
+BRECQ discusses different granularity of output reconstruction including layer, block, stage and net.
+Combined with experimental results and theoretical analysis, BRECQ recommends to learn weight rounding block by block,
+where a block is viewed as collection of layers.
+
+Here, we obey the following rules to determine a block:
+
+    1. A layer is a Conv or Linear module, BN and ReLU are attached to that layer. 
+
+    2. Residual connection should be in the block, such as BasicBlock in ResNet.
+
+    3. If there is no residual connection, singles layers should be combined unless there are 3 single layers or next layer meets condition 2.
+
+**QDrop**
+
+Based on BRECQ, QDrop first compares different orders of optimization procedure (weight and activation) and concludes that 
+first weight then activation behaves poorly especially at ultra-low bit. It recommends to let the weight face activation quantization
+such as learn the step size of activation and weight rounding together. However, it also points out that there are better ways to do
+activation quantization to find a good calibrated weight. Finally, they replace the activation quantization value by FP32 one randomly at netron level
+during reconstruction. And they use the probability 0.5 to drop activation quantization.
