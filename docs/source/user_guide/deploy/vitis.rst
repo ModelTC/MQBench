@@ -4,79 +4,64 @@ Vitis
 Introduction
 ^^^^^^^^^^^^
 
-'Xilinx Vitis <https://github.com/Xilinx/Vitis-AI/>`_ is a platform for high-performance deep learning inference on Xilinx FPGA device.
+`Xilinx Vitis <https://github.com/Xilinx/Vitis-AI/>`_ is a platform for high-performance deep learning inference on Xilinx FPGA device.
 
 .. _Vitis Quantization Scheme:
 
 **Quantization Scheme**
 
-8bit per-tensor power-of-two symmetric linear quantization.
+8bit per-tensor symmetric linear quantization with power of two scales.
+
+For weights/biases:
 
 .. math::
 
     \begin{equation}
-        q = \mathtt{clamp}(\lfloor x / s \rceil, lb, ub) * s
+        q = \mathtt{clamp}(\lfloor x * s \rceil, lb, ub)
+    \end{equation}
+
+For activations:
+
+.. math::
+
+    \begin{equation}
+        \begin{aligned}
+            q &= \mathtt{clamp}(\lceil x * s \rceil, lb, ub), \text{ where } x*s-\lfloor x*s\rfloor = 0.5 \text{ and } x < 0 \\
+            q &= \mathtt{clamp}(\lfloor x * s \rceil, lb, ub), \text{ else}.
+        \end{aligned}
     \end{equation}
 
 
-where :math:`s` is power-of-two scaling factor to quantize a number from floating range to integer range, :math:`lb` and :math:`ub` are bounds of integer range.
-For weights and activations, [lb, ub] = [-128, 127].
+where :math:`s` is scaling factor to quantize a number from floating range to integer range, :math:`lb` and :math:`ub` are bounds of integer range, and [lb, ub] = [-128, 127].
 
 Deploy on Vitis
 ^^^^^^^^^^^^^^^^^^
 
-**Requirements**:
-
-- Build Docker from /docker
-
 **Deployment**:
 
-We provide the example to deploy the quantized EOD model to Vitis.
+We provide the example to deploy the quantized `EOD <https://github.com/ModelTC/EOD>`_ model to Vitis, which is winner solution for the Low Power Computer Vision Challenge 2021 (`LPCV2021 <https://github.com/ModelTC/LPCV2021_Winner_Solution>`_).
 
-- First modify the configuration file, add quantization, taks yolox_tiny as an example, save new configuration file as "yolox_tiny_quant.yaml".
+- First quantize model in EOD.
     
     .. code-block:: shell
         :linenos:
+        python -m eod train -e --config configs/det/yolox/yolox_fpga_quant_vitis.yaml --nm 1 --ng 1 --launch pytorch 2>&1 | tee log_qat_mqbench
 
-        quant:
-  	  deploy_backend: vitis
-          cali_batch_size: 50
 
-- Second change optimizer and lr_scheduler.
+- Second export the quantized model to ONNX [mqbench_qmodel.onnx] and [mqbench_qmodel_deploy_model.onnx].
     
     .. code-block:: shell
         :linenos:
-   
-    	trainer: 
-   	  max_epoch: &max_epoch 5
-  	  save_freq: 1
-  	  test_freq: 1
-  	  optimizer:             
-            register_type: qat_weights
-            type: Adam
-            kwargs:
-              lr: 0.00000015625
-              weight_decay: 0.000
-          lr_scheduler:
-            type: MultiStepLR
-              kwargs:
-                milestones: [1,2]
-                gamma: 0.1
+        python -m eod quant_deploy --config configs/det/yolox/yolox_fpga_quant_vitis.yaml --ckpt [model_save_path] --input_shape [input_shape] 2>&1 | tee log.delpoy.txt
 
-- Third quantize model.
+- Third build Docker from `Dockerfile <https://github.com/ModelTC/MQBench/tree/main/docker>`_, convert ONNX to xmodel [mqbench_qmodel_deploy_model.onnx_int.xmodel].
 
     .. code-block:: shell
         :linenos:
+        python -m mq.dep.convert_xir -Q [mqbench_qmodel.onnx] -C [mqbench_qmodel_deploy_model.onnx] -N [model_name]
 
-	python -m eod train --config configs/det/yolox/yolox_tiny_quant.yaml --nm 1 --ng 1 --launch pytorch
-
-- Fourth use function deploy() in ./eod/runner/quantexport eport deployed model xmodel[mqbench_qmodel.xmodel].
+- Fourth compile xmodel to deployable model [mqbench_qmodel.xmodel].
 
     .. code-block:: shell
         :linenos:
-
-        from mqbench.convert_deploy import convert_deploy
-        deploy_backend = self.config['quant']['deploy_backend']
-        dummy_input = self.get_batch('train')
-        self.model.eval()
-        convert_deploy(self.model, self.backend_type[deploy_backend], dummy_input={'image': dummy_input['image']})
+        vai_c_xir -x [mqbench_qmodel_deploy_model.onnx_int.xmodel] -a [new_arch.json] -o [output_path] -n [model_name]
