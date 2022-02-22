@@ -1,7 +1,7 @@
 import math
 from functools import partial
 from typing import Tuple
-
+from copy import deepcopy
 import torch
 from torch.quantization.observer import _ObserverBase
 
@@ -28,8 +28,13 @@ class ObserverBase(_ObserverBase):
     def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine,
                  reduce_range=False, quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False,
                  factory_kwargs=None):
+        factory_kwargs = deepcopy(factory_kwargs)
         self.not_calc_quant_min_max = factory_kwargs.pop('not_calc_quant_min_max', False) if isinstance(factory_kwargs, dict) else False
         super(ObserverBase, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max)
+        # for compatibility with 1.10, prevent the value of self.quant_min,self.quant_max being modified
+        self.quant_min = quant_min
+        self.quant_max = quant_max
+        self.quant_min, self.quant_max = self._calculate_qmin_qmax()
         self.ch_axis = ch_axis
         self.pot_scale = pot_scale
         self.register_buffer("min_val", torch.tensor(float("inf")))
