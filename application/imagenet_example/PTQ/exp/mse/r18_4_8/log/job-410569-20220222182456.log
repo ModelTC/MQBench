@@ -1,0 +1,46 @@
+[MQBENCH] INFO: Quantize model Scheme: BackendType.Academic Mode: Training
+[MQBENCH] INFO: Weight Qconfig:
+    FakeQuantize: FixedFakeQuantize Params: {}
+    Oberver:      MSEObserver Params: Symmetric: False / Bitwidth: 4 / Per channel: True / Pot scale: False / Extra kwargs: {}
+[MQBENCH] INFO: Activation Qconfig:
+    FakeQuantize: FixedFakeQuantize Params: {}
+    Oberver:      EMAMSEObserver Params: Symmetric: False / Bitwidth: 8 / Per channel: False / Pot scale: False / Extra kwargs: {}
+[MQBENCH] INFO: Replace module to qat module.
+[MQBENCH] INFO: Set layer conv1 to 8 bit.
+[MQBENCH] INFO: Set layer fc to 8 bit.
+[MQBENCH] INFO: Set x post act quantize to 8 bit.
+[MQBENCH] INFO: Insert act quant x_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant maxpool_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant layer1_0_relu1_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant layer1_0_relu2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant layer1_1_relu1_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant layer1_1_relu2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant layer2_0_relu1_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant layer2_0_relu2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant layer2_1_relu1_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant layer2_1_relu2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant layer3_0_relu1_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant layer3_0_relu2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant layer3_1_relu1_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant layer3_1_relu2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant layer4_0_relu1_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant layer4_0_relu2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant layer4_1_relu1_post_act_fake_quantizer
+[MQBENCH] INFO: Set reshape_1 post act quantize to 8 bit.
+[MQBENCH] INFO: Insert act quant reshape_1_post_act_fake_quantizer
+begin load datset
+finish load datset
+begin calibration now!
+[MQBENCH] INFO: Enable observer and Disable quantize for act_fake_quant
+[MQBENCH] INFO: Enable observer and Disable quantize for weight_fake_quant
+begin quantization now!
+[MQBENCH] INFO: Disable observer and Enable quantize.
+Test: [  0/782]	Time  1.737 ( 1.737)	Acc@1  82.81 ( 82.81)	Acc@5  87.50 ( 87.50)
+Test: [100/782]	Time  0.508 ( 0.213)	Acc@1  85.94 ( 60.10)	Acc@5  95.31 ( 82.32)
+Test: [200/782]	Time  0.487 ( 0.198)	Acc@1  54.69 ( 60.24)	Acc@5  85.94 ( 84.27)
+Test: [300/782]	Time  0.731 ( 0.201)	Acc@1  70.31 ( 60.83)	Acc@5  92.19 ( 84.35)
+Test: [400/782]	Time  0.254 ( 0.197)	Acc@1  40.62 ( 58.62)	Acc@5  62.50 ( 82.33)
+Test: [500/782]	Time  0.203 ( 0.195)	Acc@1  42.19 ( 57.32)	Acc@5  56.25 ( 80.90)
+Test: [600/782]	Time  0.214 ( 0.194)	Acc@1  67.19 ( 56.18)	Acc@5  89.06 ( 79.90)
+Test: [700/782]	Time  0.048 ( 0.195)	Acc@1  42.19 ( 55.27)	Acc@5  64.06 ( 78.97)
+ * Acc@1 55.026 Acc@5 78.842
