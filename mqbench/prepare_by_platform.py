@@ -25,6 +25,7 @@ from mqbench.observer import (
     MinMaxObserver,
     EMAMinMaxObserver,
     EMAMinMaxFloorObserver,
+    ModeMinMaxFloorObserver,
     EMAQuantileObserver,
     MSEObserver,
     EMAMSEObserver,
@@ -90,7 +91,7 @@ ParamsTable = {
                                default_weight_quantize=TqtFakeQuantize,
                                default_act_quantize=TqtFakeQuantize,
                                default_weight_observer=MinMaxFloorObserver,
-                               default_act_observer=EMAMinMaxFloorObserver),
+                               default_act_observer=ModeMinMaxFloorObserver),
     BackendType.ONNX_QNN: dict(qtype='affine',     # noqa: E241
                                w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
                                a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),

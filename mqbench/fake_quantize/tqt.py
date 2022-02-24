@@ -88,6 +88,12 @@ class TqtFakeQuantize(QuantizeBase):
         self.mth = torch.tensor(3) if self.quant_type == 'param' else torch.tensor(2)
 
 def _fake_quantize_tqt_affine_training(x, scale, zero_point, quant_min, quant_max, mth):    
+    if scale < 2 ** -15:
+        max_scale = 0
+    else:
+        max_scale = 1 / scale
+        max_scale = torch.floor(max_scale.log2())
+    scale = 1 / (2 ** max_scale)
     if mth == 3:
         new_x = torch.clamp(scale_round(x / scale), quant_min, quant_max) * scale 
     elif mth == 2:
@@ -105,15 +111,40 @@ def scale_round(t):
 def scale_floor_ceil(t):
     return (torch.where((t < 0) & (t - t.floor() == 0.5), t.ceil(), t.round()) - t).detach() + t 
 
+def _t(x, t):
+    return torch.tensor(x).type_as(t)
 
 class FakeQuantizeTqtAffine(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, scale, zero_point, quant_min, quant_max, mth):
-        return _fake_quantize_tqt_affine_training(x, scale, zero_point, quant_min, quant_max, mth)
+        qx = _fake_quantize_tqt_affine_training(x, scale, zero_point, quant_min, quant_max, mth)
+        ctx.save_for_backward(x, scale, _t(quant_min, x), _t(quant_max, x))
+        return qx
 
     @staticmethod
     def backward(ctx, grad_outputs):
-        return grad_outputs, torch.ones(1).to(grad_outputs.device), None, None, None, None
+        x, s, qmin, qmax = ctx.saved_tensors 
+        scaled_x = x / s
+        rounded_scaled_x = torch.where(
+            (scaled_x < 0) & (scaled_x - torch.floor(scaled_x) == 0.5), 
+            torch.ceil(scaled_x), torch.round(scaled_x)
+        )
+
+        is_lt_min = rounded_scaled_x < qmin 
+        is_gt_max = rounded_scaled_x > qmax 
+        is_ge_min_and_le_max = ~is_lt_min & ~is_gt_max
+
+        grad_s = grad_outputs.clone()
+        grad_s = torch.where(is_ge_min_and_le_max, 
+                             grad_s * (rounded_scaled_x - scaled_x),
+                             grad_s)
+        grad_s = torch.where(is_lt_min, grad_s * qmin, grad_s)
+        grad_s = torch.where(is_gt_max, grad_s * qmax, grad_s)
+        grad_s = grad_s.sum().expand_as(s)
+
+        grad_x = grad_outputs.clone()
+        grad_x = torch.where(is_ge_min_and_le_max, grad_x, 0 * grad_x)
+        return grad_x.to(grad_outputs.device), grad_s.to(grad_outputs.device), None, None, None, None
 
     @staticmethod
     def symbolic(g, x, scale, zero_point, quant_min, quant_max, mth):

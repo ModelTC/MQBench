@@ -1,3 +1,5 @@
+import argparse
+
 import onnx
 import numpy as np
 
@@ -11,10 +13,8 @@ from nndct_shared.base import NNDCT_OP
 from nndct_shared.nndct_graph.base_tensor import Tensor
 from nndct_shared.utils import AddXopError
 from nndct_shared.compile.xgraph import XGraph
-from nndct_shared.compile.xop_creator import unsupported_xop, _Converter, _get_xir_attr_from_node
+from nndct_shared.compile.xop_creator import _Converter, _get_xir_attr_from_node, _pack 
 from pytorch_nndct.parse.op_dispatcher import OpCreator
-
-from mqbench.utils.logger import logger
 
 class ONNX_OP(object):
     CONV2d = 'Conv'
@@ -25,6 +25,8 @@ class ONNX_OP(object):
     ADPTIVEAVGPOOL2D = 'GlobalAveragePool'
     FLATTEN = 'Flatten'
     INPUT = 'Input'
+    RESIZE = 'Resize'
+    CONCAT = 'Concat'
 
 
 class ONNX_PARAM(object):
@@ -43,7 +45,9 @@ ONNX2NNDCT_CONVERTOR = {
     ONNX_OP.GEMM: NNDCT_OP.DENSE,
     ONNX_OP.ADPTIVEAVGPOOL2D: NNDCT_OP.ADAPTIVEAVGPOOL2D,
     ONNX_OP.FLATTEN: NNDCT_OP.FLATTEN,
-    ONNX_OP.INPUT: NNDCT_OP.INPUT
+    ONNX_OP.INPUT: NNDCT_OP.INPUT,
+    ONNX_OP.RESIZE: NNDCT_OP.RESIZE,
+    ONNX_OP.CONCAT: NNDCT_OP.CONCAT,
 }
 
 perchannel_fakequantizer = [
@@ -72,7 +76,6 @@ FakeNode.__new__.__defaults__ = (None, ) * len(_filed)
 
 
 def data_onnx_op(xgraph: XGraph, node, quant_config):
-    # create the input op
     shape = node.out_tensors_shape
 
     out_tensor = np.zeros(shape, dtype=np.float32)
@@ -87,7 +90,6 @@ def data_onnx_op(xgraph: XGraph, node, quant_config):
 
 
 def onnx_to_xir(onnx_op_type):
-    # wrapper for normal op creation
     return partial(default_onnx_to_xop, onnx_op_type)
 
 
@@ -99,7 +101,8 @@ def default_onnx_to_xop(onnx_op_type, xgraph, node, quant_config):
         for param_name, param_tensor in node.params:
             param = xgraph.get_op_by_name(param_name)
             head = param_name.split('.')[-1].lower()[0]
-            input_ops['weights' if head == 'w' else 'bias'] = [param]
+            if param:
+                input_ops['weights' if head == 'w' else 'bias'] = [param]
 
     input_list = []
     for input_name in node.in_tensors:
@@ -119,6 +122,42 @@ def default_onnx_to_xop(onnx_op_type, xgraph, node, quant_config):
                                   quant_config,
                                   attrs=attrs,
                                   input_ops=input_ops)
+
+
+
+def resize(xgraph, node, quant_config):
+    attrs: Dict[str, Any] = {}
+    attrs["scale"] = node.attrs['scale']
+    attrs["align_corners"] = node.attrs['align_corners']
+    attrs["half_pixel_centers"] = node.attrs['half_pixel_centers']
+    attrs["mode"] = node.attrs['mode']
+    attrs["mode"] = {'nearest': "NEAREST"}.get(attrs["mode"].s.decode())
+    size = node.attrs['size']
+    if size[0] == 0 and size[1] == 0:
+        input_ops = {}
+        input_list = []
+        for input in node.in_tensors:
+            input_op = xgraph.get_op_by_name(input)
+            input_list.append(input_op)
+        input_ops["input"] = xgraph.create_input_fix_ops(input_list, node.name, quant_config)
+        xgraph.create_fixed_normal_op(
+            node.name, "resize", quant_config, attrs=attrs, input_ops=input_ops)
+    else:
+        sub_pack_op, pack_list = _pack(xgraph, node, "size", size, quant_config)
+        input_ops = {}
+        input_ops["size"] = [sub_pack_op]
+        input_list = [xgraph.get_op_by_name(node.in_tensors[0])]
+        input_ops["input"] = input_list
+        input_ops["input"] = [
+            op for op in input_ops["input"]
+            if op and op.get_name() not in [i.get_name() for i in pack_list]
+        ]
+        input_ops["input"] = xgraph.create_input_fix_ops(input_ops["input"], node.name, quant_config)
+        xgraph.create_fixed_normal_op(
+            node.out_name, "resize", quant_config, attrs=attrs, input_ops=input_ops)
+        node_need_to_be_clear = node.attrs['to_remove'] 
+        for n in node_need_to_be_clear:
+            xgraph.graph.remove_op(xgraph.get_op_by_name(n))   
 
 
 def avgpool(xgraph: XGraph, node, quant_config):
@@ -142,10 +181,6 @@ def avgpool(xgraph: XGraph, node, quant_config):
 
     if needScale:
         attrs = node.attrs
-        # attrs: Dict[str, Any] = {}
-        # for attr_name, attr_value in node.op.attrs.items():
-        #   attrs[attr_name.value] = _Converter.to_xir_attr_value(attr_name.value, attr_value.value)
-
         input_ops = {}
         input_ops["input"] = [xgraph.get_op_by_name(node.in_tensors[0])]
         input_ops["input"] = xgraph.create_input_fix_ops(
@@ -191,11 +226,6 @@ def flatten(xgraph: XGraph, node, quant_config):
                                       attrs=attrs,
                                       input_ops=input_ops)
 
-        # attrs = None
-        # if len(node.op.attrs) > 0:
-        #   attrs: Dict[str, Any] = {}
-        #   for attr_name, attr_value in node.op.attrs.items():
-        #     attrs[attr_name.value] = attr_value.value
         attrs = node.attrs
 
         input_ops = {}
@@ -250,7 +280,9 @@ ONNX2XIR_CONVERTOR = {
     ONNX_OP.RELU: onnx_to_xir('relu'),
     ONNX_OP.ADD: onnx_to_xir('add'),
     ONNX_OP.GEMM: dense,
-    ONNX_OP.FLATTEN: flatten
+    ONNX_OP.FLATTEN: flatten,
+    ONNX_OP.RESIZE: resize,
+    ONNX_OP.CONCAT: onnx_to_xir('concat')
 }
 
 
@@ -344,7 +376,7 @@ class XIR_process(object):
                     op=node_op,
                     params=params,
                     in_tensors=[
-                        input_weight_bias[k] for k in input_weight_bias.keys()
+                        input_weight_bias[k] for k in input_weight_bias.keys() if input_weight_bias[k]
                     ],
                     attrs=node_attr,
                     out_name=node.output[0])
@@ -390,7 +422,6 @@ class XIR_process(object):
 
                 new_node = FakeNode(
                     name=node.name,
-                    shape=self.name2shape[input_weight_bias['input']],
                     op_type=node.op_type,
                     out_tensors_shape=self.name2shape[node.name],
                     op=node_op,
@@ -437,7 +468,7 @@ class XIR_process(object):
                 inputs = self.get_unquant_inputs(node)
                 node_op = self.get_xop_of_flatten(node)
                 inputs_dim = [len(self.name2shape[i]) for i in inputs]
-                # IT IS A BUG OF THE XIR COMPILER
+                # IT IS A BUG OF THE XIR COMPILER for vitis-ai 1.4.1.978
                 # inputs_layout = [
                 #     Tensor.Layout.NHWC
                 #     if self.name2shape[i][-1] > 1 else Tensor.Layout.NCHW
@@ -459,7 +490,60 @@ class XIR_process(object):
                                     attrs=attrs,
                                     out_name=node.output[0])
                 normal_nodes.append(new_node)
-
+            elif node.op_type == ONNX_OP.RESIZE:
+                node_op = self.get_xop_of_interpolate(node) 
+                inputs = self.get_unquant_inputs(node)
+                inputs_layout = [Tensor.Layout.NCHW]
+                size = numpy_helper.to_array(self.name2data[node.input[3]]) if len(node.input) == 4 else None 
+                scale = self.name2data[node.input[2]] if not size else None 
+                assert scale is None or (scale - scale.astype('int') == 0).all(), f'Only integer scales is supportted! The given scale is {scale}'
+                if not size:
+                    size = self.name2shape[node.name] 
+                    scale = np.array([1, 1]) 
+                attrs_dict = {} 
+                for a in node.attribute:
+                    attrs_dict[a.name] = a 
+                mode = attrs_dict['mode'] 
+                align_corners = True if attrs_dict['coordinate_transformation_mode'] == "align_corners" else False
+                half_pixel_centers = True if attrs_dict['coordinate_transformation_mode'] == 'pytorch_half_pixel' else False
+                if size and len(size) == 4:
+                    size = size[1:-1] 
+                attrs = {} 
+                attrs['scale'] = scale 
+                attrs['align_corners'] = align_corners 
+                attrs['half_pixel_centers'] = half_pixel_centers 
+                attrs['mode'] = mode 
+                attrs['size'] = size 
+                attrs['has_bound_params'] = False
+                if scale is not None:
+                    attrs['to_remove'] = [node.input[2]]
+                new_node = FakeNode(name=node.name,
+                                    op_type=node.op_type,
+                                    op=node_op,
+                                    in_tensors=inputs,
+                                    in_tensors_layout=inputs_layout,
+                                    out_tensors_shape=size,
+                                    attrs=attrs,
+                                    out_name=node.output[0])
+                normal_nodes.append(new_node)
+            elif node.op_type == ONNX_OP.CONCAT:
+                node_op = self.get_xop_of_concat(node)
+                inputs = self.get_unquant_inputs(node)
+                inputs_layout = [Tensor.Layout.NCHW]
+                size = self.name2shape[node.name] 
+                axis = node.attribute[0].i 
+                dim = axis
+                attrs = {'axis': dim}
+                attrs['has_bound_params'] = False
+                new_node = FakeNode(name=node.name,
+                                    op_type=node.op_type,
+                                    op=node_op,
+                                    in_tensors=inputs,
+                                    in_tensors_layout=inputs_layout,
+                                    out_tensors_shape=size,
+                                    attrs=attrs,
+                                    out_name=node.output[0])
+                normal_nodes.append(new_node)
         return normal_nodes
 
     def create_input_nodes_from_onnx_graph(self, onnx_graph, reshape=True):
@@ -477,19 +561,46 @@ class XIR_process(object):
             input_nodes.append(node)
         return input_nodes
 
-        # get attrs
-        # get param names
-        # get input names
-        # get
+    def get_xop_of_concat(self, node):
+        _n = namedtuple('_n', ['name', 'shape'])
+        inputs = self.get_unquant_inputs(node)
+        ts = [_n(i, self.name2shape[i]) for i in inputs]
+        axis = node.attribute[0].i 
+        dim = axis
+        return OpCreator(None).cat(ts, dim)
+
+    def get_xop_of_interpolate(self, node):
+        input = self.out2node[node.input[0]]
+        _n = namedtuple('_n', ['name', 'shape']) 
+        inputs = self.get_unquant_inputs(node)
+        input_node = Tensor(name=inputs[0], shape=self.name2shape[inputs[0]])
+        # self.graph._graph.node(get_full_name(self.graph.name, node.input[0])).out_tensors[0]
+        size = numpy_helper.to_array(node.input[3]) if len(node.input) == 4 else None 
+        scale_factor = self.name2data[node.input[2]].tolist() if not size else [1, 1]
+        if len(scale_factor) == 1:
+            scale_factor += scale_factor
+        elif len(scale_factor) == 4:
+            scale_factor = scale_factor[-2:]
+        if size and len(size) == 4:
+            size = size[1:-1]
+        attrs = node.attribute
+        attrs_dict = {} 
+        for a in attrs:
+            attrs_dict[a.name] = a 
+        mode = f"'{attrs_dict['mode'].s.decode()}'"
+        assert mode == "'nearest'", f'the interpolate {mode} is not supported' 
+        align_corners = True if attrs_dict['coordinate_transformation_mode'].s.decode() == "align_corners" else None 
+        recompute_scale_factor = None 
+        return OpCreator(None)._interpolate(input_node, size, scale_factor, mode, align_corners, recompute_scale_factor)
 
     def get_xop_of_conv2d(self, node):
-        pre_op = self.out2node[node.input[0]]
-        if pre_op.op_type in all_fakequantizer:
+        pre_op = self.out2node.get(node.input[0], None)
+        if pre_op and pre_op.op_type in all_fakequantizer:
             if pre_op.input[0] in self.out2node:
                 pre_op = self.out2node[pre_op.input[0]]
             elif pre_op.input[0] in self.input_nodes:
                 pre_op = FakeNode(name=pre_op.input[0])
-        input_shape = self.name2shape[pre_op.name]
+        input_shape = self.name2shape[pre_op.name] if pre_op else self.name2shape[node.input[0]]
         input = np.zeros(input_shape)
         weight = self.name2data[self.out2node[node.input[1]].input[0]]
         if len(node.input) >= 3:
@@ -548,7 +659,6 @@ class XIR_process(object):
         return OpCreator(None).flatten(inputs[0], start_axis, end_axis)
 
     def shape_patch(self, graph, graph_without_quant, reshape=True):
-        onnx.checker.check_model(graph_without_quant)
         inferred_model = onnx.shape_inference.infer_shapes(graph_without_quant)
         value_info = inferred_model.graph.value_info
         self.name2shape = {}
@@ -578,9 +688,9 @@ class XIR_process(object):
                 else:
                     input = pre_node.name
                     input = pre_node.output[0]
+                self.name2shape[input] = shape 
+                self.name2shape[self.out2node[input].name] = shape 
             self.name2shape[output_message.name] = shape
-            self.name2shape[input] = shape 
-            self.name2shape[self.out2node[input].name] = shape 
 
 
     def get_dim_from_tensor_shape_message(self, message):
@@ -593,7 +703,6 @@ class XIR_process(object):
                 inputs.append(input)
             elif input in self.out2node and not self.out2node[
                     input].op_type in all_fakequantizer:
-                # inputs.append(self.out2node[input].name)
                 inputs.append(self.out2node[input].output[0])
             elif input in self.out2node and not self.out2node[
                     input].op_type in output_fakequantizer and self.out2node[
@@ -611,6 +720,8 @@ class XIR_process(object):
                     else:
                         input = pre_node.name
                         input = pre_node.output[0]
+                inputs.append(input)
+            elif input in self.inp2node and input not in self.out2node:
                 inputs.append(input)
         return inputs
 
@@ -642,11 +753,12 @@ class XIR_process(object):
                 elif real_in in self.inp2node:
                     type = 'input'
                     if real_in in self.out2node:
-                        # not x
                         input = self.out2node[real_in].name
                         input = self.out2node[real_in].output[0]
                     else:
                         input = real_in
+            elif input in self.inp2node and input not in self.out2node:
+                type = 'input' 
 
             if type in [ONNX_PARAM.BIAS, ONNX_PARAM.WEIGHT, 'input']:
                 input_weight_and_bias[type] = input
@@ -685,18 +797,17 @@ class XIR_process(object):
             qmin = qparams['quant_min']
             qmax = qparams['quant_max']
         else:
-            logger.error(f'qmin and qmax are not found for <{node.name}>!')
+            print(f'qmin and qmax are not found for <{node.name}>!')
             raise ValueError('The name2data is corrputed.')
 
         if abs(zero_point - 0).all() < 1e-5:
             bit_width = np.log2(qmax - qmin + 1).astype(int)
             final_scale = int(np.floor(np.log2(1 / scale)))
         else:
-            logger.info(f'<{node.name}> is a asym quant node, which is not support by Vitis Backend')
+            print(f'<{node.name}> is a asym quant node, which is not support by Vitis Backend')
         return tensor_name, final_scale, bit_width
 
     def get_wbi_of_onnx_calib(self, graph, calib_graph):
-        # self.nodename2wbi = {}
         self.biasname2wi = {}
         for node in calib_graph.node:
             if node.op_type in [ONNX_OP.CONV2d, ONNX_OP.GEMM]:
@@ -707,10 +818,8 @@ class XIR_process(object):
                     self.biasname2wi[bias_fix] = [weight_pre_fix, input_pre_fix]
                 else: 
                     bias_fix = None 
-                # self.nodename2wbi[node.name] = [input_fix, weight_fix, bias_fix]
 
     def get_quant_config_of_onnx(self, graph, name):
-        # get the bias/weight
         qconfig = {}
 
         output_config = {}
@@ -723,6 +832,7 @@ class XIR_process(object):
         param_config = {}
         for param in graph.initializer:
             ptype = param.name[param.name.rfind('.') + 1:]
+            data_type = param.data_type
             if ptype in [ONNX_PARAM.WEIGHT
                          ] or (ptype in [ONNX_PARAM.BIAS]
                                and self.inp2node[param.name][0][0].op_type
@@ -738,8 +848,8 @@ class XIR_process(object):
             elif ptype in [ONNX_PARAM.ZEROPOINT, ONNX_PARAM.SCALE]:
                 continue
             else:
-                raise NotImplementedError(
-                    f'The param type {ptype} has not been implentmented.')
+                if param.name in self.inp2node:
+                    print(f'A data array named {param.name} with {numpy_helper.to_array(param)} has been used.')
 
         output_config = {}
         for node in graph.node:
@@ -766,6 +876,7 @@ class XIR_process(object):
         onnx_graph = onnx_graph_file.graph
         # create a xgraph like do_compile
         xgraph = XGraph(name if name else onnx_graph.name)
+        self.graph = xgraph
 
         # build the inter-node via the in/out infomation
         self.out2node, self.inp2node = update_inp2node_out2node(onnx_graph)
@@ -795,6 +906,8 @@ class XIR_process(object):
                     ONNX_PARAM.ZEROPOINT, ONNX_PARAM.SCALE
             ]:
                 return None
+            if name not in self.inp2node:
+                return None
             node = self.inp2node[name][0][0]
             if node.op_type in all_fakequantizer:
                 node = self.inp2node[node.output[0]][0][0]
@@ -815,7 +928,7 @@ class XIR_process(object):
         implemented_op += all_fakequantizer
 
 
-        logger.info('Essential data has been collected by the Vitis backend compiler.')
+        print('Essential data has been collected by the Vitis backend compiler.')
         for node in onnx_graph.initializer:
             op_type = get_op_of_initializer(node.name)
             if op_type is None:
@@ -825,7 +938,7 @@ class XIR_process(object):
                     NNDCT_OP.BATCH_NORM, NNDCT_OP.BATCH_NORM1D,
                     NNDCT_OP.BATCH_NORM3D
             ]:
-                logger.error('BN should have been merged in previous precess!')
+                print('BN should have been merged in previous precess!')
                 raise Exception()
             if xgraph.get_op_by_name(node.name):
                 continue
@@ -856,10 +969,10 @@ class XIR_process(object):
                 onnx_graph, reshape=reshape)
             for node in input_nodes:
                 try:
-                    logger.info(f'Trying to insert {node.name} into the Vitis Call-Graph.')
+                    print(f'Trying to insert {node.name}<{node.op_type}> into the Vitis Call-Graph.')
                     ONNX2XIR_CONVERTOR.get(node.op_type,
-                                           unsupported_xop)(xgraph, node,
-                                                            quant_config_info)
+                                           None)(xgraph, node,
+                                                 quant_config_info)
                 except Exception as e:
                     raise AddXopError(node.name, node.op_type, str(e))
             # before that need to insert input
@@ -869,21 +982,22 @@ class XIR_process(object):
                     continue
                 try:
                     ONNX2XIR_CONVERTOR.get(node.op_type,
-                                           unsupported_xop)(xgraph, node,
-                                                            quant_config_info)
+                                           None)(xgraph, node,
+                                                 quant_config_info)
                 except Exception as e:
                     raise AddXopError(node.name, node.op_type, str(e))
         else:
             raise AddXopError(unknown_op_types)
 
         return_ops = []
-        logger.info('Trying to append <Output Nodes> into the Vitis Call-Graph.')
+        print('Trying to append <Output Nodes> into the Vitis Call-Graph.')
         for out in onnx_graph.output:
-            pre_node = self.get_unquant_inputs(self.out2node[out.name])[0]
-            if xgraph.get_op_by_name(pre_node + '_fix'):
-                return_ops.append(pre_node + '_fix')
-            else:
-                return_ops.append(pre_node)
+            if out.name in self.out2node:
+                pre_node = self.get_unquant_inputs(self.out2node[out.name])[0]
+                if xgraph.get_op_by_name(pre_node + '_fix'):
+                    return_ops.append(pre_node + '_fix')
+                else:
+                    return_ops.append(pre_node)
 
         if return_ops:
             xgraph.graph.set_attr("return_ops", return_ops)
@@ -895,4 +1009,17 @@ class XIR_process(object):
                 name += '_int'
 
             xgraph.export_to_xmodel(name)
-            logger.info('Finished exporting the Vitis Xmodel.')
+            print('Finished exporting the Vitis Xmodel.')
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-Q", "--qmodel", help="onnx model with fake quantize nodes.", required=True)
+    parser.add_argument("-C", "--cmodel", help="onnx model without fake quantize nodes, or deploy model.", required=True)
+    parser.add_argument("-N", "--name", help="model name", required=True)
+    args = parser.parse_args()
+
+    xir_compiler = XIR_process()
+    qmodel = onnx.load(args.qmodel)
+    cmodel = onnx.load(args.cmodel)
+    xir_compiler.do_compile(qmodel, cmodel, args.name)
+    print('MQBench has converted the model into xmodel.')
