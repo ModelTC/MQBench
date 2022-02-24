@@ -314,8 +314,6 @@ class EMAMinMaxFloorObserver(ObserverBase):
         else:
             max_scale = 1 / scale
             max_scale = torch.floor(max_scale.log2())
-        max_scale = 1 / scale
-        max_scale = torch.floor(max_scale.log2())
         min_loss = torch.tensor([float('inf')])
         final_scale = max_scale
         max_scale = int(max_scale)
@@ -333,6 +331,78 @@ class EMAMinMaxFloorObserver(ObserverBase):
                 min_loss = loss
                 final_scale = s
         final_scale = min(final_scale, 12)
+        scale = scale.data * 0 + 1 / (2 ** final_scale)
+        zero_point = torch.zeros_like(zero_point)
+        if not is_symmetric_quant(self.qscheme):
+            if self.min_val >= 0.:
+                zero_point = self.quant_min - torch.round(self.min_val / scale)
+        sync_tensor(scale)
+        sync_tensor(zero_point)
+        return scale, zero_point
+
+    def set_quant_type(self, qtype):
+        self.quant_type = qtype
+
+class ModeMinMaxFloorObserver(ObserverBase):
+    """Mode scale.
+    """
+
+    def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine, reduce_range=False,
+                 quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False, ema_ratio=0.9,
+                 factory_kwargs=None):
+        super(ModeMinMaxFloorObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max, ch_axis, pot_scale, factory_kwargs)
+        self.ema_ratio = ema_ratio
+        self.quant_type = None
+        self.counter = [0] * 20
+
+    def forward(self, x_orig):
+        r"""Records the running minimum and maximum of ``x``."""
+        if x_orig.numel() == 0:
+            return x_orig
+        x = x_orig.to(self.min_val.dtype)
+        if self.ch_axis == -1:
+            min_val_cur, max_val_cur = torch._aminmax(x)
+        else:
+            logger.warn('The per-tensor observer does not support per-channel min-max!')
+            min_val_cur, max_val_cur = torch._aminmax(x)
+
+        self.min_val = min_val_cur
+        self.max_val = max_val_cur
+        self._x = x
+        return x
+
+    def calculate_qparams(self):
+        if self.quant_type is None:
+            raise ValueError('You should set the observer type before forward!')
+        else:
+            scale_range = 1 if self.quant_type == 'input' else 5
+            mth = 3 if self.quant_type == 'param' else 2
+        scale, zero_point = self._calculate_qparams(self.min_val, self.max_val)
+        scale.data = scale.data * 0 + max(self.min_val / self.quant_min, self.max_val / self.quant_max)
+        if scale < 2 ** -15:
+            max_scale = 0
+        else:
+            max_scale = 1 / scale
+            max_scale = torch.floor(max_scale.log2())
+        min_loss = torch.tensor([float('inf')])
+        final_scale = max_scale
+        max_scale = int(max_scale)
+        for s in range(max_scale, max_scale + scale_range):
+            _s = 1 / 2 ** s
+            if mth == 3:
+                new_x = _s * torch.clamp(torch.round(self._x / _s), self.quant_min, self.quant_max)
+            elif mth == 2:
+                new_x = torch.clamp(self._x / _s, self.quant_min, self.quant_max)
+                new_x = torch.where((new_x < 0) & (new_x - new_x.floor() == 0.5), new_x.ceil(), new_x.round())
+                new_x *= _s
+            loss = ((new_x - self._x)**2).sum()
+            min_loss = min_loss.to(loss.device)
+            if loss < min_loss:
+                min_loss = loss
+                final_scale = s
+        final_scale = min(final_scale, 12)
+        self.counter[final_scale + 7] += 1
+        final_scale = self.counter.index(max(self.counter)) - 7
         scale = scale.data * 0 + 1 / (2 ** final_scale)
         zero_point = torch.zeros_like(zero_point)
         if not is_symmetric_quant(self.qscheme):

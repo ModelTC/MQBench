@@ -1,4 +1,3 @@
-
 from torch.nn.intrinsic import _FusedModule
 from torch.nn import Linear, BatchNorm1d, BatchNorm2d, ReLU, ConvTranspose2d, Conv2d
 from mqbench.nn.modules import FrozenBatchNorm2d

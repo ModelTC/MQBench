@@ -7,3 +7,4 @@ Quantization Hardware
    nnie
    tensorrt
    snpe
+   vitis

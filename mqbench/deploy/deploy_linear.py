@@ -17,13 +17,6 @@ from mqbench.deploy.common import (
 )
 
 
-try:
-    from .convert_xir import XIR_process
-    USE_XIR = True
-except (ModuleNotFoundError, AssertionError, ImportError):
-    USE_XIR = False
-
-
 PERCHANNEL_FAKEQUANTIZER = ['FakeQuantizeLearnablePerchannelAffine', 
                             'FixedPerChannelAffine',
                             'FakeQuantizeDSQPerchannel']
@@ -147,7 +140,6 @@ class LinearQuantizer_process(object):
         named_initializer = prepare_initializer(graph)
 
         preprocess = OnnxPreprocess()
-        preprocess.replace_resize_op_with_upsample(graph, out2node)
         preprocess.remove_fake_pad_op(graph, name2data, inp2node, out2node)
         out2node, inp2node = update_inp2node_out2node(graph)
 
@@ -184,6 +176,13 @@ class LinearQuantizer_process(object):
                 next_nodes = inp2node[node.output[0]]
                 if len(next_nodes) == 1 and next_nodes[0][1] == 1 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:
                     # fake quantize for weights
+                    redundant_nodes = self.deal_with_weight_fakequant(node, out2node, inp2node, named_initializer)
+                    tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
+                    nodes_to_be_removed.extend(redundant_nodes)
+                    self.clip_weight(node, name2data, inp2node, named_initializer)
+                elif len(next_nodes) == 1 and next_nodes[0][1] == 2 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:
+                    # fake quantize for bias 
+                    assert backend == 'vitis'
                     redundant_nodes = self.deal_with_weight_fakequant(node, out2node, inp2node, named_initializer)
                     tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
                     nodes_to_be_removed.extend(redundant_nodes)
@@ -244,15 +243,14 @@ class LinearQuantizer_process(object):
             json.dump(context, f, indent=4)
         onnx_filename = os.path.join(output_path, '{}_deploy_model.onnx'.format(model_name))
         onnx.save(model, onnx_filename)
-        # do post processing for vitis
         if backend == 'ppl-cuda':
             with open(context_filename, 'w') as f:
                 for k, v in clip_ranges.items():
                     f.write('{}: {}\n'.format(k, v))
-        if backend == 'vitis' and USE_XIR:
-            xir_compiler = XIR_process()
-            xir_compiler.do_compile(onnx.load(onnx_path), onnx.load(filename), name=filename)
-            logger.info("Finish xmodel converting process.")
+        if backend == 'vitis':
+            logger.info(f"To finish xmodel converting process, call \
+                $ mqbench.deploy.convert_xir -Q {onnx_filename} -C {onnx_path} -N <name> \
+                    in the mqbench docker built from Dockerfile")
         logger.info("Finish deploy process.")
 
 
