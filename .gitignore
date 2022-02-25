@@ -1,3 +1,8 @@
 *.pyc
 *.idea
 __pycache__
+*.index
+*.tar
+*.onnx
+*.egg-info
+*.pth

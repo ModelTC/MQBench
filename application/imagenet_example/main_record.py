@@ -26,34 +26,6 @@ model_names = sorted(name for name in models.__dict__
     and callable(models.__dict__[name]))
 
 
-class MyImageFolder(datasets.ImageFolder):
-    
-    
-    @staticmethod
-    def make_dataset(
-        directory,
-        class_to_idx,
-        extensions = None,
-        is_valid_file = None,
-    ):
-        instances = []
-        directory = os.path.expanduser(directory)
-        for target_class in sorted(class_to_idx.keys()):
-            class_index = class_to_idx[target_class]
-            target_dir = os.path.join(directory, target_class)
-            #if not os.path.isdir(target_dir):
-            #    continue
-            fnames = [f for f in os.listdir(target_dir) if '.JPEG' in f]
-            for fname in fnames:
-                instances.append((os.path.join(target_dir, fname), class_index))
-            # for root, _, fnames in sorted(os.walk(target_dir, followlinks=True)):
-            #     for fname in sorted(fnames):
-            #         path = os.path.join(root, fname)
-            #         if is_valid_file(path):
-            #             item = path, class_index
-            #             instances.append(item)
-        return instances
-
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--train_data', metavar='DIR',
                     help='path to dataset', required=True)
@@ -313,19 +285,10 @@ def main_worker(gpu, ngpus_per_node, args):
             }, is_best)
 
 def prepare_dataloader(args):
-    traindir = os.path.join(args.train_data, 'train')
-    valdir = os.path.join(args.val_data, 'val')
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])
-
-    train_dataset = MyImageFolder(
-        traindir,
-        transforms.Compose([
-            transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            normalize,
-        ]))
+    from imagenet import get_train_dataset, get_val_dataset, get_calib_loader
+    
+    train_dataset = get_train_dataset(args.train_data)
+    val_dataset = get_val_dataset(args.val_data)
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -333,22 +296,13 @@ def prepare_dataloader(args):
         train_sampler = None
 
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
+        train_dataset, batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=False, sampler=train_sampler)
 
-    cali_batch_size = 10
-    cali_batch = 10
-    cali_dataset = torch.utils.data.Subset(train_dataset, indices=torch.arange(cali_batch_size * cali_batch))
-    cali_loader = torch.utils.data.DataLoader(cali_dataset, batch_size=cali_batch_size, shuffle=False,
-                                                num_workers=args.workers, pin_memory=False)
+    cali_loader = get_calib_loader(args.train_data)
 
     val_loader = torch.utils.data.DataLoader(
-        MyImageFolder(valdir, transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            normalize,
-        ])),
+        val_dataset,
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=False)
 
@@ -460,11 +414,16 @@ def validate(val_loader, model, criterion, args):
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     model_name = state['arch']
+    if not os.path.isdir(model_name):
+        os.mkdir(model_name)
+
     acc = state['best_acc1']
     filename = '{}_acc_{:.2f}.pth.tar'.format(model_name, acc)
+    filename = os.path.join(model_name, filename)
     torch.save(state, filename)
-    # if is_best:
-    #     shutil.copyfile(filename, 'model_best.pth.tar')
+    if is_best:
+        best_f = os.path.join(model_name, 'model_best.pth.tar')
+        shutil.copyfile(filename, best_f)
 
 
 class AverageMeter(object):

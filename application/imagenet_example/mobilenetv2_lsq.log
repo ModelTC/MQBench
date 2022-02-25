@@ -1,0 +1,303 @@
+Use GPU: 2 for training
+=> using pre-trained model 'mobilenet_v2'
+[MQBENCH] INFO: Quantize model Scheme: BackendType.SNPE Mode: Training
+[MQBENCH] INFO: Weight Qconfig:
+    FakeQuantize: LearnableFakeQuantize Params: {}
+    Oberver:      MinMaxObserver Params: Symmetric: False / Bitwidth: 8 / Per channel: False / Pot scale: False / Extra kwargs: {}
+[MQBENCH] INFO: Activation Qconfig:
+    FakeQuantize: LearnableFakeQuantize Params: {}
+    Oberver:      EMAMinMaxObserver Params: Symmetric: False / Bitwidth: 8 / Per channel: False / Pot scale: False / Extra kwargs: {}
+[MQBENCH] INFO: Replace module to qat module.
+[MQBENCH] INFO: Insert act quant x_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_0_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_1_conv_0_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_1_conv_1_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_2_conv_0_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_2_conv_1_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_2_conv_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_3_conv_0_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_3_conv_1_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_3_conv_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant add_1_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_4_conv_0_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_4_conv_1_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_4_conv_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_5_conv_0_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_5_conv_1_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_5_conv_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant add_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_6_conv_0_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_6_conv_1_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_6_conv_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant add_3_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_7_conv_0_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_7_conv_1_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_7_conv_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_8_conv_0_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_8_conv_1_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_8_conv_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant add_4_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_9_conv_0_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_9_conv_1_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_9_conv_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant add_5_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_10_conv_0_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_10_conv_1_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_10_conv_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant add_6_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_11_conv_0_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_11_conv_1_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_11_conv_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_12_conv_0_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_12_conv_1_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_12_conv_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant add_7_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_13_conv_0_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_13_conv_1_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_13_conv_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant add_8_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_14_conv_0_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_14_conv_1_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_14_conv_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_15_conv_0_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_15_conv_1_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_15_conv_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant add_9_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_16_conv_0_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_16_conv_1_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_16_conv_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant add_10_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_17_conv_0_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_17_conv_1_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_17_conv_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant features_18_2_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant classifier_0_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant adaptive_avg_pool2d_1_post_act_fake_quantizer
+[MQBENCH] INFO: Insert act quant classifier_1_post_act_fake_quantizer
+[MQBENCH] INFO: Enable observer and Disable quantize.
+Start calibration ...
+Calibrate images number =  100
+Calibration ==>  1
+Calibration ==>  2
+Calibration ==>  3
+Calibration ==>  4
+Calibration ==>  5
+Calibration ==>  6
+Calibration ==>  7
+Calibration ==>  8
+Calibration ==>  9
+Calibration ==>  10
+End calibration.
+[MQBENCH] INFO: Disable observer and Enable quantize.
+Epoch: [0][    0/20018] Time  6.460 ( 6.460)    Data  5.444 ( 5.444)    Loss 1.2452e+00 (1.2452e+00)    Acc@1  70.31 ( 70.31)   Acc@5  87.50 ( 87.50)
+Epoch: [0][  100/20018] Time  0.326 ( 0.391)    Data  0.010 ( 0.063)    Loss 1.1803e+00 (1.3587e+00)    Acc@1  75.00 ( 67.91)   Acc@5  90.62 ( 86.32)
+Epoch: [0][  200/20018] Time  0.349 ( 0.363)    Data  0.009 ( 0.036)    Loss 1.7409e+00 (1.3132e+00)    Acc@1  62.50 ( 69.08)   Acc@5  81.25 ( 87.27)
+Epoch: [0][  300/20018] Time  0.319 ( 0.353)    Data  0.007 ( 0.027)    Loss 1.2174e+00 (1.3109e+00)    Acc@1  67.19 ( 69.13)   Acc@5  90.62 ( 87.22)
+Epoch: [0][  400/20018] Time  0.343 ( 0.348)    Data  0.008 ( 0.023)    Loss 1.5267e+00 (1.3054e+00)    Acc@1  71.88 ( 69.05)   Acc@5  81.25 ( 87.34)
+Epoch: [0][  500/20018] Time  0.325 ( 0.345)    Data  0.009 ( 0.020)    Loss 1.4977e+00 (1.3026e+00)    Acc@1  67.19 ( 68.91)   Acc@5  92.19 ( 87.43)
+Epoch: [0][  600/20018] Time  0.330 ( 0.343)    Data  0.009 ( 0.018)    Loss 1.2040e+00 (1.2966e+00)    Acc@1  71.88 ( 69.03)   Acc@5  89.06 ( 87.54)
+Epoch: [0][  700/20018] Time  0.335 ( 0.341)    Data  0.010 ( 0.017)    Loss 1.3018e+00 (1.2921e+00)    Acc@1  59.38 ( 69.08)   Acc@5  87.50 ( 87.62)
+Epoch: [0][  800/20018] Time  0.327 ( 0.340)    Data  0.009 ( 0.016)    Loss 1.0297e+00 (1.2913e+00)    Acc@1  76.56 ( 69.10)   Acc@5  90.62 ( 87.59)
+Epoch: [0][  900/20018] Time  0.318 ( 0.339)    Data  0.008 ( 0.015)    Loss 1.5346e+00 (1.2893e+00)    Acc@1  64.06 ( 69.17)   Acc@5  82.81 ( 87.65)
+Epoch: [0][ 1000/20018] Time  0.312 ( 0.338)    Data  0.008 ( 0.015)    Loss 1.1718e+00 (1.2879e+00)    Acc@1  71.88 ( 69.23)   Acc@5  84.38 ( 87.64)
+Epoch: [0][ 1100/20018] Time  0.330 ( 0.337)    Data  0.011 ( 0.014)    Loss 1.1871e+00 (1.2858e+00)    Acc@1  68.75 ( 69.28)   Acc@5  90.62 ( 87.67)
+Epoch: [0][ 1200/20018] Time  0.313 ( 0.337)    Data  0.007 ( 0.014)    Loss 1.4219e+00 (1.2871e+00)    Acc@1  64.06 ( 69.25)   Acc@5  82.81 ( 87.64)
+Epoch: [0][ 1300/20018] Time  0.335 ( 0.336)    Data  0.009 ( 0.013)    Loss 1.3318e+00 (1.2876e+00)    Acc@1  71.88 ( 69.28)   Acc@5  90.62 ( 87.64)
+Epoch: [0][ 1400/20018] Time  0.321 ( 0.335)    Data  0.007 ( 0.013)    Loss 8.1841e-01 (1.2852e+00)    Acc@1  81.25 ( 69.32)   Acc@5  93.75 ( 87.66)
+Epoch: [0][ 1500/20018] Time  0.345 ( 0.335)    Data  0.009 ( 0.013)    Loss 1.5695e+00 (1.2850e+00)    Acc@1  62.50 ( 69.28)   Acc@5  85.94 ( 87.66)
+Epoch: [0][ 1600/20018] Time  0.302 ( 0.335)    Data  0.008 ( 0.013)    Loss 9.7948e-01 (1.2860e+00)    Acc@1  75.00 ( 69.26)   Acc@5  96.88 ( 87.63)
+Epoch: [0][ 1700/20018] Time  0.322 ( 0.334)    Data  0.008 ( 0.012)    Loss 6.8742e-01 (1.2852e+00)    Acc@1  78.12 ( 69.24)   Acc@5 100.00 ( 87.66)
+Epoch: [0][ 1800/20018] Time  0.325 ( 0.334)    Data  0.008 ( 0.012)    Loss 1.3202e+00 (1.2847e+00)    Acc@1  67.19 ( 69.22)   Acc@5  90.62 ( 87.69)
+Epoch: [0][ 1900/20018] Time  0.331 ( 0.334)    Data  0.009 ( 0.012)    Loss 9.5353e-01 (1.2851e+00)    Acc@1  75.00 ( 69.19)   Acc@5  92.19 ( 87.68)
+Epoch: [0][ 2000/20018] Time  0.324 ( 0.334)    Data  0.012 ( 0.012)    Loss 1.6325e+00 (1.2861e+00)    Acc@1  62.50 ( 69.20)   Acc@5  81.25 ( 87.68)
+Epoch: [0][ 2100/20018] Time  0.319 ( 0.333)    Data  0.008 ( 0.012)    Loss 1.6446e+00 (1.2862e+00)    Acc@1  73.44 ( 69.18)   Acc@5  82.81 ( 87.70)
+Epoch: [0][ 2200/20018] Time  0.321 ( 0.333)    Data  0.008 ( 0.012)    Loss 1.4201e+00 (1.2856e+00)    Acc@1  70.31 ( 69.18)   Acc@5  85.94 ( 87.70)
+Epoch: [0][ 2300/20018] Time  0.328 ( 0.332)    Data  0.012 ( 0.012)    Loss 1.3281e+00 (1.2861e+00)    Acc@1  71.88 ( 69.18)   Acc@5  85.94 ( 87.70)
+Epoch: [0][ 2400/20018] Time  0.308 ( 0.332)    Data  0.012 ( 0.011)    Loss 9.1799e-01 (1.2861e+00)    Acc@1  70.31 ( 69.17)   Acc@5  95.31 ( 87.70)
+Epoch: [0][ 2500/20018] Time  0.314 ( 0.332)    Data  0.008 ( 0.011)    Loss 1.1340e+00 (1.2859e+00)    Acc@1  68.75 ( 69.19)   Acc@5  90.62 ( 87.70)
+Epoch: [0][ 2600/20018] Time  0.335 ( 0.331)    Data  0.009 ( 0.011)    Loss 1.2660e+00 (1.2875e+00)    Acc@1  65.62 ( 69.15)   Acc@5  87.50 ( 87.67)
+Epoch: [0][ 2700/20018] Time  0.344 ( 0.331)    Data  0.009 ( 0.011)    Loss 7.2124e-01 (1.2856e+00)    Acc@1  84.38 ( 69.18)   Acc@5  95.31 ( 87.71)
+Epoch: [0][ 2800/20018] Time  0.325 ( 0.331)    Data  0.010 ( 0.011)    Loss 1.0620e+00 (1.2867e+00)    Acc@1  70.31 ( 69.18)   Acc@5  92.19 ( 87.69)
+Epoch: [0][ 2900/20018] Time  0.351 ( 0.331)    Data  0.009 ( 0.011)    Loss 1.5484e+00 (1.2858e+00)    Acc@1  67.19 ( 69.21)   Acc@5  84.38 ( 87.70)
+Epoch: [0][ 3000/20018] Time  0.342 ( 0.331)    Data  0.008 ( 0.011)    Loss 1.6911e+00 (1.2857e+00)    Acc@1  59.38 ( 69.21)   Acc@5  81.25 ( 87.69)
+Epoch: [0][ 3100/20018] Time  0.321 ( 0.331)    Data  0.009 ( 0.011)    Loss 1.5785e+00 (1.2854e+00)    Acc@1  65.62 ( 69.24)   Acc@5  81.25 ( 87.69)
+Epoch: [0][ 3200/20018] Time  0.315 ( 0.331)    Data  0.008 ( 0.011)    Loss 1.4392e+00 (1.2865e+00)    Acc@1  68.75 ( 69.24)   Acc@5  81.25 ( 87.68)
+Epoch: [0][ 3300/20018] Time  0.319 ( 0.330)    Data  0.008 ( 0.011)    Loss 1.3610e+00 (1.2878e+00)    Acc@1  67.19 ( 69.20)   Acc@5  85.94 ( 87.65)
+Epoch: [0][ 3400/20018] Time  0.326 ( 0.330)    Data  0.011 ( 0.011)    Loss 1.5505e+00 (1.2876e+00)    Acc@1  62.50 ( 69.21)   Acc@5  85.94 ( 87.65)
+Epoch: [0][ 3500/20018] Time  0.314 ( 0.330)    Data  0.008 ( 0.011)    Loss 1.3655e+00 (1.2878e+00)    Acc@1  67.19 ( 69.21)   Acc@5  85.94 ( 87.64)
+Epoch: [0][ 3600/20018] Time  0.325 ( 0.330)    Data  0.008 ( 0.011)    Loss 1.0024e+00 (1.2880e+00)    Acc@1  70.31 ( 69.19)   Acc@5  92.19 ( 87.64)
+Epoch: [0][ 3700/20018] Time  0.332 ( 0.330)    Data  0.012 ( 0.011)    Loss 1.8051e+00 (1.2883e+00)    Acc@1  62.50 ( 69.18)   Acc@5  78.12 ( 87.63)
+Epoch: [0][ 3800/20018] Time  0.318 ( 0.330)    Data  0.008 ( 0.011)    Loss 1.3327e+00 (1.2884e+00)    Acc@1  73.44 ( 69.16)   Acc@5  89.06 ( 87.63)
+Epoch: [0][ 3900/20018] Time  0.312 ( 0.330)    Data  0.007 ( 0.010)    Loss 1.4416e+00 (1.2881e+00)    Acc@1  68.75 ( 69.17)   Acc@5  87.50 ( 87.64)
+Epoch: [0][ 4000/20018] Time  0.322 ( 0.329)    Data  0.007 ( 0.010)    Loss 1.2854e+00 (1.2884e+00)    Acc@1  67.19 ( 69.16)   Acc@5  89.06 ( 87.63)
+Epoch: [0][ 4100/20018] Time  0.312 ( 0.329)    Data  0.009 ( 0.010)    Loss 1.4273e+00 (1.2882e+00)    Acc@1  70.31 ( 69.18)   Acc@5  84.38 ( 87.63)
+Epoch: [0][ 4200/20018] Time  0.324 ( 0.329)    Data  0.006 ( 0.010)    Loss 1.0658e+00 (1.2878e+00)    Acc@1  75.00 ( 69.20)   Acc@5  89.06 ( 87.63)
+Epoch: [0][ 4300/20018] Time  0.349 ( 0.329)    Data  0.013 ( 0.010)    Loss 1.2754e+00 (1.2872e+00)    Acc@1  65.62 ( 69.19)   Acc@5  84.38 ( 87.64)
+Epoch: [0][ 4400/20018] Time  0.324 ( 0.329)    Data  0.008 ( 0.010)    Loss 1.0594e+00 (1.2873e+00)    Acc@1  75.00 ( 69.19)   Acc@5  87.50 ( 87.62)
+Epoch: [0][ 4500/20018] Time  0.326 ( 0.329)    Data  0.009 ( 0.010)    Loss 1.2844e+00 (1.2877e+00)    Acc@1  68.75 ( 69.19)   Acc@5  87.50 ( 87.61)
+Epoch: [0][ 4600/20018] Time  0.309 ( 0.329)    Data  0.007 ( 0.010)    Loss 1.4251e+00 (1.2881e+00)    Acc@1  64.06 ( 69.19)   Acc@5  85.94 ( 87.60)
+Epoch: [0][ 4700/20018] Time  0.318 ( 0.329)    Data  0.007 ( 0.010)    Loss 9.1395e-01 (1.2882e+00)    Acc@1  76.56 ( 69.20)   Acc@5  92.19 ( 87.60)
+Epoch: [0][ 4800/20018] Time  0.308 ( 0.329)    Data  0.008 ( 0.010)    Loss 1.4167e+00 (1.2877e+00)    Acc@1  65.62 ( 69.21)   Acc@5  84.38 ( 87.61)
+Epoch: [0][ 4900/20018] Time  0.355 ( 0.329)    Data  0.008 ( 0.010)    Loss 1.3173e+00 (1.2875e+00)    Acc@1  62.50 ( 69.20)   Acc@5  90.62 ( 87.61)
+Epoch: [0][ 5000/20018] Time  0.349 ( 0.329)    Data  0.008 ( 0.010)    Loss 1.1544e+00 (1.2874e+00)    Acc@1  75.00 ( 69.21)   Acc@5  87.50 ( 87.61)
+Epoch: [0][ 5100/20018] Time  0.334 ( 0.329)    Data  0.012 ( 0.010)    Loss 1.3956e+00 (1.2871e+00)    Acc@1  62.50 ( 69.22)   Acc@5  87.50 ( 87.62)
+Epoch: [0][ 5200/20018] Time  0.326 ( 0.329)    Data  0.009 ( 0.010)    Loss 1.4523e+00 (1.2872e+00)    Acc@1  71.88 ( 69.20)   Acc@5  81.25 ( 87.62)
+Epoch: [0][ 5300/20018] Time  0.315 ( 0.328)    Data  0.011 ( 0.010)    Loss 1.0804e+00 (1.2871e+00)    Acc@1  70.31 ( 69.19)   Acc@5  90.62 ( 87.61)
+Epoch: [0][ 5400/20018] Time  0.317 ( 0.328)    Data  0.008 ( 0.010)    Loss 1.6517e+00 (1.2873e+00)    Acc@1  57.81 ( 69.18)   Acc@5  82.81 ( 87.61)
+Epoch: [0][ 5500/20018] Time  0.320 ( 0.328)    Data  0.007 ( 0.010)    Loss 1.3755e+00 (1.2867e+00)    Acc@1  68.75 ( 69.19)   Acc@5  85.94 ( 87.61)
+Epoch: [0][ 5600/20018] Time  0.330 ( 0.328)    Data  0.008 ( 0.010)    Loss 1.2893e+00 (1.2862e+00)    Acc@1  70.31 ( 69.19)   Acc@5  85.94 ( 87.62)
+Epoch: [0][ 5700/20018] Time  0.319 ( 0.328)    Data  0.008 ( 0.010)    Loss 1.4097e+00 (1.2866e+00)    Acc@1  65.62 ( 69.18)   Acc@5  85.94 ( 87.62)
+Epoch: [0][ 5800/20018] Time  0.321 ( 0.328)    Data  0.009 ( 0.010)    Loss 1.6572e+00 (1.2864e+00)    Acc@1  54.69 ( 69.19)   Acc@5  82.81 ( 87.62)
+Epoch: [0][ 5900/20018] Time  0.301 ( 0.328)    Data  0.009 ( 0.010)    Loss 1.3918e+00 (1.2865e+00)    Acc@1  62.50 ( 69.18)   Acc@5  82.81 ( 87.62)
+Epoch: [0][ 6000/20018] Time  0.319 ( 0.328)    Data  0.008 ( 0.010)    Loss 1.3503e+00 (1.2865e+00)    Acc@1  68.75 ( 69.18)   Acc@5  85.94 ( 87.63)
+Epoch: [0][ 6100/20018] Time  0.329 ( 0.328)    Data  0.008 ( 0.010)    Loss 1.1823e+00 (1.2869e+00)    Acc@1  71.88 ( 69.18)   Acc@5  90.62 ( 87.62)
+Epoch: [0][ 6200/20018] Time  0.325 ( 0.328)    Data  0.010 ( 0.010)    Loss 1.4545e+00 (1.2868e+00)    Acc@1  70.31 ( 69.19)   Acc@5  82.81 ( 87.61)
+Epoch: [0][ 6300/20018] Time  0.301 ( 0.328)    Data  0.008 ( 0.010)    Loss 1.2185e+00 (1.2873e+00)    Acc@1  70.31 ( 69.19)   Acc@5  85.94 ( 87.60)
+Epoch: [0][ 6400/20018] Time  0.301 ( 0.327)    Data  0.008 ( 0.010)    Loss 1.2520e+00 (1.2869e+00)    Acc@1  65.62 ( 69.20)   Acc@5  89.06 ( 87.61)
+Epoch: [0][ 6500/20018] Time  0.318 ( 0.327)    Data  0.008 ( 0.010)    Loss 1.0508e+00 (1.2866e+00)    Acc@1  76.56 ( 69.19)   Acc@5  92.19 ( 87.62)
+Epoch: [0][ 6600/20018] Time  0.319 ( 0.327)    Data  0.009 ( 0.010)    Loss 1.4732e+00 (1.2864e+00)    Acc@1  70.31 ( 69.19)   Acc@5  84.38 ( 87.62)
+Epoch: [0][ 6700/20018] Time  0.324 ( 0.327)    Data  0.008 ( 0.010)    Loss 1.2004e+00 (1.2869e+00)    Acc@1  68.75 ( 69.17)   Acc@5  85.94 ( 87.61)
+Epoch: [0][ 6800/20018] Time  0.315 ( 0.327)    Data  0.013 ( 0.010)    Loss 1.1661e+00 (1.2860e+00)    Acc@1  67.19 ( 69.19)   Acc@5  89.06 ( 87.62)
+Epoch: [0][ 6900/20018] Time  0.353 ( 0.327)    Data  0.008 ( 0.010)    Loss 1.6408e+00 (1.2861e+00)    Acc@1  64.06 ( 69.20)   Acc@5  81.25 ( 87.62)
+Epoch: [0][ 7000/20018] Time  0.313 ( 0.327)    Data  0.009 ( 0.010)    Loss 1.2811e+00 (1.2864e+00)    Acc@1  68.75 ( 69.20)   Acc@5  87.50 ( 87.62)
+Epoch: [0][ 7100/20018] Time  0.312 ( 0.327)    Data  0.007 ( 0.010)    Loss 1.2266e+00 (1.2867e+00)    Acc@1  67.19 ( 69.19)   Acc@5  89.06 ( 87.62)
+Epoch: [0][ 7200/20018] Time  0.327 ( 0.327)    Data  0.010 ( 0.010)    Loss 1.3288e+00 (1.2864e+00)    Acc@1  68.75 ( 69.20)   Acc@5  92.19 ( 87.62)
+Epoch: [0][ 7300/20018] Time  0.323 ( 0.327)    Data  0.008 ( 0.010)    Loss 1.3890e+00 (1.2864e+00)    Acc@1  70.31 ( 69.20)   Acc@5  85.94 ( 87.62)
+Epoch: [0][ 7400/20018] Time  0.314 ( 0.327)    Data  0.008 ( 0.010)    Loss 1.4603e+00 (1.2865e+00)    Acc@1  68.75 ( 69.20)   Acc@5  85.94 ( 87.62)
+Epoch: [0][ 7500/20018] Time  0.317 ( 0.327)    Data  0.008 ( 0.010)    Loss 1.3484e+00 (1.2867e+00)    Acc@1  71.88 ( 69.19)   Acc@5  85.94 ( 87.62)
+Epoch: [0][ 7600/20018] Time  0.310 ( 0.327)    Data  0.008 ( 0.010)    Loss 1.3687e+00 (1.2866e+00)    Acc@1  68.75 ( 69.19)   Acc@5  85.94 ( 87.62)
+Epoch: [0][ 7700/20018] Time  0.332 ( 0.327)    Data  0.007 ( 0.010)    Loss 1.0889e+00 (1.2866e+00)    Acc@1  71.88 ( 69.19)   Acc@5  95.31 ( 87.62)
+Epoch: [0][ 7800/20018] Time  0.323 ( 0.327)    Data  0.008 ( 0.010)    Loss 1.4123e+00 (1.2864e+00)    Acc@1  65.62 ( 69.18)   Acc@5  90.62 ( 87.62)
+Epoch: [0][ 7900/20018] Time  0.319 ( 0.327)    Data  0.008 ( 0.010)    Loss 9.9064e-01 (1.2866e+00)    Acc@1  76.56 ( 69.18)   Acc@5  90.62 ( 87.62)
+Epoch: [0][ 8000/20018] Time  0.318 ( 0.327)    Data  0.008 ( 0.010)    Loss 1.1987e+00 (1.2869e+00)    Acc@1  67.19 ( 69.17)   Acc@5  85.94 ( 87.62)
+Epoch: [0][ 8100/20018] Time  0.318 ( 0.327)    Data  0.008 ( 0.010)    Loss 1.3577e+00 (1.2874e+00)    Acc@1  67.19 ( 69.16)   Acc@5  84.38 ( 87.61)
+/usr/local/lib/python3.6/dist-packages/PIL/TiffImagePlugin.py:802: UserWarning: Corrupt EXIF data.  Expecting to read 4 bytes but only got 0. 
+  warnings.warn(str(msg))
+Epoch: [0][ 8200/20018] Time  0.302 ( 0.327)    Data  0.007 ( 0.010)    Loss 9.6654e-01 (1.2868e+00)    Acc@1  75.00 ( 69.18)   Acc@5  89.06 ( 87.62)
+Epoch: [0][ 8300/20018] Time  0.315 ( 0.327)    Data  0.008 ( 0.009)    Loss 1.4828e+00 (1.2871e+00)    Acc@1  67.19 ( 69.18)   Acc@5  82.81 ( 87.62)
+Epoch: [0][ 8400/20018] Time  0.333 ( 0.327)    Data  0.008 ( 0.009)    Loss 1.5729e+00 (1.2878e+00)    Acc@1  65.62 ( 69.17)   Acc@5  82.81 ( 87.61)
+Epoch: [0][ 8500/20018] Time  0.330 ( 0.327)    Data  0.008 ( 0.009)    Loss 1.5697e+00 (1.2880e+00)    Acc@1  64.06 ( 69.18)   Acc@5  82.81 ( 87.60)
+Epoch: [0][ 8600/20018] Time  0.311 ( 0.326)    Data  0.007 ( 0.009)    Loss 1.1236e+00 (1.2878e+00)    Acc@1  75.00 ( 69.18)   Acc@5  85.94 ( 87.61)
+Epoch: [0][ 8700/20018] Time  0.319 ( 0.326)    Data  0.012 ( 0.009)    Loss 1.1766e+00 (1.2879e+00)    Acc@1  68.75 ( 69.18)   Acc@5  89.06 ( 87.61)
+Epoch: [0][ 8800/20018] Time  0.319 ( 0.326)    Data  0.007 ( 0.009)    Loss 1.2621e+00 (1.2876e+00)    Acc@1  68.75 ( 69.18)   Acc@5  85.94 ( 87.61)
+Epoch: [0][ 8900/20018] Time  0.317 ( 0.326)    Data  0.008 ( 0.009)    Loss 8.2611e-01 (1.2874e+00)    Acc@1  75.00 ( 69.19)   Acc@5  95.31 ( 87.62)
+Epoch: [0][ 9000/20018] Time  0.322 ( 0.326)    Data  0.008 ( 0.009)    Loss 1.6566e+00 (1.2880e+00)    Acc@1  67.19 ( 69.17)   Acc@5  81.25 ( 87.60)
+Epoch: [0][ 9100/20018] Time  0.328 ( 0.326)    Data  0.009 ( 0.009)    Loss 1.4153e+00 (1.2880e+00)    Acc@1  70.31 ( 69.17)   Acc@5  84.38 ( 87.61)
+Epoch: [0][ 9200/20018] Time  0.306 ( 0.326)    Data  0.008 ( 0.009)    Loss 1.0257e+00 (1.2877e+00)    Acc@1  71.88 ( 69.18)   Acc@5  89.06 ( 87.61)
+Epoch: [0][ 9300/20018] Time  0.321 ( 0.326)    Data  0.008 ( 0.009)    Loss 1.4768e+00 (1.2877e+00)    Acc@1  64.06 ( 69.18)   Acc@5  82.81 ( 87.61)
+Epoch: [0][ 9400/20018] Time  0.350 ( 0.326)    Data  0.008 ( 0.009)    Loss 1.1002e+00 (1.2879e+00)    Acc@1  76.56 ( 69.17)   Acc@5  89.06 ( 87.61)
+Epoch: [0][ 9500/20018] Time  0.310 ( 0.326)    Data  0.007 ( 0.009)    Loss 1.2767e+00 (1.2881e+00)    Acc@1  70.31 ( 69.17)   Acc@5  89.06 ( 87.61)
+Epoch: [0][ 9600/20018] Time  0.346 ( 0.326)    Data  0.014 ( 0.009)    Loss 1.4611e+00 (1.2883e+00)    Acc@1  67.19 ( 69.17)   Acc@5  81.25 ( 87.61)
+Epoch: [0][ 9700/20018] Time  0.323 ( 0.326)    Data  0.008 ( 0.009)    Loss 1.0810e+00 (1.2882e+00)    Acc@1  75.00 ( 69.18)   Acc@5  87.50 ( 87.61)
+Epoch: [0][ 9800/20018] Time  0.319 ( 0.326)    Data  0.009 ( 0.009)    Loss 1.3634e+00 (1.2880e+00)    Acc@1  71.88 ( 69.18)   Acc@5  85.94 ( 87.61)
+Epoch: [0][ 9900/20018] Time  0.323 ( 0.326)    Data  0.009 ( 0.009)    Loss 8.6943e-01 (1.2883e+00)    Acc@1  76.56 ( 69.17)   Acc@5  92.19 ( 87.61)
+Epoch: [0][10000/20018] Time  0.319 ( 0.326)    Data  0.007 ( 0.009)    Loss 1.0565e+00 (1.2881e+00)    Acc@1  70.31 ( 69.18)   Acc@5  93.75 ( 87.61)
+Epoch: [0][10100/20018] Time  0.323 ( 0.326)    Data  0.009 ( 0.009)    Loss 1.0557e+00 (1.2882e+00)    Acc@1  76.56 ( 69.18)   Acc@5  89.06 ( 87.61)
+Epoch: [0][10200/20018] Time  0.318 ( 0.326)    Data  0.010 ( 0.009)    Loss 1.4852e+00 (1.2884e+00)    Acc@1  64.06 ( 69.17)   Acc@5  84.38 ( 87.61)
+Epoch: [0][10300/20018] Time  0.327 ( 0.326)    Data  0.007 ( 0.009)    Loss 1.3711e+00 (1.2886e+00)    Acc@1  68.75 ( 69.18)   Acc@5  89.06 ( 87.60)
+Epoch: [0][10400/20018] Time  0.312 ( 0.326)    Data  0.008 ( 0.009)    Loss 1.3562e+00 (1.2882e+00)    Acc@1  60.94 ( 69.18)   Acc@5  87.50 ( 87.61)
+Epoch: [0][10500/20018] Time  0.324 ( 0.326)    Data  0.008 ( 0.009)    Loss 1.3467e+00 (1.2880e+00)    Acc@1  75.00 ( 69.18)   Acc@5  85.94 ( 87.61)
+Epoch: [0][10600/20018] Time  0.372 ( 0.326)    Data  0.010 ( 0.009)    Loss 1.1844e+00 (1.2878e+00)    Acc@1  71.88 ( 69.18)   Acc@5  93.75 ( 87.61)
+Epoch: [0][10700/20018] Time  0.327 ( 0.326)    Data  0.008 ( 0.009)    Loss 1.5013e+00 (1.2878e+00)    Acc@1  65.62 ( 69.19)   Acc@5  81.25 ( 87.61)
+Epoch: [0][10800/20018] Time  0.325 ( 0.326)    Data  0.009 ( 0.009)    Loss 1.0542e+00 (1.2877e+00)    Acc@1  78.12 ( 69.19)   Acc@5  87.50 ( 87.61)
+Epoch: [0][10900/20018] Time  0.323 ( 0.326)    Data  0.008 ( 0.009)    Loss 1.2595e+00 (1.2878e+00)    Acc@1  65.62 ( 69.18)   Acc@5  90.62 ( 87.61)
+Epoch: [0][11000/20018] Time  0.323 ( 0.326)    Data  0.011 ( 0.009)    Loss 9.1164e-01 (1.2879e+00)    Acc@1  76.56 ( 69.18)   Acc@5  92.19 ( 87.61)
+Epoch: [0][11100/20018] Time  0.306 ( 0.326)    Data  0.007 ( 0.009)    Loss 1.1315e+00 (1.2880e+00)    Acc@1  73.44 ( 69.18)   Acc@5  89.06 ( 87.61)
+Epoch: [0][11200/20018] Time  0.353 ( 0.326)    Data  0.010 ( 0.009)    Loss 1.5344e+00 (1.2879e+00)    Acc@1  65.62 ( 69.19)   Acc@5  82.81 ( 87.60)
+Epoch: [0][11300/20018] Time  0.318 ( 0.326)    Data  0.008 ( 0.009)    Loss 1.3819e+00 (1.2878e+00)    Acc@1  67.19 ( 69.19)   Acc@5  85.94 ( 87.61)
+Epoch: [0][11400/20018] Time  0.330 ( 0.326)    Data  0.007 ( 0.009)    Loss 1.4239e+00 (1.2876e+00)    Acc@1  64.06 ( 69.19)   Acc@5  84.38 ( 87.61)
+Epoch: [0][11500/20018] Time  0.313 ( 0.326)    Data  0.007 ( 0.009)    Loss 1.2214e+00 (1.2874e+00)    Acc@1  67.19 ( 69.19)   Acc@5  89.06 ( 87.61)
+Epoch: [0][11600/20018] Time  0.322 ( 0.326)    Data  0.008 ( 0.009)    Loss 7.9148e-01 (1.2872e+00)    Acc@1  82.81 ( 69.19)   Acc@5  92.19 ( 87.61)
+Epoch: [0][11700/20018] Time  0.356 ( 0.326)    Data  0.009 ( 0.009)    Loss 1.0752e+00 (1.2872e+00)    Acc@1  70.31 ( 69.19)   Acc@5  90.62 ( 87.61)
+Epoch: [0][11800/20018] Time  0.300 ( 0.326)    Data  0.007 ( 0.009)    Loss 1.1659e+00 (1.2872e+00)    Acc@1  71.88 ( 69.20)   Acc@5  92.19 ( 87.62)
+Epoch: [0][11900/20018] Time  0.353 ( 0.326)    Data  0.011 ( 0.009)    Loss 1.6534e+00 (1.2872e+00)    Acc@1  73.44 ( 69.20)   Acc@5  85.94 ( 87.61)
+Epoch: [0][12000/20018] Time  0.307 ( 0.326)    Data  0.006 ( 0.009)    Loss 1.1565e+00 (1.2873e+00)    Acc@1  76.56 ( 69.20)   Acc@5  85.94 ( 87.61)
+Epoch: [0][12100/20018] Time  0.341 ( 0.326)    Data  0.007 ( 0.009)    Loss 1.3522e+00 (1.2875e+00)    Acc@1  67.19 ( 69.19)   Acc@5  81.25 ( 87.61)
+Epoch: [0][12200/20018] Time  0.313 ( 0.326)    Data  0.007 ( 0.009)    Loss 1.2900e+00 (1.2874e+00)    Acc@1  70.31 ( 69.19)   Acc@5  87.50 ( 87.61)
+Epoch: [0][12300/20018] Time  0.320 ( 0.326)    Data  0.006 ( 0.009)    Loss 1.7757e+00 (1.2876e+00)    Acc@1  56.25 ( 69.19)   Acc@5  79.69 ( 87.60)
+Epoch: [0][12400/20018] Time  0.308 ( 0.326)    Data  0.006 ( 0.009)    Loss 9.5566e-01 (1.2877e+00)    Acc@1  73.44 ( 69.19)   Acc@5  92.19 ( 87.60)
+Epoch: [0][12500/20018] Time  0.322 ( 0.326)    Data  0.007 ( 0.009)    Loss 1.0461e+00 (1.2878e+00)    Acc@1  73.44 ( 69.19)   Acc@5  90.62 ( 87.60)
+Epoch: [0][12600/20018] Time  0.328 ( 0.326)    Data  0.010 ( 0.009)    Loss 1.3067e+00 (1.2876e+00)    Acc@1  68.75 ( 69.19)   Acc@5  90.62 ( 87.61)
+Epoch: [0][12700/20018] Time  0.316 ( 0.326)    Data  0.008 ( 0.009)    Loss 1.7172e+00 (1.2876e+00)    Acc@1  65.62 ( 69.19)   Acc@5  82.81 ( 87.61)
+Epoch: [0][12800/20018] Time  0.307 ( 0.326)    Data  0.008 ( 0.009)    Loss 1.0071e+00 (1.2873e+00)    Acc@1  78.12 ( 69.19)   Acc@5  92.19 ( 87.61)
+Epoch: [0][12900/20018] Time  0.316 ( 0.326)    Data  0.007 ( 0.009)    Loss 1.1963e+00 (1.2874e+00)    Acc@1  67.19 ( 69.19)   Acc@5  84.38 ( 87.61)
+Epoch: [0][13000/20018] Time  0.322 ( 0.326)    Data  0.008 ( 0.009)    Loss 9.2357e-01 (1.2874e+00)    Acc@1  73.44 ( 69.19)   Acc@5  87.50 ( 87.61)
+Epoch: [0][13100/20018] Time  0.360 ( 0.326)    Data  0.008 ( 0.009)    Loss 1.3341e+00 (1.2876e+00)    Acc@1  64.06 ( 69.19)   Acc@5  92.19 ( 87.61)
+Epoch: [0][13200/20018] Time  0.312 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.3311e+00 (1.2876e+00)    Acc@1  68.75 ( 69.19)   Acc@5  82.81 ( 87.61)
+Epoch: [0][13300/20018] Time  0.339 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.0881e+00 (1.2876e+00)    Acc@1  67.19 ( 69.19)   Acc@5  90.62 ( 87.61)
+Epoch: [0][13400/20018] Time  0.315 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.7094e+00 (1.2875e+00)    Acc@1  67.19 ( 69.19)   Acc@5  84.38 ( 87.61)
+Epoch: [0][13500/20018] Time  0.312 ( 0.326)    Data  0.008 ( 0.009)    Loss 1.8951e+00 (1.2876e+00)    Acc@1  57.81 ( 69.19)   Acc@5  78.12 ( 87.60)
+Epoch: [0][13600/20018] Time  0.325 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.0492e+00 (1.2875e+00)    Acc@1  75.00 ( 69.20)   Acc@5  85.94 ( 87.61)
+Epoch: [0][13700/20018] Time  0.313 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.3416e+00 (1.2877e+00)    Acc@1  67.19 ( 69.19)   Acc@5  90.62 ( 87.60)
+Epoch: [0][13800/20018] Time  0.328 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.7011e+00 (1.2876e+00)    Acc@1  60.94 ( 69.19)   Acc@5  81.25 ( 87.60)
+Epoch: [0][13900/20018] Time  0.322 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.1500e+00 (1.2871e+00)    Acc@1  78.12 ( 69.20)   Acc@5  85.94 ( 87.61)
+Epoch: [0][14000/20018] Time  0.323 ( 0.325)    Data  0.009 ( 0.009)    Loss 1.3312e+00 (1.2871e+00)    Acc@1  70.31 ( 69.19)   Acc@5  84.38 ( 87.61)
+Epoch: [0][14100/20018] Time  0.332 ( 0.325)    Data  0.010 ( 0.009)    Loss 1.5007e+00 (1.2873e+00)    Acc@1  65.62 ( 69.19)   Acc@5  81.25 ( 87.61)
+Epoch: [0][14200/20018] Time  0.322 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.4640e+00 (1.2875e+00)    Acc@1  68.75 ( 69.18)   Acc@5  81.25 ( 87.61)
+Epoch: [0][14300/20018] Time  0.337 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.3842e+00 (1.2873e+00)    Acc@1  65.62 ( 69.18)   Acc@5  87.50 ( 87.61)
+Epoch: [0][14400/20018] Time  0.298 ( 0.325)    Data  0.005 ( 0.009)    Loss 1.1704e+00 (1.2873e+00)    Acc@1  68.75 ( 69.19)   Acc@5  89.06 ( 87.61)
+Epoch: [0][14500/20018] Time  0.325 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.4795e+00 (1.2873e+00)    Acc@1  62.50 ( 69.19)   Acc@5  90.62 ( 87.61)
+Epoch: [0][14600/20018] Time  0.352 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.2485e+00 (1.2877e+00)    Acc@1  71.88 ( 69.18)   Acc@5  90.62 ( 87.60)
+Epoch: [0][14700/20018] Time  0.327 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.5575e+00 (1.2875e+00)    Acc@1  65.62 ( 69.19)   Acc@5  82.81 ( 87.61)
+Epoch: [0][14800/20018] Time  0.330 ( 0.325)    Data  0.011 ( 0.009)    Loss 1.5896e+00 (1.2874e+00)    Acc@1  65.62 ( 69.19)   Acc@5  79.69 ( 87.61)
+Epoch: [0][14900/20018] Time  0.322 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.0209e+00 (1.2872e+00)    Acc@1  75.00 ( 69.19)   Acc@5  92.19 ( 87.61)
+Epoch: [0][15000/20018] Time  0.311 ( 0.325)    Data  0.007 ( 0.009)    Loss 1.2052e+00 (1.2872e+00)    Acc@1  71.88 ( 69.19)   Acc@5  90.62 ( 87.61)
+Epoch: [0][15100/20018] Time  0.319 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.3641e+00 (1.2875e+00)    Acc@1  68.75 ( 69.18)   Acc@5  85.94 ( 87.60)
+Epoch: [0][15200/20018] Time  0.317 ( 0.325)    Data  0.009 ( 0.009)    Loss 1.1701e+00 (1.2877e+00)    Acc@1  71.88 ( 69.18)   Acc@5  89.06 ( 87.60)
+Epoch: [0][15300/20018] Time  0.323 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.6811e+00 (1.2877e+00)    Acc@1  64.06 ( 69.18)   Acc@5  84.38 ( 87.60)
+Epoch: [0][15400/20018] Time  0.336 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.1642e+00 (1.2876e+00)    Acc@1  70.31 ( 69.18)   Acc@5  89.06 ( 87.60)
+Epoch: [0][15500/20018] Time  0.311 ( 0.325)    Data  0.007 ( 0.009)    Loss 9.2731e-01 (1.2877e+00)    Acc@1  75.00 ( 69.18)   Acc@5  90.62 ( 87.60)
+Epoch: [0][15600/20018] Time  0.326 ( 0.325)    Data  0.010 ( 0.009)    Loss 1.3109e+00 (1.2874e+00)    Acc@1  68.75 ( 69.19)   Acc@5  87.50 ( 87.60)
+Epoch: [0][15700/20018] Time  0.300 ( 0.325)    Data  0.007 ( 0.009)    Loss 1.5793e+00 (1.2874e+00)    Acc@1  62.50 ( 69.18)   Acc@5  85.94 ( 87.60)
+Epoch: [0][15800/20018] Time  0.327 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.2137e+00 (1.2871e+00)    Acc@1  70.31 ( 69.19)   Acc@5  87.50 ( 87.60)
+Epoch: [0][15900/20018] Time  0.319 ( 0.325)    Data  0.009 ( 0.009)    Loss 1.6543e+00 (1.2873e+00)    Acc@1  60.94 ( 69.18)   Acc@5  79.69 ( 87.60)
+Epoch: [0][16000/20018] Time  0.321 ( 0.325)    Data  0.009 ( 0.009)    Loss 1.3471e+00 (1.2875e+00)    Acc@1  65.62 ( 69.17)   Acc@5  85.94 ( 87.60)
+Epoch: [0][16100/20018] Time  0.324 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.1414e+00 (1.2875e+00)    Acc@1  70.31 ( 69.17)   Acc@5  89.06 ( 87.60)
+Epoch: [0][16200/20018] Time  0.325 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.6496e+00 (1.2877e+00)    Acc@1  60.94 ( 69.17)   Acc@5  87.50 ( 87.60)
+Epoch: [0][16300/20018] Time  0.333 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.0299e+00 (1.2874e+00)    Acc@1  78.12 ( 69.18)   Acc@5  90.62 ( 87.60)
+Epoch: [0][16400/20018] Time  0.326 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.4311e+00 (1.2874e+00)    Acc@1  68.75 ( 69.18)   Acc@5  85.94 ( 87.60)
+Epoch: [0][16500/20018] Time  0.315 ( 0.325)    Data  0.011 ( 0.009)    Loss 1.1885e+00 (1.2877e+00)    Acc@1  73.44 ( 69.18)   Acc@5  92.19 ( 87.59)
+Epoch: [0][16600/20018] Time  0.328 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.3457e+00 (1.2877e+00)    Acc@1  71.88 ( 69.17)   Acc@5  89.06 ( 87.59)
+Epoch: [0][16700/20018] Time  0.340 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.6930e+00 (1.2877e+00)    Acc@1  57.81 ( 69.18)   Acc@5  79.69 ( 87.59)
+Epoch: [0][16800/20018] Time  0.337 ( 0.325)    Data  0.012 ( 0.009)    Loss 1.5435e+00 (1.2878e+00)    Acc@1  68.75 ( 69.18)   Acc@5  85.94 ( 87.59)
+Epoch: [0][16900/20018] Time  0.343 ( 0.325)    Data  0.008 ( 0.009)    Loss 1.7201e+00 (1.2878e+00)    Acc@1  62.50 ( 69.18)   Acc@5  84.38 ( 87.59)
+Epoch: [0][17000/20018] Time  0.325 ( 0.325)    Data  0.009 ( 0.009)    Loss 1.3186e+00 (1.2879e+00)    Acc@1  68.75 ( 69.17)   Acc@5  85.94 ( 87.59)
+Epoch: [0][17100/20018] Time  0.323 ( 0.326)    Data  0.007 ( 0.010)    Loss 1.1260e+00 (1.2877e+00)    Acc@1  70.31 ( 69.18)   Acc@5  90.62 ( 87.59)
+Epoch: [0][17200/20018] Time  0.329 ( 0.326)    Data  0.012 ( 0.010)    Loss 1.5320e+00 (1.2874e+00)    Acc@1  64.06 ( 69.18)   Acc@5  82.81 ( 87.59)
+Epoch: [0][17300/20018] Time  0.319 ( 0.326)    Data  0.007 ( 0.010)    Loss 1.1135e+00 (1.2874e+00)    Acc@1  71.88 ( 69.18)   Acc@5  87.50 ( 87.59)
+Epoch: [0][17400/20018] Time  0.311 ( 0.326)    Data  0.009 ( 0.010)    Loss 1.3130e+00 (1.2876e+00)    Acc@1  62.50 ( 69.17)   Acc@5  89.06 ( 87.59)
+Epoch: [0][17500/20018] Time  0.310 ( 0.326)    Data  0.006 ( 0.010)    Loss 1.7144e+00 (1.2876e+00)    Acc@1  65.62 ( 69.17)   Acc@5  82.81 ( 87.59)
+Epoch: [0][17600/20018] Time  0.535 ( 0.327)    Data  0.210 ( 0.010)    Loss 1.4171e+00 (1.2876e+00)    Acc@1  65.62 ( 69.16)   Acc@5  84.38 ( 87.59)
+Epoch: [0][17700/20018] Time  0.330 ( 0.328)    Data  0.006 ( 0.011)    Loss 1.4431e+00 (1.2879e+00)    Acc@1  67.19 ( 69.16)   Acc@5  85.94 ( 87.59)
+Epoch: [0][17800/20018] Time  0.355 ( 0.328)    Data  0.011 ( 0.012)    Loss 1.3385e+00 (1.2879e+00)    Acc@1  71.88 ( 69.16)   Acc@5  85.94 ( 87.59)
+Epoch: [0][17900/20018] Time  0.321 ( 0.328)    Data  0.009 ( 0.012)    Loss 1.0498e+00 (1.2879e+00)    Acc@1  71.88 ( 69.16)   Acc@5  90.62 ( 87.59)
+Epoch: [0][18000/20018] Time  0.356 ( 0.328)    Data  0.008 ( 0.012)    Loss 1.6894e+00 (1.2879e+00)    Acc@1  64.06 ( 69.16)   Acc@5  81.25 ( 87.59)
+Epoch: [0][18100/20018] Time  0.326 ( 0.328)    Data  0.008 ( 0.012)    Loss 1.4869e+00 (1.2878e+00)    Acc@1  65.62 ( 69.16)   Acc@5  93.75 ( 87.59)
+Epoch: [0][18200/20018] Time  0.357 ( 0.328)    Data  0.009 ( 0.012)    Loss 1.5084e+00 (1.2880e+00)    Acc@1  64.06 ( 69.15)   Acc@5  79.69 ( 87.58)
+Epoch: [0][18300/20018] Time  0.362 ( 0.328)    Data  0.010 ( 0.012)    Loss 1.0632e+00 (1.2881e+00)    Acc@1  75.00 ( 69.15)   Acc@5  84.38 ( 87.58)
+Epoch: [0][18400/20018] Time  0.351 ( 0.328)    Data  0.012 ( 0.012)    Loss 1.4860e+00 (1.2882e+00)    Acc@1  65.62 ( 69.15)   Acc@5  85.94 ( 87.58)
+Epoch: [0][18500/20018] Time  0.330 ( 0.328)    Data  0.007 ( 0.012)    Loss 1.3215e+00 (1.2883e+00)    Acc@1  70.31 ( 69.15)   Acc@5  87.50 ( 87.58)
+Epoch: [0][18600/20018] Time  0.326 ( 0.328)    Data  0.009 ( 0.012)    Loss 1.1507e+00 (1.2884e+00)    Acc@1  68.75 ( 69.14)   Acc@5  87.50 ( 87.58)
+Epoch: [0][18700/20018] Time  0.318 ( 0.328)    Data  0.007 ( 0.012)    Loss 1.5004e+00 (1.2883e+00)    Acc@1  67.19 ( 69.15)   Acc@5  79.69 ( 87.58)
+Epoch: [0][18800/20018] Time  0.359 ( 0.328)    Data  0.008 ( 0.012)    Loss 1.6651e+00 (1.2884e+00)    Acc@1  59.38 ( 69.15)   Acc@5  85.94 ( 87.58)
+Epoch: [0][18900/20018] Time  0.333 ( 0.328)    Data  0.010 ( 0.012)    Loss 9.7942e-01 (1.2884e+00)    Acc@1  73.44 ( 69.15)   Acc@5  93.75 ( 87.58)
+Epoch: [0][19000/20018] Time  0.330 ( 0.329)    Data  0.010 ( 0.012)    Loss 1.1329e+00 (1.2885e+00)    Acc@1  64.06 ( 69.15)   Acc@5  93.75 ( 87.57)
+Epoch: [0][19100/20018] Time  0.310 ( 0.329)    Data  0.007 ( 0.012)    Loss 1.5531e+00 (1.2887e+00)    Acc@1  68.75 ( 69.14)   Acc@5  82.81 ( 87.57)
+Epoch: [0][19200/20018] Time  0.327 ( 0.329)    Data  0.010 ( 0.012)    Loss 1.3615e+00 (1.2888e+00)    Acc@1  70.31 ( 69.14)   Acc@5  89.06 ( 87.57)
+Epoch: [0][19300/20018] Time  0.310 ( 0.329)    Data  0.009 ( 0.012)    Loss 1.2624e+00 (1.2889e+00)    Acc@1  65.62 ( 69.14)   Acc@5  84.38 ( 87.57)
+Epoch: [0][19400/20018] Time  0.325 ( 0.328)    Data  0.012 ( 0.012)    Loss 1.5049e+00 (1.2890e+00)    Acc@1  68.75 ( 69.14)   Acc@5  81.25 ( 87.57)
+Epoch: [0][19500/20018] Time  0.301 ( 0.328)    Data  0.008 ( 0.012)    Loss 1.1080e+00 (1.2891e+00)    Acc@1  71.88 ( 69.14)   Acc@5  90.62 ( 87.56)
+Epoch: [0][19600/20018] Time  0.364 ( 0.328)    Data  0.009 ( 0.012)    Loss 1.2845e+00 (1.2892e+00)    Acc@1  76.56 ( 69.13)   Acc@5  90.62 ( 87.56)
+Epoch: [0][19700/20018] Time  0.346 ( 0.329)    Data  0.009 ( 0.011)    Loss 1.1587e+00 (1.2893e+00)    Acc@1  76.56 ( 69.13)   Acc@5  87.50 ( 87.56)
+Epoch: [0][19800/20018] Time  0.328 ( 0.329)    Data  0.009 ( 0.011)    Loss 1.0768e+00 (1.2893e+00)    Acc@1  68.75 ( 69.13)   Acc@5  90.62 ( 87.56)
+Epoch: [0][19900/20018] Time  0.332 ( 0.329)    Data  0.008 ( 0.011)    Loss 9.7752e-01 (1.2893e+00)    Acc@1  81.25 ( 69.13)   Acc@5  89.06 ( 87.56)
+Epoch: [0][20000/20018] Time  0.328 ( 0.329)    Data  0.015 ( 0.011)    Loss 9.2257e-01 (1.2893e+00)    Acc@1  78.12 ( 69.13)   Acc@5  90.62 ( 87.56)
+Test: [  0/782] Time  4.257 ( 4.257)    Loss 6.5826e-01 (6.5826e-01)    Acc@1  81.25 ( 81.25)   Acc@5  92.19 ( 92.19)
+Test: [100/782] Time  0.112 ( 0.213)    Loss 7.6954e-01 (9.2398e-01)    Acc@1  76.56 ( 77.06)   Acc@5  93.75 ( 92.57)
+Test: [200/782] Time  0.102 ( 0.211)    Loss 1.1844e+00 (9.2408e-01)    Acc@1  68.75 ( 76.06)   Acc@5  90.62 ( 93.03)
+Test: [300/782] Time  0.107 ( 0.211)    Loss 5.7813e-01 (9.1074e-01)    Acc@1  76.56 ( 76.26)   Acc@5  98.44 ( 93.36)
+Test: [400/782] Time  0.120 ( 0.207)    Loss 1.0604e+00 (1.0491e+00)    Acc@1  70.31 ( 73.52)   Acc@5  92.19 ( 91.68)
+Test: [500/782] Time  0.334 ( 0.207)    Loss 3.4083e-01 (1.1185e+00)    Acc@1  87.50 ( 72.19)   Acc@5  98.44 ( 90.69)
+Test: [600/782] Time  0.104 ( 0.205)    Loss 9.8853e-01 (1.1755e+00)    Acc@1  82.81 ( 71.07)   Acc@5  89.06 ( 90.00)
+Test: [700/782] Time  0.098 ( 0.205)    Loss 9.9280e-01 (1.2258e+00)    Acc@1  75.00 ( 69.96)   Acc@5  95.31 ( 89.21)
+ * Acc@1 69.838 Acc@5 89.202
