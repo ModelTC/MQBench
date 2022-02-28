@@ -19,6 +19,9 @@ class MySubset(torch.utils.data.IterableDataset):
         super(MySubset).__init__()
         self.dataset = dataset
         self.end = end
+    
+    def __len__(self):
+        return self.end
 
     def __iter__(self):
         def iters():
@@ -66,7 +69,10 @@ def parse_example(record, transform=None, val=False):
     img = img.reshape(h, w, -1)
     if val:
         img = np.ascontiguousarray(img[..., ::-1])
-    label = record.get('label', 'lablel')[0]
+    if 'label' in record:
+        label = record['label'][0]
+    else:
+        label = record['lable'][0]
     if transform is not None:
         img = transform(Image.fromarray(img))
     return img, label
@@ -150,10 +156,10 @@ if __name__ == '__main__':
     # loader = torch.utils.data.DataLoader(dataset, batch_size=64, shuffle=False,
     #                                      num_workers=4, pin_memory=False)
     train_dataset = get_train_dataset('/D2/wzou/BenchmarkData/dataset/TFRecords/ImageNet/ILSVRC2012/train')
-    loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=False,
+    loader = torch.utils.data.DataLoader(train_dataset, batch_size=2, shuffle=False,
                                          num_workers=8, pin_memory=False)
     print(len(loader))
     end = time.time()
     for d, l in loader:
-        print(d.shape, time.time() - end)
+        print(d.shape, l, time.time() - end)
         end = time.time()

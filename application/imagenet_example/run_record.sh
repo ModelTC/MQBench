@@ -20,9 +20,10 @@
 #     --val_data /D2/wzou/BenchmarkData/dataset/TFRecords/ImageNet/ILSVRC2012/val/
 
 
-python main.py -a mobilenet_v2 --epochs 1 --lr 1e-5 --wd 0 --optim adam  -b 64 --pretrained --gpu 2 --backend snpe -j 16 \
-    --train_data /D2/wzou/BenchmarkData/dataset/TFRecords/ImageNet/ILSVRC2012/train/ \
-    --val_data /D2/wzou/BenchmarkData/dataset/TFRecords/ImageNet/ILSVRC2012/val/
+python main_record.py -a mobilenet_v2 --epochs 1 --lr 1e-6 --optim adam  -b 64 --pretrained --gpu 2 --backend tensorrt -j 16 \
+        --train_data /D2/wzou/BenchmarkData/dataset/TFRecords/ImageNet/ILSVRC2012/train/ \
+        --val_data /D2/wzou/BenchmarkData/dataset/TFRecords/ImageNet/ILSVRC2012/val/ \
+        -p 100
 
 # # eval qat model
 # python main.py -a mobilenet_v2 --resume mobilenet_v2_acc_70.98_fixfake.pth.tar --gpu 2 --backend snpe -e \

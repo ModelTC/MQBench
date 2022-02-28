@@ -6,3 +6,5 @@ __pycache__
 *.onnx
 *.egg-info
 *.pth
+*.log
+*.json

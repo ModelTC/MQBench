@@ -207,9 +207,8 @@ def main_worker(gpu, ngpus_per_node, args):
                                      amsgrad=False)
 
     # prepare dataset
-    # train_loader, train_sampler, val_loader, cali_loader = prepare_dataloader(args)
-    train_loader, train_sampler, val_loader, cali_loader = None, None, None, None
-    from imagenet import val_loader
+    train_loader, train_sampler, val_loader, cali_loader = prepare_dataloader(args)
+    # train_loader, train_sampler, val_loader, cali_loader = None, None, None, None
 
     # optionally resume from a checkpoint
     if args.resume:
