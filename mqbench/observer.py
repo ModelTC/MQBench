@@ -343,6 +343,7 @@ class EMAMinMaxFloorObserver(ObserverBase):
     def set_quant_type(self, qtype):
         self.quant_type = qtype
 
+
 class ModeMinMaxFloorObserver(ObserverBase):
     """Mode scale.
     """
@@ -415,6 +416,7 @@ class ModeMinMaxFloorObserver(ObserverBase):
     def set_quant_type(self, qtype):
         self.quant_type = qtype
 
+
 class EMAQuantileObserver(ObserverBase):
     """Moving average quantile among batches.
     """
@@ -435,13 +437,15 @@ class EMAQuantileObserver(ObserverBase):
             return x_orig
         x = x_orig.to(self.min_val.dtype)
         min_val_cur, max_val_cur = torch._aminmax(x)
-        hist = torch.histc(torch.abs(x), bins=self.bins, min=0., max=torch.max(-min_val_cur, max_val_cur))
+        max_hist_range = torch.max(-min_val_cur, max_val_cur)
+        hist = torch.histc(torch.abs(x), bins=self.bins, min=0., max=max_hist_range)
         cur_total = 0
-        clip_value = torch.max(-min_val_cur, max_val_cur)
+        clip_value = max_hist_range
         for i, cnt in enumerate(hist):
             if cur_total + cnt >= self.threshold * x.numel():
-                clip_value = (i + 0.5) * (max_val_cur / self.bins)
+                clip_value = (i + 0.5) * (max_hist_range / self.bins)
                 break
+            cur_total += cnt
 
         if self.max_val.numel() <= 1 and self.max_val.isinf():
             self.min_val = max(min_val_cur, -clip_value)
