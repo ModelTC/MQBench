@@ -1,3 +1,7 @@
-*.pyc
-*.idea
+# build
 __pycache__
+*.pyc
+
+# editor
+*.idea
+.vscode
