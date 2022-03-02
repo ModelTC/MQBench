@@ -9,7 +9,7 @@ USE_DDP = False
 try:
     import spring.linklink as link
     if not link.is_initialized():
-        link.initialized()
+        link.initialize()
     USE_LINK = True
 except (ModuleNotFoundError, AssertionError):
     import torch.distributed as dist
