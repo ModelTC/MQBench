@@ -1,20 +1,19 @@
 from functools import partial
 
 import torch
-from torch.nn.parameter import Parameter
 
 from mqbench.fake_quantize.quantize_base import QuantizeBase
 from mqbench.utils import is_symmetric_quant
 
 
 class TqtFakeQuantize(QuantizeBase):
-    def __init__(self, observer, scale=1., zero_point=0., use_grad_scaling=True, **observer_kwargs):
+    def __init__(self, observer, scale=1., zero_point=0., **observer_kwargs):
         super(TqtFakeQuantize, self).__init__(observer, **observer_kwargs)
-        self.scale = Parameter(torch.tensor([scale]))
-        self.zero_point = Parameter(torch.tensor([zero_point]))
+        self.register_buffer('scale', torch.tensor([scale]))
+        self.register_buffer('zero_point', torch.tensor([zero_point]))
         self.register_buffer('eps', torch.tensor([torch.finfo(torch.float32).eps]))
-        self.quant_type = None 
-        self.mth = None 
+        self.quant_type = None
+        self.mth = None
 
         class PerChannelLoadHook:
             def __init__(self, module):
@@ -71,7 +70,7 @@ class TqtFakeQuantize(QuantizeBase):
             assert is_symmetric_quant(self.qscheme)
             "TQT is a symmetric quantization FakeQuantize Op."
             self.zero_point.data.zero_()
-            assert self.is_per_channel is False 
+            assert self.is_per_channel is False
             "TQT is a per-tensor quantization FakeQuantize Op."
             X = FakeQuantizeTqtAffine.apply(X, self.scale, self.zero_point, self.quant_min, self.quant_max, self.mth)
         return X
@@ -87,7 +86,7 @@ class TqtFakeQuantize(QuantizeBase):
     def set_forward_method(self):
         self.mth = torch.tensor(3) if self.quant_type == 'param' else torch.tensor(2)
 
-def _fake_quantize_tqt_affine_training(x, scale, zero_point, quant_min, quant_max, mth):    
+def _fake_quantize_tqt_affine_training(x, scale, zero_point, quant_min, quant_max, mth):
     if scale < 2 ** -15:
         max_scale = 0
     else:
@@ -95,21 +94,21 @@ def _fake_quantize_tqt_affine_training(x, scale, zero_point, quant_min, quant_ma
         max_scale = torch.floor(max_scale.log2())
     scale = 1 / (2 ** max_scale)
     if mth == 3:
-        new_x = torch.clamp(scale_round(x / scale), quant_min, quant_max) * scale 
+        new_x = torch.clamp(scale_round(x / scale), quant_min, quant_max) * scale
     elif mth == 2:
-        new_x = torch.clamp(x / scale, quant_min, quant_max) 
-        new_x = scale_floor_ceil(new_x) 
-        new_x *= scale 
+        new_x = torch.clamp(x / scale, quant_min, quant_max)
+        new_x = scale_floor_ceil(new_x)
+        new_x *= scale
     else:
         raise ValueError(f'Invalid method {mth} encoding!')
-    return new_x 
+    return new_x
 
 
 def scale_round(t):
-    return (torch.round(t) - t).detach() + t  
+    return (torch.round(t) - t).detach() + t
 
 def scale_floor_ceil(t):
-    return (torch.where((t < 0) & (t - t.floor() == 0.5), t.ceil(), t.round()) - t).detach() + t 
+    return (torch.where((t < 0) & (t - t.floor() == 0.5), t.ceil(), t.round()) - t).detach() + t
 
 def _t(x, t):
     return torch.tensor(x).type_as(t)
@@ -123,28 +122,20 @@ class FakeQuantizeTqtAffine(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_outputs):
-        x, s, qmin, qmax = ctx.saved_tensors 
+        x, s, qmin, qmax = ctx.saved_tensors
         scaled_x = x / s
         rounded_scaled_x = torch.where(
-            (scaled_x < 0) & (scaled_x - torch.floor(scaled_x) == 0.5), 
+            (scaled_x < 0) & (scaled_x - torch.floor(scaled_x) == 0.5),
             torch.ceil(scaled_x), torch.round(scaled_x)
         )
 
-        is_lt_min = rounded_scaled_x < qmin 
-        is_gt_max = rounded_scaled_x > qmax 
+        is_lt_min = rounded_scaled_x < qmin
+        is_gt_max = rounded_scaled_x > qmax
         is_ge_min_and_le_max = ~is_lt_min & ~is_gt_max
-
-        grad_s = grad_outputs.clone()
-        grad_s = torch.where(is_ge_min_and_le_max, 
-                             grad_s * (rounded_scaled_x - scaled_x),
-                             grad_s)
-        grad_s = torch.where(is_lt_min, grad_s * qmin, grad_s)
-        grad_s = torch.where(is_gt_max, grad_s * qmax, grad_s)
-        grad_s = grad_s.sum().expand_as(s)
 
         grad_x = grad_outputs.clone()
         grad_x = torch.where(is_ge_min_and_le_max, grad_x, 0 * grad_x)
-        return grad_x.to(grad_outputs.device), grad_s.to(grad_outputs.device), None, None, None, None
+        return grad_x.to(grad_outputs.device), None, None, None, None, None
 
     @staticmethod
     def symbolic(g, x, scale, zero_point, quant_min, quant_max, mth):
