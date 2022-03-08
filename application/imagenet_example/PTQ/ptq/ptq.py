@@ -4,7 +4,7 @@ from ptq.data.imagenet import load_data
 from ptq.models import load_model
 from ptq.utils import parse_config, seed_all, evaluate
 from mqbench.prepare_by_platform import prepare_by_platform, BackendType
-
+from mqbench.adaround import adaround
 
 def load_calibrate_data(train_loader, cali_batchsize):
     cali_data = []
@@ -51,8 +51,24 @@ if __name__ == '__main__':
     # evaluate
     if not hasattr(config, 'quantize'):
         evaluate(val_loader, model)
-    else:
-        assert config.quantize.quantize_type == 'ptq'
+    elif config.quantize.quantize_type == 'advanced_ptq':
+        print('begin calibration now!')
+        cali_data = load_calibrate_data(train_loader, cali_batchsize=config.quantize.cali_batchsize)
+        from mqbench.utils.state import enable_quantization, enable_calibration_woquantization
+        # do activation and weight calibration seperately for quick MSE per-channel for weight one
+        model.eval()
+        enable_calibration_woquantization(model, quantizer_type='act_fake_quant')
+        for batch in cali_data:
+            model(batch.cuda())
+        enable_calibration_woquantization(model, quantizer_type='weight_fake_quant')
+        model(cali_data[0].cuda())
+        print('begin advanced PTQ now!')
+        if hasattr(config.quantize, 'reconstruction'):
+            model = adaround(
+                model, cali_data, config.quantize.reconstruction)
+        enable_quantization(model)
+        evaluate(val_loader, model)
+    elif config.quantize.quantize_type == 'naive_ptq':
         print('begin calibration now!')
         cali_data = load_calibrate_data(train_loader, cali_batchsize=config.quantize.cali_batchsize)
         from mqbench.utils.state import enable_quantization, enable_calibration_woquantization
@@ -66,4 +82,6 @@ if __name__ == '__main__':
         print('begin quantization now!')
         enable_quantization(model)
         evaluate(val_loader, model)
-
+    else:
+        print("The quantize_type must in 'naive_ptq' or 'advanced_ptq',")
+        print("and 'advanced_ptq' need reconstruction configration.")

@@ -15,7 +15,7 @@ extra_prepare_dict:
             per_channel: False
             pot_scale: False
 quantize:
-    quantize_type: ptq # support ptq or qat
+    quantize_type: naive_ptq # support naive_ptq or advanced_ptq
     cali_batchsize: 16
 model:                    # architecture details
     type: mobilenet_v2        # model name

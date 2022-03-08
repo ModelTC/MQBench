@@ -11,7 +11,7 @@ Generally, we follow the `PyTorch official example <https://github.com/pytorch/e
 3. Download pre-trained models from our `release <https://github.com/ModelTC/MQBench/releases/tag/pre-trained>`_;
 4. Check out `/path-of-MQBench/application/imagenet_example/PTQ/configs` and find yaml file you want to reproduce;
 5. Replace `/path-of-pretained` and `/path-of-imagenet` in yaml file;
-6. Exec `python /path-of-MQBench/application/imagenet_example/PTQ/ptq/advanced_ptq.py -\-config /path-of-config.yaml`.
+6. Exec `python /path-of-MQBench/application/imagenet_example/PTQ/ptq/ptq.py -\-config /path-of-config.yaml`.
 
 Post-training Quantization:
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^

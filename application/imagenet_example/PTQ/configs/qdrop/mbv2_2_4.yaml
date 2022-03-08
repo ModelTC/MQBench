@@ -17,7 +17,7 @@ extra_prepare_dict:
             pot_scale: False
             p: 2.4
 quantize:
-    quantize_type: ptq # support ptq or qat
+    quantize_type: advanced_ptq # support naive_ptq or advanced_ptq
     cali_batchsize: 16
     reconstruction:
         pattern: block
