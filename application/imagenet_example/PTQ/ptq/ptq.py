@@ -4,7 +4,7 @@ from ptq.data.imagenet import load_data
 from ptq.models import load_model
 from ptq.utils import parse_config, seed_all, evaluate
 from mqbench.prepare_by_platform import prepare_by_platform, BackendType
-from mqbench.ptq_reconstruction import ptq_reconstruction
+from mqbench.advanced_ptq import ptq_reconstruction
 
 def load_calibrate_data(train_loader, cali_batchsize):
     cali_data = []
