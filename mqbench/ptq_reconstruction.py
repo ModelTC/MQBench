@@ -341,7 +341,7 @@ def extract_block(input_nodes, fp32_modules, depth=0):
         return layer_node_list + exp_nodes + extract_block([exp_nodes[-1]], fp32_modules, depth + 1)
 
 
-def adaround(model, cali_data, config):
+def ptq_reconstruction(model, cali_data, config):
     # assert model is on cuda
     if not config.keep_gpu:
         cali_data = [inp.cpu() for inp in cali_data]
