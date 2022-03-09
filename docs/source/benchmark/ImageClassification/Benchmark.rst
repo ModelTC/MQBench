@@ -13,7 +13,10 @@ Generally, we follow the `PyTorch official example <https://github.com/pytorch/e
 5. Replace `/path-of-pretained` and `/path-of-imagenet` in yaml file;
 6. Exec `python /path-of-MQBench/application/imagenet_example/PTQ/ptq/ptq.py -\-config /path-of-config.yaml`.
 
-Post-training Quantization:
+
+.. _imagenet-ptq-benchmark:
+
+Post-training Quantization
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 - Backend: Academic

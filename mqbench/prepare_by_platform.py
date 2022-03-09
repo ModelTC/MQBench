@@ -35,6 +35,8 @@ from mqbench.utils.logger import logger
 from mqbench.utils.registry import DEFAULT_MODEL_QUANTIZER
 from mqbench.scheme import QuantizeScheme
 
+__all__ = ['prepare_by_platform']
+
 class BackendType(Enum):
     Academic = 'Academic'
     Tensorrt = 'Tensorrt'

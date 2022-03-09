@@ -91,3 +91,7 @@ first weight then activation behaves poorly especially at ultra-low bit. It reco
 such as learn the step size of activation and weight rounding together. However, it also points out that there are better ways to do
 activation quantization to find a good calibrated weight. Finally, they replace the activation quantization value by FP32 one randomly at netron level
 during reconstruction. And they use the probability 0.5 to drop activation quantization.
+
+For the implementation of these three algorithms, please refer to :any:`mqbench.advanced_ptq.ptq_reconstruction`.
+
+A detailed benchmark result and relevant config can be seen in :any:`imagenet-ptq-benchmark`.
