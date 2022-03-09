@@ -45,6 +45,7 @@ We provide the example to deploy the quantized `EOD <https://github.com/ModelTC/
     
     .. code-block:: shell
         :linenos:
+
         python -m eod train -e --config configs/det/yolox/yolox_fpga_quant_vitis.yaml --nm 1 --ng 1 --launch pytorch 2>&1 | tee log_qat_mqbench
 
 
@@ -52,16 +53,19 @@ We provide the example to deploy the quantized `EOD <https://github.com/ModelTC/
     
     .. code-block:: shell
         :linenos:
+
         python -m eod quant_deploy --config configs/det/yolox/yolox_fpga_quant_vitis.yaml --ckpt [model_save_path] --input_shape [input_shape] 2>&1 | tee log.delpoy.txt
 
 - Third build Docker from `Dockerfile <https://github.com/ModelTC/MQBench/tree/main/docker>`_, convert ONNX to xmodel [mqbench_qmodel_deploy_model.onnx_int.xmodel].
 
     .. code-block:: shell
         :linenos:
+
         python -m mq.dep.convert_xir -Q [mqbench_qmodel.onnx] -C [mqbench_qmodel_deploy_model.onnx] -N [model_name]
 
 - Fourth compile xmodel to deployable model [mqbench_qmodel.xmodel].
 
     .. code-block:: shell
         :linenos:
+
         vai_c_xir -x [mqbench_qmodel_deploy_model.onnx_int.xmodel] -a [new_arch.json] -o [output_path] -n [model_name]
