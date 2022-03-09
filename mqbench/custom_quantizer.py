@@ -32,7 +32,7 @@ from torch.quantization.quantize_fx import (
 )
 
 import mqbench.nn as qnn
-import mqbench.nn.intrinsic as qnni 
+import mqbench.nn.intrinsic as qnni
 import mqbench.nn.intrinsic.qat as qnniqat
 from mqbench.utils import is_symmetric_quant
 from mqbench.utils.logger import logger
@@ -452,7 +452,7 @@ class TotalINTQuantizer(ModelQuantizer):
     @property
     def _passed_func_type(self):
         return (
-            torch.nn.functional.relu, 
+            torch.nn.functional.relu,
             torch.nn.functional.relu6,
             torch.flatten
         )
@@ -491,7 +491,7 @@ class VitisQuantizer(ModelQuantizer):
     """There is only INT8 calculations in the model.
     We quantize the input tensors of all layers and the output tensors
     of the last layers. We quantize every activations tensors and weight
-    tensors using this method. NOTE: the acti and weight have different 
+    tensors using this method. NOTE: the acti and weight have different
     quantize type.
     """
 
@@ -508,7 +508,7 @@ class VitisQuantizer(ModelQuantizer):
     def module_type_to_quant_input(self) -> tuple:
         return super().module_type_to_quant_input + (
             torch.nn.Conv2d,
-            qnni.ConvBn2d, 
+            qnni.ConvBn2d,
             qnni.ConvReLU2d,
             qnni.ConvBnReLU2d
         )
@@ -537,7 +537,7 @@ class VitisQuantizer(ModelQuantizer):
             # Prelu mostly do not merge.
             torch.nn.PReLU,
             torch.nn.Upsample,
-        ) 
+        )
 
 
     @property
@@ -553,7 +553,7 @@ class VitisQuantizer(ModelQuantizer):
             torch.nn.functional.conv2d,
             torch.nn.functional.linear,
             torch.nn.functional.interpolate,
-        ] 
+        ]
 
     @property
     def function_type_not_to_quant_alone(self) -> list:
@@ -598,7 +598,7 @@ class VitisQuantizer(ModelQuantizer):
                                 _node.target in self.function_type_not_to_quant_alone):
                             if _node not in getitem2node:
                                 self.node_need_to_quantize_output.append(_node)
-                            logger.info(f'Add {_node.name}/{_node.target}/{_node.op} to input quantize')                        
+                            logger.info(f'Add {_node.name}/{_node.target}/{_node.op} to input quantize')
                 self.node_need_to_quantize_output.append(node)
                 logger.info(f'Add {node.name} to output quantize')
         return self.node_need_to_quantize_output
@@ -619,11 +619,11 @@ class VitisQuantizer(ModelQuantizer):
                     ret = ret[a]
                 except (IndexError, KeyError):
                     return {}
-            return ret 
+            return ret
         nodes = list(model.graph.nodes)
         # the getitem's call graph
         getitem_args_dict = {}
-        # the dict used in the model 
+        # the dict used in the model
         original_key_dict = {}
         getitem2node = {}
         for node in nodes:
@@ -687,7 +687,7 @@ class VitisQuantizer(ModelQuantizer):
                         logger.info(f'{node.target} has been set to quant type <param/bias>')
         for node in inputs_type_set:
             if isinstance(node.target, str) and node.target in module_dict:
-                next_op = module_dict[node.target]    
+                next_op = module_dict[node.target]
                 if isinstance(next_op, TqtFakeQuantize):
                     next_op.set_quant_type('input')
                     logger.info(f'{node.target} has been set to quant type <input>')
@@ -924,7 +924,7 @@ class OPENVINOQuantizer(ModelQuantizer):
 
         def node_in_pattern(node, pattern):
             return ((node.op == 'call_function' or node.op == 'call_method') and node.target in pattern['func_type']) or \
-                (node.op == "call_module" and isinstance(modules[node.target], pattern['module_type'])) 
+                (node.op == "call_module" and isinstance(modules[node.target], pattern['module_type']))
 
         def propagated_pattern(prev_node, cur_node):
             return node_in_pattern(prev_node, prev_nodes_pattern) and node_in_pattern(cur_node, cur_nodes_pattern)
@@ -1058,3 +1058,26 @@ class OPENVINOQuantizer(ModelQuantizer):
         model.recompile()
         model.graph.lint()
         return model
+
+
+@register_model_quantizer(BackendType.Tengine_u8)
+class TengineQuantizer(ModelQuantizer):
+    """
+    Tengine needs de-quantization parameters for output.
+
+    Parameters
+    ----------
+    ModelQuantizer : _type_
+        _description_
+    """
+    def _find_act_quants(self, model: GraphModule) -> list:
+        nodes = list(model.graph.nodes)
+        modules = dict(model.named_modules())
+        node_need_to_quantize_output = super()._find_act_quants(model)
+        # insert quantize node before output layer
+        for node in nodes:
+            if node.op == "output":
+                for _arg in node.args:
+                    if isinstance(_arg, torch.fx.node.Node):
+                        node_need_to_quantize_output.append(_arg)
+        return node_need_to_quantize_output

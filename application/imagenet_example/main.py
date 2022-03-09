@@ -80,7 +80,7 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'multi node data parallel training')
 
 parser.add_argument('--model_path', type=str, default=None)
-parser.add_argument('--backend', type=str, choices=['tensorrt', 'nnie', 'ppl', 'snpe'], default='tensorrt')
+parser.add_argument('--backend', type=str, choices=['tengine_u8', 'tensorrt', 'nnie', 'ppl', 'snpe'], default='tensorrt')
 parser.add_argument('--optim', type=str, default='sgd')
 parser.add_argument('--not-quant', action='store_true')
 parser.add_argument('--deploy', action='store_true')
@@ -89,7 +89,8 @@ BackendMap = {'tensorrt': BackendType.Tensorrt,
                'nnie': BackendType.NNIE,
                'ppl': BackendType.PPLW8A16,
                'snpe': BackendType.SNPE,
-               'vitis': BackendType.Vitis}
+               'vitis': BackendType.Vitis,
+               'tengine_u8': BackendType.Tengine_u8}
 
 best_acc1 = 0
 
