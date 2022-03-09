@@ -2,6 +2,7 @@ import os
 from collections import OrderedDict
 
 import onnx
+from onnx import numpy_helper
 from onnxsim import simplify
 
 from ..utils.logger import logger
@@ -22,8 +23,11 @@ from .common import (
 
 class Tengine_process(LinearQuantizer_process):
 
+    @staticmethod
+    def get_constant(node: onnx.NodeProto):
+        return numpy_helper.to_array(node.attribute[0].t).tolist()
+
     def remove_fakequantize_and_collect_params(self, onnx_path, model_name):
-        import ipdb; ipdb.set_trace()
         model = onnx.load(onnx_path)
         graph = model.graph
         out2node, inp2node = update_inp2node_out2node(graph)
@@ -77,7 +81,13 @@ class Tengine_process(LinearQuantizer_process):
                     # ref: https://github.com/OAID/Tengine/blob/cdb4ccf77c04a0a771ec6a43631b9d25acd2bae1/tools/convert_tool/utils/graph_optimizer/graph_opt.cpp#L941
                     pre_node = out2node.get(tensor_name, None)
                     if pre_node and pre_node.op_type in {"Clip", "ReLU"}:
-                        # TODO: clip's must be relu6, this means clips'min == 0 and clips'max == 6
+                        # suppose onnx version be 11
+                        # for relu6
+                        if pre_node.op_type == "Clip" and \
+                            not (self.get_constant(out2node[pre_node.input[1]]) == 0 and \
+                            self.get_constant(out2node[pre_node.input[2]]) == 6):
+                            continue
+
                         conv_node = out2node[pre_node.input[0]]
                         if conv_node.op_type == "Conv":
                             # match pattern
