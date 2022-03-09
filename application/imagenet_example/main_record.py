@@ -28,9 +28,9 @@ model_names = sorted(name for name in models.__dict__
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--train_data', metavar='DIR',
-                    help='path to dataset', required=True)
+                    help='path to dataset', default='/D2/wzou/BenchmarkData/dataset/TFRecords/ImageNet/ILSVRC2012/train/')
 parser.add_argument('--val_data', metavar='DIR',
-                    help='path to dataset', required=True)
+                    help='path to dataset', default='/D2/wzou/BenchmarkData/dataset/TFRecords/ImageNet/ILSVRC2012/val/')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     choices=model_names,
                     help='model architecture: ' +
@@ -248,7 +248,8 @@ def main_worker(gpu, ngpus_per_node, args):
         enable_quantization(model)
 
     if args.quant and args.deploy:
-        convert_deploy(model.eval(), args.backend, input_shape_dict={'data': [1, 3, 224, 224]})
+        output_dir = args.arch
+        convert_deploy(model.eval(), args.backend, input_shape_dict={'data': [1, 3, 224, 224]}, output_path=output_dir)
         return
 
     if args.evaluate:
@@ -256,6 +257,7 @@ def main_worker(gpu, ngpus_per_node, args):
             from mqbench.convert_deploy import convert_merge_bn
             convert_merge_bn(model.eval())
         validate(val_loader, model, criterion, args)
+        # validate(train_loader, model, criterion, args)
         return
 
     for epoch in range(args.start_epoch, args.epochs):
@@ -273,15 +275,14 @@ def main_worker(gpu, ngpus_per_node, args):
         is_best = acc1 > best_acc1
         best_acc1 = max(acc1, best_acc1)
 
-        if not args.multiprocessing_distributed or (args.multiprocessing_distributed
-                and args.rank % ngpus_per_node == 0):
-            save_checkpoint({
-                'epoch': epoch + 1,
-                'arch': args.arch,
-                'state_dict': model.state_dict(),
-                'best_acc1': best_acc1,
-                'optimizer' : optimizer.state_dict(),
-            }, is_best)
+        save_checkpoint({
+            'epoch': epoch + 1,
+            'arch': args.arch,
+            'state_dict': model.state_dict(),
+            'cur_acc': acc1,
+            'best_acc1': best_acc1,
+            'optimizer' : optimizer.state_dict(),
+        }, is_best)
 
 def prepare_dataloader(args):
     from imagenet import get_train_dataset, get_val_dataset, get_calib_loader
@@ -296,7 +297,7 @@ def prepare_dataloader(args):
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=False,
-        num_workers=args.workers, pin_memory=False, sampler=train_sampler)
+        num_workers=args.workers, pin_memory=False, sampler=train_sampler, drop_last=True)
 
     cali_loader = get_calib_loader(args.train_data)
 
@@ -365,7 +366,10 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
         if i % args.print_freq == 0:
             progress.display(i)
-
+    
+    # TODO: this should also be done with the ProgressMeter
+    print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
+        .format(top1=top1, top5=top5))
 
 def validate(val_loader, model, criterion, args):
     batch_time = AverageMeter('Time', ':6.3f')
@@ -402,7 +406,7 @@ def validate(val_loader, model, criterion, args):
             batch_time.update(time.time() - end)
             end = time.time()
 
-            if i % args.print_freq == 0:
+            if i % args.print_freq == 0 :
                 progress.display(i)
         # TODO: this should also be done with the ProgressMeter
         print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
@@ -410,14 +414,15 @@ def validate(val_loader, model, criterion, args):
 
     return top1.avg
 
-
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     model_name = state['arch']
     if not os.path.isdir(model_name):
         os.mkdir(model_name)
 
-    acc = state['best_acc1']
-    filename = '{}_acc_{:.2f}.pth.tar'.format(model_name, acc)
+    cur_acc = state.pop('cur_acc')
+    cur_epoch = state['epoch'] - 1
+
+    filename = '{}_acc_{:.2f}_epoch_{}.pth.tar'.format(model_name, cur_acc, cur_epoch)
     filename = os.path.join(model_name, filename)
     torch.save(state, filename)
     if is_best:
@@ -468,7 +473,7 @@ class ProgressMeter(object):
 
 def adjust_learning_rate(optimizer, epoch, args):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
-    lr = args.lr * (0.1 ** (epoch // 30))
+    lr = args.lr * (0.1 ** (epoch // 5))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 

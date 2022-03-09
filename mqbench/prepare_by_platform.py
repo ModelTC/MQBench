@@ -71,7 +71,7 @@ ParamsTable = {
                                default_weight_observer=MinMaxObserver,
                                default_act_observer=EMAMinMaxObserver),
     BackendType.SNPE:     dict(qtype='affine',     # noqa: E241
-                               w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8),
+                               w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
                                a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
                                default_weight_quantize=FixedFakeQuantize,
                                default_act_quantize=FixedFakeQuantize,

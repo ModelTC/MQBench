@@ -63,6 +63,7 @@ class MyImageFolder(ImageFolder):
 
 # train_dataset = MyImageFolder('/D2/olddata/DataCenter1/AlgData/Common/ImageNet/ILSVRC2012/Data/CLS-LOC/train', transform=t)
 
+
 def parse_example(record, transform=None, val=False):
     h, w = record['height'][0], record['width'][0]
     img = np.frombuffer(record['image'], np.uint8)
@@ -95,7 +96,7 @@ def get_train_dataset(root):
     dataset_transform = functools.partial(parse_example, transform=transform)
     tfrecord_paths = os.listdir(root)
     tfrecord_paths = [f for f in tfrecord_paths if '.record' in f]
-    splits = {f.split('.')[0]: 0.5 for f in tfrecord_paths}
+    splits = {f.split('.')[0]: 0.2 for f in tfrecord_paths}
 
     tfrecord_pattern = root + '/{}.record'
     index_pattern = root + '/{}.index'
