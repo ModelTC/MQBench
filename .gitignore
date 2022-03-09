@@ -11,3 +11,4 @@ build/
 
 # model
 *.pth*
+*.onnx
