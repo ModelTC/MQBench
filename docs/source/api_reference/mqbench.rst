@@ -14,10 +14,10 @@ Subpackages
 Submodules
 ----------
 
-mqbench.adaround 
+mqbench.advanced\_ptq
 -----------------------
 
-.. automodule:: mqbench.adaround
+.. automodule:: mqbench.advanced_ptq
    :members:
    :undoc-members:
    :show-inheritance:

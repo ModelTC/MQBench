@@ -4,7 +4,7 @@ from ptq.data.imagenet import load_data
 from ptq.models import load_model
 from ptq.utils import parse_config, seed_all, evaluate
 from mqbench.prepare_by_platform import prepare_by_platform, BackendType
-from mqbench.adaround import adaround
+from mqbench.advanced_ptq import ptq_reconstruction
 
 def load_calibrate_data(train_loader, cali_batchsize):
     cali_data = []
@@ -64,7 +64,7 @@ if __name__ == '__main__':
         model(cali_data[0].cuda())
         print('begin advanced PTQ now!')
         if hasattr(config.quantize, 'reconstruction'):
-            model = adaround(
+            model = ptq_reconstruction(
                 model, cali_data, config.quantize.reconstruction)
         enable_quantization(model)
         evaluate(val_loader, model)

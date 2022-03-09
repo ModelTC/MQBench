@@ -6,6 +6,8 @@ from torch.nn import Module
 USE_LINK = False
 USE_DDP = False
 
+__all__ = ['ptq_reconstruction']
+
 try:
     import spring.linklink as link
     if not link.is_initialized():
@@ -341,7 +343,37 @@ def extract_block(input_nodes, fp32_modules, depth=0):
         return layer_node_list + exp_nodes + extract_block([exp_nodes[-1]], fp32_modules, depth + 1)
 
 
-def adaround(model, cali_data, config):
+def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
+    r"""
+    Reconsturction for AdaRound, BRECQ, QDrop.
+    Basic optimization objective:
+
+    .. math::
+
+        \mathop{\arg\min}_{\mathbf{V}}\ \ || Wx-\tilde{W}x ||_F^2 + \lambda f_{reg}(\mathbf{V}),
+
+        \tilde{W}=s \cdot clip\left( \left\lfloor\dfrac{W}{s}\right\rfloor+h(\mathbf{V}), n, p \right)
+
+    where :math:`h(\mathbf{V}_{i,j})=clip(\sigma(\mathbf{V}_{i,j})(\zeta-\gamma)+\gamma, 0, 1)`, and :math:`f_{reg}(\mathbf{V})=\mathop{\sum}_{i,j}{1-|2h(\mathbf{V}_{i,j})-1|^\beta}`. By annealing on :math:`\beta`, the rounding mask can adapt freely in initial phase and converge to 0 or 1 in later phase.
+
+    Args:
+        model (torch.nn.Module): a prepared GraphModule to do PTQ
+        cali_data (List): a list of calibration tensor
+        config (dict): a config for PTQ reconstruction
+
+    >>> sample config : {
+            pattern: block (str, Available options are [layer, block].)
+            scale_lr: 4.0e-5 (learning rate for learning step size of activation)
+            warm_up: 0.2 (0.2 * max_count iters without regularization to floor or ceil)
+            weight: 0.01 (loss weight for regularization item)
+            max_count: 20000 (optimization iteration)
+            b_range: [20,2] (beta decaying range )
+            keep_gpu: True (calibration data restore in gpu or cpu)
+            round_mode: learned_hard_sigmoid (ways to reconstruct the weight, currently only support learned_hard_sigmoid)
+            prob: 0.5 (dropping probability of QDROP)
+        }
+
+    """
     # assert model is on cuda
     if not config.keep_gpu:
         cali_data = [inp.cpu() for inp in cali_data]
