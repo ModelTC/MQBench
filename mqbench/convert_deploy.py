@@ -20,6 +20,8 @@ from mqbench.deploy import (
     ONNXQLinearPass, ONNXQNNPass
 )
 
+__all__ = ['convert_deploy']
+
 @register_deploy_function(BackendType.PPLCUDA)
 @register_deploy_function(BackendType.ONNX_QNN)
 @register_deploy_function(BackendType.SNPE)

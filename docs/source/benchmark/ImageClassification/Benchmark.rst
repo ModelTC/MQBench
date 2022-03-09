@@ -1,58 +1,69 @@
 Image Classification Benchmark
 ==============================
 
+How to reproduce our results?
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 Generally, we follow the `PyTorch official example <https://github.com/pytorch/examples/tree/master/imagenet/>`_ to build the example of Model Quantization Benchmark for ImageNet classification task.
-- Download the ImageNet dataset from `the official website <http://www.image-net.org/>`_
 
-  - Move validation images to labeled subfolders, using `the following shell script <https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh>`_
+1. Clone and install MQBench;
+2. Prepare the ImageNet dataset from `the official website <http://www.image-net.org/>`_ and move validation images to labeled subfolders, using the following `shell script <https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh>`_;
+3. Download pre-trained models from our `release <https://github.com/ModelTC/MQBench/releases/tag/pre-trained>`_;
+4. Check out `/path-of-MQBench/application/imagenet_example/PTQ/configs` and find yaml file you want to reproduce;
+5. Replace `/path-of-pretained` and `/path-of-imagenet` in yaml file;
+6. Exec `python /path-of-MQBench/application/imagenet_example/PTQ/ptq/ptq.py -\-config /path-of-config.yaml`.
 
-**Post-training Quantization**:
+
+.. _imagenet-ptq-benchmark:
+
+Post-training Quantization
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 - Backend: Academic
 
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
 | W_calibration | A_calibration | Backend  | wbit | abit | resnet18 | resnet50 | mobilenetv2_1.0 | regnetx600m | regnetx800m |
 +===============+===============+==========+======+======+==========+==========+=================+=============+=============+
-| None          | None          | Academic | 32   | 32   | 71.06    | 77.94    | 72.68           | 73.60       | 74.83       |
+| None          | None          | Academic | 32   | 32   | 71.06    | 76.63    | 72.68           | 73.60       | 74.83       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| MinMax        | EMAMinMax     | Academic | 8    | 8    | 70.93    | 77.67    | 72.51           | 73.48       | 74.85       |
+| MinMax        | EMAMinMax     | Academic | 8    | 8    | 70.93    | 76.49    | 72.02           | 73.48       | 74.85       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| MinMax        | EMAQuantile   | Academic | 8    | 8    | 70.89    | 77.70    | 72.52           | 73.51       | 74.82       |
+| MinMax        | EMAQuantile   | Academic | 8    | 8    | 70.89    | 76.49    | 72.02           | 73.51       | 74.82       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| MSE           | EMAMSE        | Academic | 8    | 8    | 70.88    | 77.89    | 72.55           | 73.61       | 74.83       |
+| MSE           | EMAMSE        | Academic | 8    | 8    | 70.88    | 76.58    | 72.02           | 73.61       | 74.83       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| MinMax        | EMAMinMax     | Academic | 4    | 8    | 52.25    | 73.50    | 24.76           | 60.37       | 57.25       |
+| MinMax        | EMAMinMax     | Academic | 4    | 8    | 52.25    | 70.34    | 27.61           | 60.37       | 57.25       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| MinMax        | EMAQuantile   | Academic | 4    | 8    | 52.20    | 73.45    | 24.75           | 60.26       | 57.38       |
+| MinMax        | EMAQuantile   | Academic | 4    | 8    | 52.20    | 70.34    | 27.61           | 60.26       | 57.38       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| MSE           | EMAMSE        | Academic | 4    | 8    | 54.96    | 72.60    | 27.03           | 62.30       | 57.93       |
+| MSE           | EMAMSE        | Academic | 4    | 8    | 54.96    | 69.44    | 35.71           | 62.30       | 57.93       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
 | AdaRound      | EMAMSE        | Academic | 4    | 8    | 70.35    | 76.87    | 71.82           | 72.32       | 73.58       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
 
 
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| W_calibration | A_calibration | Backend  | wbit | abit | resnet18 | resnet50 | mobilenetv2_1.0 | regnetx600m | regnetx800m |   
+| W_calibration | A_calibration | Backend  | wbit | abit | resnet18 | resnet50 | mobilenetv2_1.0 | regnetx600m | regnetx800m |
 +===============+===============+==========+======+======+==========+==========+=================+=============+=============+
-| None          | None          | Academic | 32   | 32   | 71.06    | 77.00    | 72.68           | 73.60       | 74.83       |     
+| None          | None          | Academic | 32   | 32   | 71.06    | 76.63    | 72.68           | 73.60       | 74.83       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| AdaRound      | EMAMSE        | Academic | 4    | 4    | 68.67    | 74.21    | 65.11           | 70.24       | 71.54       |    
+| AdaRound      | EMAMSE        | Academic | 4    | 4    | 68.67    | 73.79    | 65.74           | 70.24       | 71.54       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| BRECQ         | EMAMSE        | Academic | 4    | 4    | 68.52    | 74.47    | 66.90           | 70.30       | 72.04       |     
+| BRECQ         | EMAMSE        | Academic | 4    | 4    | 68.52    | 74.66    | 67.23           | 70.30       | 72.04       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| QDrop         | EMAMSE        | Academic | 4    | 4    | 68.84    | 74.97    | 67.60           | 70.85       | 72.62       |    
+| QDrop         | EMAMSE        | Academic | 4    | 4    | 68.84    | 74.98    | 68.13           | 70.85       | 72.62       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| AdaRound      | EMAMSE        | Academic | 2    | 4    | 62.31    | 65.23    | 34.14           | 57.14       | 58.33       |     
+| AdaRound      | EMAMSE        | Academic | 2    | 4    | 62.31    | 63.65    | 40.60           | 57.14       | 58.33       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| BRECQ         | EMAMSE        | Academic | 2    | 4    | 63.56    | 68.64    | 49.18           | 62.36       | 64.53       |     
+| BRECQ         | EMAMSE        | Academic | 2    | 4    | 63.56    | 68.39    | 52.29           | 62.36       | 64.53       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| QDrop         | EMAMSE        | Academic | 2    | 4    | 64.49    | 69.30    | 51.37           | 63.51       | 65.84       |     
+| QDrop         | EMAMSE        | Academic | 2    | 4    | 64.49    | 69.15    | 53.47           | 63.51       | 65.84       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| AdaRound      | EMAMSE        | Academic | 3    | 3    | 64.18    | 66.76    | 28.41           | 59.57       | 61.45       |    
+| AdaRound      | EMAMSE        | Academic | 3    | 3    | 64.18    | 64.76    | 33.61           | 59.57       | 61.45       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| BRECQ         | EMAMSE        | Academic | 3    | 3    | 64.24    | 70.09    | 48.65           | 62.83       | 65.49       |   
+| BRECQ         | EMAMSE        | Academic | 3    | 3    | 64.24    | 70.17    | 51.86           | 62.83       | 65.49       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
-| QDrop         | EMAMSE        | Academic | 3    | 3    | 65.42    | 70.81    | 53.09           | 64.78       | 67.45       |
+| QDrop         | EMAMSE        | Academic | 3    | 3    | 65.42    | 71.07    | 56.05           | 64.78       | 67.45       |
 +---------------+---------------+----------+------+------+----------+----------+-----------------+-------------+-------------+
 
 .. note::
@@ -60,7 +71,7 @@ Generally, we follow the `PyTorch official example <https://github.com/pytorch/e
   we find let weight face activation quantization behaves better,
   extremely for ultra-low bit as proposed in QDrop.
   Therefore, here we take the same training strategy as QDrop for fair comparisons among these three methods.
-  Hyperparameters are also kept the same except that AdaRound uses 10000 iters to do layer reconstruction 
+  Hyperparameters are also kept the same except that AdaRound uses 10000 iters to do layer reconstruction
   and BRECQ, QDrop use 20000 iters for block reconstruction.
 
 .. note::

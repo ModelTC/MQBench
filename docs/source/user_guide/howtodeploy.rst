@@ -7,5 +7,6 @@ How to deploy the model
    TensorRT <deploy/tensorrt.rst>
    SNPE <deploy/snpe.rst>
    OpenVINO <deploy/openvino.rst>
+   Vitis <deploy/vitis.rst>
 
 
