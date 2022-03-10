@@ -90,7 +90,6 @@ class Tengine_process(LinearQuantizer_process):
 
                         conv_node = out2node[pre_node.input[0]]
                         if conv_node.op_type == "Conv":
-                            # match pattern
                             conv_tensor_name = conv_node.output[0]
                             quant_params[conv_tensor_name] = quant_params[tensor_name]
 
@@ -102,6 +101,7 @@ class Tengine_process(LinearQuantizer_process):
                 continue
             graph.initializer.remove(initial_data)
 
+        # TODO: softmax
         quant_params = self.post_process_clip_ranges(quant_params, graph, inp2node)
         output_path = os.path.dirname(onnx_path)
         context_filename = os.path.join(output_path, f"{model_name}_for_tengine.scale")

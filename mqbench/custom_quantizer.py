@@ -1078,6 +1078,7 @@ class TengineQuantizer(ModelQuantizer):
 
     @property
     def _passed_module_type(self):
+        # TODO: softmax
         return ()
 
     @property
