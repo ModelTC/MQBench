@@ -8,3 +8,4 @@ __pycache__
 *.pth
 *.log
 *.json
+*.sg

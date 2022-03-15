@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import random
 import shutil
@@ -20,6 +21,8 @@ import torchvision.models as models
 from mqbench.convert_deploy import convert_deploy
 from mqbench.prepare_by_platform import prepare_by_platform, BackendType
 from mqbench.utils.state import enable_calibration, enable_quantization, disable_all
+
+
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -94,8 +97,7 @@ BackendMap = {'tensorrt': BackendType.Tensorrt,
 
 best_acc1 = 0
 
-def main():
-    args = parser.parse_args()
+def main(args):
     args.quant = not args.not_quant
     args.backend = BackendMap[args.backend]
 
@@ -163,6 +165,7 @@ def main_worker(gpu, ngpus_per_node, args):
     # quantize model
     if args.quant:
         model = prepare_by_platform(model, args.backend)
+        
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')
     elif args.distributed:
@@ -249,7 +252,27 @@ def main_worker(gpu, ngpus_per_node, args):
 
     if args.quant and args.deploy:
         output_dir = args.arch
-        convert_deploy(model.eval(), args.backend, input_shape_dict={'data': [1, 3, 224, 224]}, output_path=output_dir)
+        # convert_deploy(model.eval(), args.backend, input_shape_dict={'data': [1, 3, 224, 224]}, output_path=output_dir)
+        # return
+
+        from mqbench.convert_deploy import convert_merge_bn
+        import rbcompiler.api_v2 as rb_api
+
+
+        convert_merge_bn(model.eval())
+        model.to(torch.device('cpu'))
+        dumpy_input = torch.rand(1,3,224,224)
+        export_sg_file = os.path.join(output_dir, '{}.sg'.format(args.arch))
+        clip_range_file = os.path.join(output_dir, '{}_act_clip.json'.format(args.arch))
+        sg = rb_api.gen_sg_from_pytorch(model.eval(), dumpy_input, clip_range_file=clip_range_file)
+        rb_api.save_sg(sg, export_sg_file)
+        # export 8bit sg
+        with open(clip_range_file, 'r') as f:
+            clip_ranges = json.loads(f.read())
+
+        qconfig = {'quant_ops': {'DepthWiseConv2D': {'per_channel': False}}}
+        qsg = rb_api.gen_quant_sg_from_clip_ranges(sg, clip_ranges, qconfig)
+        rb_api.save_sg(qsg, export_sg_file.replace('.sg', '_8bit.sg'))
         return
 
     if args.evaluate:
@@ -496,4 +519,12 @@ def accuracy(output, target, topk=(1,)):
 
 
 if __name__ == '__main__':
-    main()
+    args = parser.parse_args()
+    
+    # args.arch = 'mobilenet_v2'
+    # args.resume = '/home/wzou/MQBench/application/imagenet_example/mobilenet_v2/model_best.pth.tar'
+    # args.backend = 'snpe'
+    # args.deploy = True
+    # args.gpu = 0
+
+    main(args)

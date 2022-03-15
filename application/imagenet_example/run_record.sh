@@ -13,7 +13,7 @@
 # python main.py -a resnet18 -e --pretrained --gpu 0 -j 16 --not-quant
 
 # # Calibration val
-# python main.py -a resnet18 -e --pretrained --gpu 0 -j 16 --backend snpe
+# python main_record.py -a resnet18 --epochs 1 --pretrained --lr 1e-4 --gpu 0 -j 16 --backend snpe
 
 # python main_record.py -a resnet18 --epochs 1 --lr 1e-4 -b 128 --pretrained --gpu 1 --backend tensorrt -j 16 \
 #     --train_data /D2/wzou/BenchmarkData/dataset/TFRecords/ImageNet/ILSVRC2012/train/ \
@@ -34,7 +34,7 @@
 #     --train_data /D2/wzou/BenchmarkData/dataset/TFRecords/ImageNet/ILSVRC2012/train/ \
 #     --val_data /D2/wzou/BenchmarkData/dataset/TFRecords/ImageNet/ILSVRC2012/val/
 
-python main_record.py -a mobilenet_v2 --epochs 10 --lr 1e-5 --optim adam --wd 0 -b 128 --pretrained --backend snpe -j 16 -p 500
+# python main_record.py -a mobilenet_v2 --epochs 10 --lr 1e-5 --optim adam --wd 0 -b 128 --pretrained --backend snpe -j 16 -p 500
 
 # python main_record.py -a mobilenet_v2 --epochs 1 --lr 1e-5 --optim adam --wd 0 -b 64 --pretrained --backend snpe -j 16 \
 #         --train_data /D2/wzou/BenchmarkData/dataset/TFRecords/ImageNet/ILSVRC2012/train/ \
@@ -45,11 +45,11 @@ python main_record.py -a mobilenet_v2 --epochs 10 --lr 1e-5 --optim adam --wd 0 
 #         --resume ./mobilenet_v2/model_best.pth.tar \
 #         --backend snpe \
 #         -j 16 \
-#         --gpu 1 \
+#         --gpu 0 \
 #         -e
 
 # # export onnx
-# python main_record.py -a mobilenet_v2  --resume ./mobilenet_v2/model_best.pth.tar --deploy --backend snpe --gpu 1
+python main_record.py -a mobilenet_v2  --resume ./mobilenet_v2/model_best.pth.tar --deploy --backend snpe --gpu 0
 
 # # eval float model
 # python main_record.py -a mobilenet_v2 -b 256 --pretrained -j 8 \

@@ -449,6 +449,7 @@ class TotalINTQuantizer(ModelQuantizer):
         return (
             torch.nn.functional.relu, 
             torch.nn.functional.relu6,
+            torch.nn.functional.leaky_relu,
             torch.flatten
         )
 
@@ -456,7 +457,8 @@ class TotalINTQuantizer(ModelQuantizer):
     def _passed_module_type(self):
         return (
             torch.nn.ReLU,
-            torch.nn.ReLU6
+            torch.nn.ReLU6,
+            torch.nn.LeakyReLU
         )
 
     def _find_act_quants(self, model: GraphModule) -> list:
@@ -478,6 +480,8 @@ class TotalINTQuantizer(ModelQuantizer):
                         node_need_to_quantize_output.append(node)
                     else:
                         node_need_to_quantize_output.append(next_node)
+        
+        node_need_to_quantize_output = [n for n in node_need_to_quantize_output if n.name not in self.exclude_node_name]
         return node_need_to_quantize_output
 
 
