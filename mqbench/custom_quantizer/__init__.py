@@ -5,3 +5,4 @@ from .vitis_quantizer import VitisQuantizer
 from .total_int_quantizer import TotalINTQuantizer
 from .tensorrt_quantizer import TRTModelQuantizer
 from .tengine_u8_quantizer import TengineQuantizer
+from .onnx_qnn_quantizer import ONNXQNNQuantizer
