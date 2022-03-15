@@ -84,8 +84,8 @@ class Tengine_process(LinearQuantizer_process):
                         # suppose onnx version be 11
                         # for relu6
                         if pre_node.op_type == "Clip" and \
-                            not (self.get_constant(out2node[pre_node.input[1]]) == 0 and \
-                            self.get_constant(out2node[pre_node.input[2]]) == 6):
+                            not (self.get_constant(out2node[pre_node.input[1]]) == 0 and 
+                                 self.get_constant(out2node[pre_node.input[2]]) == 6):
                             continue
 
                         conv_node = out2node[pre_node.input[0]]

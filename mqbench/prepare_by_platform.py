@@ -7,6 +7,7 @@ from torch.fx.graph_module import GraphModule
 from torch.quantization.quantize_fx import _swap_ff_with_fxff
 from torch.quantization import QConfig
 
+
 from mqbench.fake_quantize import (
     LearnableFakeQuantize,
     NNIEFakeQuantize,
@@ -48,74 +49,75 @@ class BackendType(Enum):
     PPLCUDA = 'PPLCUDA'
     OPENVINO = 'OPENVINO'
     Tengine_u8 = "Tengine_u8"
+    Tensorrt_NLP = "Tensorrt_NLP"
 
 
 ParamsTable = {
-    BackendType.Academic: dict(qtype='affine'),    # noqa: E241
-    BackendType.NNIE:     dict(qtype='nnie',       # noqa: E241
-                               # NNIE actually do not need w/a qscheme. We add for initialize observer only.
-                               w_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
-                               a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
-                               default_weight_quantize=NNIEFakeQuantize,
-                               default_act_quantize=NNIEFakeQuantize,
-                               default_weight_observer=MinMaxObserver,
-                               default_act_observer=EMAMinMaxObserver),
-    BackendType.Tensorrt: dict(qtype='affine',     # noqa: E241
-                               w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8),
-                               a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
-                               default_weight_quantize=LearnableFakeQuantize,
-                               default_act_quantize=LearnableFakeQuantize,
-                               default_weight_observer=MinMaxObserver,
-                               default_act_observer=EMAMinMaxObserver),
-    BackendType.OPENVINO: dict(qtype='affine',     # noqa: E241
-                               w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8),
-                               a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
-                               default_weight_quantize=LearnableFakeQuantize,
-                               default_act_quantize=LearnableFakeQuantize,
-                               default_weight_observer=MinMaxObserver,
-                               default_act_observer=EMAMinMaxObserver),
-    BackendType.SNPE:     dict(qtype='affine',     # noqa: E241
-                               w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
-                               a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
-                               default_weight_quantize=LearnableFakeQuantize,
-                               default_act_quantize=LearnableFakeQuantize,
-                               default_weight_observer=MinMaxObserver,
-                               default_act_observer=EMAMinMaxObserver),
-    BackendType.PPLW8A16: dict(qtype='affine',     # noqa: E241
-                               w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
-                               a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=16),
-                               default_weight_quantize=LearnableFakeQuantize,
-                               default_act_quantize=LearnableFakeQuantize,
-                               default_weight_observer=MinMaxObserver,
-                               default_act_observer=EMAMinMaxObserver),
-    BackendType.Vitis:    dict(qtype='vitis',     # noqa: E241
-                               w_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=True, bit=8),
-                               a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=True, bit=8),
-                               default_weight_quantize=TqtFakeQuantize,
-                               default_act_quantize=TqtFakeQuantize,
-                               default_weight_observer=MinMaxFloorObserver,
-                               default_act_observer=ModeMinMaxFloorObserver),
-    BackendType.ONNX_QNN: dict(qtype='affine',     # noqa: E241
-                               w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
-                               a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
-                               default_weight_quantize=LearnableFakeQuantize,
-                               default_act_quantize=LearnableFakeQuantize,
-                               default_weight_observer=MinMaxObserver,
-                               default_act_observer=MinMaxObserver),
-    BackendType.PPLCUDA:  dict(qtype='affine',     # noqa: E241
-                               w_qscheme=QuantizeScheme(symmetry=False, per_channel=True, pot_scale=False, bit=8),
-                               a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
-                               default_weight_quantize=LearnableFakeQuantize,
-                               default_act_quantize=LearnableFakeQuantize,
-                               default_weight_observer=MinMaxObserver,
-                               default_act_observer=MinMaxObserver),
+    BackendType.Academic:   dict(qtype='affine'),    # noqa: E241
+    BackendType.NNIE:       dict(qtype='nnie',       # noqa: E241
+                                 # NNIE actually do not need w/a qscheme. We add for initialize observer only.
+                                 w_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
+                                 a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
+                                 default_weight_quantize=NNIEFakeQuantize,
+                                 default_act_quantize=NNIEFakeQuantize,
+                                 default_weight_observer=MinMaxObserver,
+                                 default_act_observer=EMAMinMaxObserver),
+    BackendType.Tensorrt:   dict(qtype='affine',     # noqa: E241
+                                 w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8),
+                                 a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
+                                 default_weight_quantize=LearnableFakeQuantize,
+                                 default_act_quantize=LearnableFakeQuantize,
+                                 default_weight_observer=MinMaxObserver,
+                                 default_act_observer=EMAMinMaxObserver),
+    BackendType.OPENVINO:   dict(qtype='affine',     # noqa: E241
+                                 w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8),
+                                 a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
+                                 default_weight_quantize=LearnableFakeQuantize,
+                                 default_act_quantize=LearnableFakeQuantize,
+                                 default_weight_observer=MinMaxObserver,
+                                 default_act_observer=EMAMinMaxObserver),
+    BackendType.SNPE:       dict(qtype='affine',     # noqa: E241
+                                 w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
+                                 a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
+                                 default_weight_quantize=LearnableFakeQuantize,
+                                 default_act_quantize=LearnableFakeQuantize,
+                                 default_weight_observer=MinMaxObserver,
+                                 default_act_observer=EMAMinMaxObserver),
+    BackendType.PPLW8A16:   dict(qtype='affine',     # noqa: E241
+                                 w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
+                                 a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=16),
+                                 default_weight_quantize=LearnableFakeQuantize,
+                                 default_act_quantize=LearnableFakeQuantize,
+                                 default_weight_observer=MinMaxObserver,
+                                 default_act_observer=EMAMinMaxObserver),
+    BackendType.Vitis:      dict(qtype='vitis',     # noqa: E241
+                                 w_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=True, bit=8),
+                                 a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=True, bit=8),
+                                 default_weight_quantize=TqtFakeQuantize,
+                                 default_act_quantize=TqtFakeQuantize,
+                                 default_weight_observer=MinMaxFloorObserver,
+                                 default_act_observer=ModeMinMaxFloorObserver),
+    BackendType.ONNX_QNN:   dict(qtype='affine',     # noqa: E241
+                                 w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
+                                 a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
+                                 default_weight_quantize=LearnableFakeQuantize,
+                                 default_act_quantize=LearnableFakeQuantize,
+                                 default_weight_observer=MinMaxObserver,
+                                 default_act_observer=MinMaxObserver),
+    BackendType.PPLCUDA:    dict(qtype='affine',     # noqa: E241
+                                 w_qscheme=QuantizeScheme(symmetry=False, per_channel=True, pot_scale=False, bit=8),
+                                 a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
+                                 default_weight_quantize=LearnableFakeQuantize,
+                                 default_act_quantize=LearnableFakeQuantize,
+                                 default_weight_observer=MinMaxObserver,
+                                 default_act_observer=MinMaxObserver),
     BackendType.Tengine_u8: dict(qtype="affine",
-                        w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
-                        a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
-                        default_weight_quantize=LearnableFakeQuantize,
-                        default_act_quantize=LearnableFakeQuantize,
-                        default_weight_observer=MinMaxObserver,
-                        default_act_observer=EMAMinMaxObserver),
+                                 w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
+                                 a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
+                                 default_weight_quantize=LearnableFakeQuantize,
+                                 default_act_quantize=LearnableFakeQuantize,
+                                 default_weight_observer=MinMaxObserver,
+                                 default_act_observer=EMAMinMaxObserver),
 }
 
 ObserverDict = {
@@ -248,8 +250,8 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
                 '    Oberver:      {} Params: {}'.format(a_fakequantize.__name__, a_fakeq_params,
                                                          a_observer.__name__, str(a_qscheme)))
     if backend_params['qtype'] == 'vitis':
-
         logger.info('Bias Qconfig:\n    TqtFakeQuantize with MinMaxObserver')
+
     return QConfig(activation=a_qconfig, weight=w_qconfig)
 
 
@@ -289,7 +291,8 @@ class CustomedTracer(Tracer):
 def prepare_by_platform(
         model: torch.nn.Module,
         deploy_backend: BackendType,
-        prepare_custom_config_dict: Dict[str, Any] = {}):
+        prepare_custom_config_dict: Dict[str, Any] = {},
+        custom_tracer: Tracer = None):
     """
     Args:
         model (torch.nn.Module):
@@ -331,9 +334,11 @@ def prepare_by_platform(
     concrete_args = prepare_custom_config_dict.get('concrete_args', None)
     customed_leaf_module = prepare_custom_config_dict.get('leaf_module', [])
     tracer = CustomedTracer(customed_leaf_module=tuple(customed_leaf_module))
+    if custom_tracer is not None:
+        tracer = custom_tracer
     graph = tracer.trace(model, concrete_args)
     name = model.__class__.__name__ if isinstance(model, torch.nn.Module) else model.__name__
-    graph_module = GraphModule(tracer.root, graph, name)
+    graph_module = GraphModule(model, graph, name)
     # Model fusion.
     extra_fuse_dict = prepare_custom_config_dict.get('extra_fuse_dict', {})
     extra_fuse_dict.update(fuse_custom_config_dict)

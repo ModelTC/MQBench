@@ -16,6 +16,7 @@ MATH_TYPE = [type(len)]
 ALL_OP_TYPE = COLLECT_TYPES + ACT_TYPES + POOL_TYPES + MATH_TYPE
 FAKE_QUANT_TYPE = [TqtFakeQuantize]
 
+
 @register_weight_equalization_function(qatconv.Conv2d, qatconv.Conv2d)
 def weight_equalize_conv_pair(modules, weq_pair):
     node1, node2 = tuple(weq_pair)
@@ -31,11 +32,13 @@ def weight_equalize_conv_pair(modules, weq_pair):
         modules[node1.target].bias.data = bias1 
     logger.info(f'Weight equalizing {node1.name} and {node2.name}.')
 
+
 def _get_name2node(nodes):
     name2node = {}
     for node in nodes:
         name2node[node.name] = node 
     return name2node
+
 
 def _get_name2type(nodes, modules):
     name2type = {}
@@ -48,10 +51,6 @@ def _get_name2type(nodes, modules):
             name2type[node.name] = None
     return name2type
 
-def _is_real_node(node, name2type):
-    if name2type[node.name] in ALL_OP_TYPE:
-        return True
-    return False
 
 def _get_name2fanout(nodes, name2type):
     name2fanout = {} 
@@ -71,6 +70,7 @@ def _get_name2fanout(nodes, name2type):
             name2fanout[node.name] = 0
     return name2fanout
 
+
 def get_weight_equalization_groups(model: GraphModule, **kwargs):
     nodes = list(model.graph.nodes)
     modules = dict(model.named_modules())
@@ -83,7 +83,6 @@ def get_weight_equalization_groups(model: GraphModule, **kwargs):
         collect_layer_group(node, modules, layer_groups, name2fanout)
     print([[n.name for n in i] for i in layer_groups])
     convert_equalization_groups(modules, layer_groups, name2type)
-
 
 
 def collect_layer_group(node, modules, groups, name2fanout, visited=None, group=None):
@@ -118,12 +117,15 @@ def collect_layer_group(node, modules, groups, name2fanout, visited=None, group=
         collect_layer_group(child, modules, groups, name2fanout, visited, group)
     _end_collect(group)
 
+
 def convert_equalization_groups(modules, layer_groups, name2type):
     eq_groups = [] 
     for grp in layer_groups:
         assert len(grp) == 2, 'Multi-layers weight equalization not support.'
         type_list = [name2type[x.name] for x in grp]
         WEIGHT_EQUALIZATION_FUNCTION[type_list[0]][type_list[1]](modules, grp)
+
+
 def dfq_weight_equalization(weight_1, bias_1, weight_2, s_min=1e-6, s_max=1e6, eps=0):
     groups = weight_1.shape[0] // weight_2.shape[1] 
     w1_ch, w2_ch = weight_1.shape[0] // groups, weight_2.shape[1] // groups 
