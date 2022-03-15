@@ -47,6 +47,7 @@ class BackendType(Enum):
     ONNX_QNN = 'ONNX_QNN'
     PPLCUDA = 'PPLCUDA'
     OPENVINO = 'OPENVINO'
+    Tengine_u8 = "Tengine_u8"
 
 
 ParamsTable = {
@@ -107,7 +108,14 @@ ParamsTable = {
                                default_weight_quantize=LearnableFakeQuantize,
                                default_act_quantize=LearnableFakeQuantize,
                                default_weight_observer=MinMaxObserver,
-                               default_act_observer=MinMaxObserver)
+                               default_act_observer=MinMaxObserver),
+    BackendType.Tengine_u8: dict(qtype="affine",
+                        w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
+                        a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
+                        default_weight_quantize=LearnableFakeQuantize,
+                        default_act_quantize=LearnableFakeQuantize,
+                        default_weight_observer=MinMaxObserver,
+                        default_act_observer=EMAMinMaxObserver),
 }
 
 ObserverDict = {
