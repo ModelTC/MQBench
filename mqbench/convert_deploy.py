@@ -54,13 +54,14 @@ def convert_merge_bn(model: GraphModule, **kwargs):
 @register_deploy_function(BackendType.OPENVINO)
 def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_path, **kwargs):
     logger.info("Export to onnx.")
-    input_names = None
+    output_names = kwargs.get('output_names', [])
+    dynamic_axes = kwargs.get('dynamic_axes', {})
+    input_names = kwargs.get('input_names', [])
     if dummy_input is None:
         device = next(model.parameters()).device
         dummy_input = {name: torch.rand(shape).to(device) for name, shape in input_shape_dict.items()}
         input_names = list(dummy_input.keys())
         dummy_input = tuple(dummy_input.values())
-    output_names = kwargs.get('output_names', None)
     with torch.no_grad():
         try:
             from torch.onnx.utils import ONNXCheckerError
@@ -69,6 +70,7 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
                                   input_names=input_names,
                                   output_names=output_names,
                                   opset_version=11,
+                                  dynamic_axes=dynamic_axes,
                                   do_constant_folding=True,
                                   custom_opsets={'' : 11})
             except ONNXCheckerError:
@@ -145,8 +147,7 @@ def deploy_qparams_tengine(model: GraphModule, onnx_model_path, model_name, **kw
 
 def convert_deploy(model: GraphModule, backend_type: BackendType,
                    input_shape_dict=None, dummy_input=None, output_path='./',
-                   model_name='mqbench_qmodel', output_names=None,
-                   deploy_to_qlinear=False):
+                   model_name='mqbench_qmodel', deploy_to_qlinear=False, **extra_kwargs):
     r"""Convert model to onnx model and quantization params depends on backend.
 
     Args:
@@ -168,12 +169,12 @@ def convert_deploy(model: GraphModule, backend_type: BackendType,
     kwargs = {
         'input_shape_dict': input_shape_dict,
         'dummy_input': dummy_input,
-        'output_names': output_names,
         'output_path': output_path,
         'model_name': model_name,
         'onnx_model_path': osp.join(output_path, '{}.onnx'.format(model_name)),
         'deploy_to_qlinear': deploy_to_qlinear
     }
+    kwargs.update(extra_kwargs)
     deploy_model = deepcopy_graphmodule(model)
     for convert_function in BACKEND_DEPLOY_FUNCTION[backend_type]:
         convert_function(deploy_model, **kwargs)

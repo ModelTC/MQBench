@@ -1,3 +1,5 @@
+from typing import Optional, Type
+
 import torch
 import torch.nn as nn
 from torch.quantization.fx.fusion_patterns import ConvBNReLUFusion, ModuleReLUFusion
