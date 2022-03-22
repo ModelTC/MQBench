@@ -70,7 +70,7 @@ class VitisQuantizer(ModelQuantizer):
 
 
     @property
-    def function_type_to_quant_output(self) -> list:
+    def function_type_to_quant_output(self) -> List:
         return [
             operator.add,
             operator.mul,
@@ -85,7 +85,7 @@ class VitisQuantizer(ModelQuantizer):
         ] 
 
     @property
-    def function_type_not_to_quant_alone(self) -> list:
+    def function_type_not_to_quant_alone(self) -> List:
         return [
             operator.getitem,
         ]
@@ -130,7 +130,7 @@ class VitisQuantizer(ModelQuantizer):
                             logger.info(f'Add {_node.name}/{_node.target}/{_node.op} to input quantize')                        
                 self.node_need_to_quantize_output.append(node)
                 logger.info(f'Add {node.name} to output quantize')
-        return set(self.node_need_to_quantize_output)
+        return self.node_need_to_quantize_output
 
     def _get_items_for_the_graph(self, model: GraphModule) -> dict:
         def _update_getitem_path(getitem_args_dict):
@@ -172,23 +172,23 @@ class VitisQuantizer(ModelQuantizer):
 
 
     def _find_input_quants(self, model) -> List:
-        node_need_to_quantize_weight = set() 
+        node_need_to_quantize_weight = []
         nodes = list(model.graph.nodes)
         for node in nodes:
             if node.op == 'placeholder' and node.all_input_nodes == []:
-                node_need_to_quantize_weight.add(list(node.users)[0])
-        return set(node_need_to_quantize_weight)
+                node_need_to_quantize_weight.append(list(node.users)[0])
+        return node_need_to_quantize_weight
 
 
     def _find_weight_quants(self, model) -> List:
-        node_need_to_quantize_weight = set() 
+        node_need_to_quantize_weight = []
         nodes = list(model.graph.nodes)
         module_dict = dict(model.named_modules())
         for node in nodes:
             if node.target in module_dict:
                 if hasattr(module_dict[node.target], 'weight_fake_quant') or hasattr(module_dict[node.target], 'bias_fake_quant'):
-                    node_need_to_quantize_weight.add(node)
-        return set(node_need_to_quantize_weight)
+                    node_need_to_quantize_weight.append(node)
+        return node_need_to_quantize_weight
 
     def _set_quant_type(self, model: GraphModule) -> NoReturn:
         tensor_type_set = self._find_act_quants(model)

@@ -25,8 +25,7 @@ from mqbench.observer import (
     MinMaxFloorObserver,
     MinMaxObserver,
     EMAMinMaxObserver,
-    EMAMinMaxFloorObserver,
-    ModeMinMaxFloorObserver,
+    PoTModeObserver,
     EMAQuantileObserver,
     MSEObserver,
     EMAMSEObserver,
@@ -96,7 +95,7 @@ ParamsTable = {
                                  default_weight_quantize=TqtFakeQuantize,
                                  default_act_quantize=TqtFakeQuantize,
                                  default_weight_observer=MinMaxFloorObserver,
-                                 default_act_observer=ModeMinMaxFloorObserver),
+                                 default_act_observer=PoTModeObserver),
     BackendType.ONNX_QNN:   dict(qtype='affine',     # noqa: E241
                                  w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
                                  a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
@@ -124,7 +123,7 @@ ObserverDict = {
     'MinMaxObserver':           MinMaxObserver,                                    # noqa: E241
     'EMAMinMaxObserver':        EMAMinMaxObserver,        # More general choice.   # noqa: E241
     'MinMaxFloorObserver':      MinMaxFloorObserver,      # For Vitis HW           # noqa: E241
-    'EMAMinMaxFloorObserver':   EMAMinMaxFloorObserver,   # For Vitis HW           # noqa: E241
+    'PoTModeObserver':          PoTModeObserver,   # For Vitis HW           # noqa: E241
     'EMAQuantileObserver':      EMAQuantileObserver,      # Quantile observer.     # noqa: E241
     'ClipStdObserver':          ClipStdObserver,          # Usually used for DSQ.  # noqa: E241
     'LSQObserver':              LSQObserver,              # Usually used for LSQ.  # noqa: E241
