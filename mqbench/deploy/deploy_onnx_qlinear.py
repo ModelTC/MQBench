@@ -50,6 +50,20 @@ class ONNXQLinearPass(ONNXQNNPass):
         new_data = numpy_helper.from_array(new_data)
         named_initializer[tensor_name].raw_data = new_data.raw_data
 
+    def wrap_onnx_constant(self, data):
+        """warp onnx constant data to iterable numpy object
+
+        Args:
+            data (float or list): data from onnx.get_constant
+
+        Returns:
+            ndarray: iterable numpy array
+        """
+        if type(data) != list:
+            return np.array([data])
+        else:
+            return np.array(data)
+
     def format_qlinear_dtype_pass(self):
         name2data = prepare_data(self.onnx_model.graph)
         named_initializer = prepare_initializer(self.onnx_model.graph)
@@ -61,20 +75,29 @@ class ONNXQLinearPass(ONNXQNNPass):
                     qmax = node.attribute[0].i
                     qmin = node.attribute[1].i
                 else:
-                    scale, zero_point, qmin, qmax = node.input[1], node.input[2], node.input[3], node.input[4]
+                    scale, zero_point, qmin, qmax = node.input[-4:]
                     qmin = self.onnx_model.get_constant(qmin)
                     qmax = self.onnx_model.get_constant(qmax)
                 assert qmax - qmin in (2 ** 8 - 1, 2 ** 8 - 2), "Only 8 bit quantization support deployment to ONNX."
                 # In onnx, quantize linear node values are in [-128, 127], this step is to remove inconsistency
                 if qmax - qmin == 2 ** 8 - 2:
                     self.clip_weight(node, name2data, named_initializer)
-                scale_proto = self.onnx_model.initializer[scale][0]
-                if scale_proto.raw_data != b'':
-                    scale_data = self.onnx_model.get_initializer(scale)
+                #? for model mixed constant and initializer
+                # scale
+                try:
+                    scale_proto = self.onnx_model.initializer[scale][0]
+                    if scale_proto.raw_data != b'':
+                        scale_data = self.onnx_model.get_initializer(scale)
+                        self.onnx_model.set_initializer(scale, scale_data.astype(np.float32), raw=False)
+                except KeyError:
+                    scale_data = self.wrap_onnx_constant(self.onnx_model.get_constant(scale))
                     self.onnx_model.set_initializer(scale, scale_data.astype(np.float32), raw=False)
-                zero_point_data = self.onnx_model.get_initializer(zero_point)
-                assert not np.any(zero_point_data !=
-                                  0), "Asymmetric quantization is not supported for TensorRT Backend."
+                # zero_point
+                try:
+                    zero_point_data = self.onnx_model.get_initializer(zero_point)
+                except KeyError:
+                    zero_point_data = self.wrap_onnx_constant(self.onnx_model.get_constant(zero_point))
+                assert not np.any(zero_point_data != 0), "Asymmetric quantization is not supported for TensorRT Backend."
                 if qmin == 0:
                     self.onnx_model.set_initializer(zero_point, zero_point_data.astype(np.uint8), raw=False)
                 else:
