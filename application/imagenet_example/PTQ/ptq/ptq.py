@@ -1,8 +1,8 @@
 import numpy as np
 import argparse
-from ptq.data.imagenet import load_data
-from ptq.models import load_model
-from ptq.utils import parse_config, seed_all, evaluate
+from data.imagenet import load_data
+from models import load_model
+from utils import parse_config, seed_all, evaluate
 from mqbench.prepare_by_platform import prepare_by_platform, BackendType
 from mqbench.advanced_ptq import ptq_reconstruction
 
