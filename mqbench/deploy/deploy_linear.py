@@ -148,7 +148,7 @@ class LinearQuantizer_process(object):
 
         preprocess = OnnxPreprocess()
         preprocess.replace_resize_op_with_upsample(graph, out2node)
-        preprocess.remove_fake_pad_op(graph, name2data, inp2node, out2node)
+        # preprocess.remove_fake_pad_op(graph, name2data, inp2node, out2node)
         out2node, inp2node = update_inp2node_out2node(graph)
 
         clip_ranges = {}

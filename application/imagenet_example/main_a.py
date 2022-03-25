@@ -181,7 +181,6 @@ def main_worker(gpu, ngpus_per_node, args):
         extra_qconfig_dict={
             'w_fakequantize': 'LearnableFakeQuantize',
             'a_fakequantize': 'FixedFakeQuantize',
-            'a_observer': 'HistogramObserver',
             'w_qscheme': {'symmetry': False, 'per_channel': False, 'pot_scale': False, 'bit': 8},
             'a_qscheme': {'symmetry': False, 'per_channel': False, 'pot_scale': False, 'bit': 8}
         }
@@ -258,6 +257,9 @@ def main_worker(gpu, ngpus_per_node, args):
                                      betas=(0.9, 0.999), eps=1e-08,
                                      weight_decay=args.weight_decay,
                                      amsgrad=False)
+    
+    adjust_learning_rate(optimizer, 1, args)
+    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 5, eta_min=1e-7, last_epoch=- 1, verbose=False)
 
     # prepare dataset
     train_loader, train_sampler, val_loader, cali_loader = prepare_dataloader(args)
@@ -337,10 +339,11 @@ def main_worker(gpu, ngpus_per_node, args):
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
-        adjust_learning_rate(optimizer, epoch, args)
+        # adjust_learning_rate(optimizer, epoch, args)
 
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, args)
+        lr_scheduler.step()
 
         # evaluate on validation set
         acc1 = validate(val_loader, model, criterion, args)

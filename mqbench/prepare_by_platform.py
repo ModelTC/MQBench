@@ -21,6 +21,7 @@ from mqbench.fake_quantize import (
 from mqbench.observer import (
     ClipStdObserver,
     LSQObserver,
+    LSQPlusObserver,
     MinMaxFloorObserver,
     MinMaxObserver,
     EMAMinMaxObserver,
@@ -28,7 +29,9 @@ from mqbench.observer import (
     EMAQuantileObserver,
     MSEObserver,
     EMAMSEObserver,
+    HistogramObserver
 )
+
 from mqbench.fuser_method_mappings import fuse_custom_config_dict
 from mqbench.utils.logger import logger
 from mqbench.utils.registry import DEFAULT_MODEL_QUANTIZER
@@ -115,8 +118,10 @@ ObserverDict = {
     'EMAQuantileObserver':      EMAQuantileObserver,      # Quantile observer.     # noqa: E241
     'ClipStdObserver':          ClipStdObserver,          # Usually used for DSQ.  # noqa: E241
     'LSQObserver':              LSQObserver,              # Usually used for LSQ.  # noqa: E241
+    'LSQPlusObserver':          LSQPlusObserver, 
     'MSEObserver':              MSEObserver,                                       # noqa: E241
     'EMAMSEObserver':           EMAMSEObserver,                                    # noqa: E241
+    'HistogramObserver':        HistogramObserver,
 }
 
 FakeQuantizeDict = {
@@ -194,24 +199,17 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
                                                                     **a_qscheme.to_observer_params())
         return QConfig(activation=a_config, weight=w_config)
 
-    # Academic setting should specific quant scheme in config.
-    if deploy_backend == BackendType.Academic:
-        w_qscheme = QuantizeScheme(**extra_qparams['w_qscheme'])
-        a_qscheme = QuantizeScheme(**extra_qparams['a_qscheme'])
-    elif deploy_backend == BackendType.Tensorrt:
-        w_qscheme = extra_qparams.get('w_qscheme', None)
-        if w_qscheme is None:
-            w_qscheme = backend_params['w_qscheme']
-        else:
-            w_qscheme = QuantizeScheme(**w_qscheme)
-        a_qscheme = extra_qparams.get('a_qscheme', None)
-        if a_qscheme is None:
-            a_qscheme = backend_params['a_qscheme']
-        else:
-            a_qscheme = QuantizeScheme(**a_qscheme)
-    else:
+   
+    w_qscheme = extra_qparams.get('w_qscheme', None)
+    if w_qscheme is None:
         w_qscheme = backend_params['w_qscheme']
+    else:
+        w_qscheme = QuantizeScheme(**w_qscheme)
+    a_qscheme = extra_qparams.get('a_qscheme', None)
+    if a_qscheme is None:
         a_qscheme = backend_params['a_qscheme']
+    else:
+        a_qscheme = QuantizeScheme(**a_qscheme)
 
     # Get weight / act fake quantize function and params. And bias fake quantizer if needed(Vitis)
     if not w_fakequantize:
@@ -241,6 +239,17 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
         logger.info('Bias Qconfig:\n    TqtFakeQuantize with MinMaxObserver')
     return QConfig(activation=a_qconfig, weight=w_qconfig)
 
+
+def update_config(config, new_config):
+    for k, v in new_config.items():
+        if k in config:
+            if isinstance(v, dict):
+                update_config(config[k], v)
+            else:
+                config[k] = v
+        else:
+            config[k] = v
+    
 
 class CustomedTracer(Tracer):
     """
@@ -325,7 +334,9 @@ def prepare_by_platform(
     graph_module = GraphModule(tracer.root, graph, name)
     # Model fusion.
     extra_fuse_dict = prepare_custom_config_dict.get('extra_fuse_dict', {})
-    extra_fuse_dict.update(fuse_custom_config_dict)
+
+    update_config(extra_fuse_dict, fuse_custom_config_dict)
+
     # Prepare
     import mqbench.custom_quantizer  # noqa: F401
     extra_quantizer_dict = prepare_custom_config_dict.get('extra_quantizer_dict', {})

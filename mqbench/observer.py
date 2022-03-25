@@ -4,6 +4,8 @@ from typing import Tuple
 
 import torch
 from torch.quantization.observer import _ObserverBase
+from torch.quantization.observer import HistogramObserver as TorchHistogramObserver
+
 
 from mqbench.utils import sync_tensor, pot_quantization, is_symmetric_quant
 from mqbench.utils.logger import logger
@@ -634,3 +636,38 @@ class EMAMSEObserver(ObserverBase):
             self.min_val = self.min_val * self.ema_ratio + min_val_cur * (1.0 - self.ema_ratio)
             self.max_val = self.max_val * self.ema_ratio + max_val_cur * (1.0 - self.ema_ratio)
         return x
+
+
+class HistogramObserver(ObserverBase):
+
+    def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine,
+                 reduce_range=False, quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False,
+                 factory_kwargs=None):
+        super(HistogramObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max,
+                                                ch_axis, pot_scale, factory_kwargs)
+        self.observer = TorchHistogramObserver(bins=8192, dtype=dtype, qscheme=qscheme)
+
+    def forward(self, x_orig):
+        r"""Records the running minimum and maximum of ``x``."""
+        x = self.observer(x_orig)
+        self.min_val = self.observer.min_val
+        self.max_val = self.observer.max_val
+        x = x_orig.to(self.min_val.dtype)
+        return x
+    
+    def calculate_qparams(self):
+        device = self.observer.histogram.device
+        self.observer.histogram = self.observer.histogram.cpu()
+        self.observer.min_val = self.observer.min_val.cpu()
+        self.observer.max_val = self.observer.max_val.cpu()
+        scale, zero_point = self.observer.calculate_qparams()
+        if not is_symmetric_quant(self.qscheme):
+            if self.min_val >= 0.:
+                zero_point = self.quant_min - torch.round(self.min_val / scale)
+        sync_tensor(scale)
+        sync_tensor(zero_point)
+
+        self.observer.histogram = self.observer.histogram.to(device)
+        self.observer.min_val = self.observer.min_val.to(device)
+        self.observer.max_val = self.observer.max_val.to(device)
+        return scale, zero_point

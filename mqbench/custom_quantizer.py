@@ -27,9 +27,11 @@ from torch.quantization.utils import (
 from torch.quantization.fx.qconfig_utils import (
     get_flattened_qconfig_dict
 )
-from torch.quantization.quantize_fx import (
-    _fuse_fx
-)
+# from torch.quantization.quantize_fx import (
+#     _fuse_fx
+# )
+from mqbench.custom_fx import fuse_fx
+
 
 import mqbench.nn as qnn
 import mqbench.nn.intrinsic as qnni 
@@ -39,6 +41,8 @@ from mqbench.utils.logger import logger
 from mqbench.utils.registry import register_model_quantizer
 from mqbench.prepare_by_platform import BackendType
 from mqbench.fake_quantize.tqt import TqtFakeQuantize
+
+
 
 
 @register_model_quantizer(BackendType.Tensorrt)
@@ -66,7 +70,8 @@ class ModelQuantizer(object):
         self.extra_fuse_dict = extra_fuse_dict
 
     def prepare(self, model: GraphModule, qconfig):
-        model = _fuse_fx(model, self.extra_fuse_dict)
+        # model = _fuse_fx(model, self.extra_fuse_dict)
+        model = fuse_fx(model, self.extra_fuse_dict)
         model = self._weight_quant(model, qconfig)
         model = self._insert_fake_quantize_for_act_quant(model, qconfig)
         return model
@@ -218,6 +223,7 @@ class ModelQuantizer(object):
         return flattned_args
 
     def _find_act_quants(self, model: GraphModule) -> (set, set):
+        # insert fakequant into qat module's inputs
         nodes = list(model.graph.nodes)
         modules = dict(model.named_modules())
         node_need_to_quantize_output = []
@@ -460,8 +466,9 @@ class TotalINTQuantizer(ModelQuantizer):
             torch.nn.ReLU6,
             torch.nn.LeakyReLU
         )
-
+    
     def _find_act_quants(self, model: GraphModule) -> list:
+        # insert fakequant into qat modules outputs
         nodes = list(model.graph.nodes)
         modules = dict(model.named_modules())
         node_need_to_quantize_output = super()._find_act_quants(model)

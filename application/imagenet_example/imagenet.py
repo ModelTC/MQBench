@@ -144,7 +144,7 @@ def get_calib_loader(root):
     tfrecord_path = os.path.join(root, 'train_2.record')
     index_path = os.path.join(root, 'train_2.index')
     dataset = TFRecordDataset(tfrecord_path, index_path, desc, transform=dataset_transform)
-    cali_dataset = MySubset(dataset, 100)
+    cali_dataset = MySubset(dataset, 50)
     cali_loader = torch.utils.data.DataLoader(cali_dataset, batch_size=10, shuffle=False,
                                               num_workers=0, pin_memory=False)
     return cali_loader
