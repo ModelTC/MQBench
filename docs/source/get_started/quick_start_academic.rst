@@ -32,21 +32,23 @@ Learn which option you can choose below config through our :doc:`../user_guide/i
 .. code-block:: python
 
     extra_config = {
-        'w_observer': MSEObserver,                                # custom weight observer
-        'a_observer': MSEObserver,                                # custom activation observer
-        'w_fakequantize': FixedFakeQuantize,                      # custom weight fake quantize function
-        'a_fakequantize': FixedFakeQuantize,                      # custom activation fake quantize function
-        'w_qscheme': {
-            'bit': 8,                                             # custom bitwidth for weight,
-            'symmetry': False,                                    # custom whether quant is symmetric for weight,
-            'per_channel': True,                                  # custom whether quant is per-channel or per-tensor for weight,
-            'pot_scale': False,                                   # custom whether scale is power of two for weight.
-        },
-        'a_qscheme': {
-            'bit': 8,                                             # custom bitwidth for activation,
-            'symmetry': False,                                    # custom whether quant is symmetric for activation,
-            'per_channel': True,                                  # custom whether quant is per-channel or per-tensor for activation,
-            'pot_scale': False,                                   # custom whether scale is power of two for activation.
+        extra_qconfig_dict: {
+            'w_observer': 'MSEObserver',                              # custom weight observer
+            'a_observer': 'MSEObserver',                              # custom activation observer
+            'w_fakequantize': 'FixedFakeQuantize',                    # custom weight fake quantize function
+            'a_fakequantize': 'FixedFakeQuantize',                    # custom activation fake quantize function
+            'w_qscheme': {
+                'bit': 8,                                             # custom bitwidth for weight,
+                'symmetry': False,                                    # custom whether quant is symmetric for weight,
+                'per_channel': True,                                  # custom whether quant is per-channel or per-tensor for weight,
+                'pot_scale': False,                                   # custom whether scale is power of two for weight.
+            },
+            'a_qscheme': {
+                'bit': 8,                                             # custom bitwidth for activation,
+                'symmetry': False,                                    # custom whether quant is symmetric for activation,
+                'per_channel': True,                                  # custom whether quant is per-channel or per-tensor for activation,
+                'pot_scale': False,                                   # custom whether scale is power of two for activation.
+            }
         }
     }
 
