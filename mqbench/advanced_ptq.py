@@ -166,6 +166,40 @@ class LossFunction:
         return total_loss
 
 
+def _flatten_args(node):
+    flattned_args = []
+    if isinstance(node, dict):
+        for v in node.values():
+            flattned_args.extend(_flatten_args(v))
+    elif isinstance(node, tuple) or isinstance(node, list):
+        for n in node:
+            flattned_args.extend(_flatten_args(n))
+    else:
+        flattned_args.extend([node])
+    return flattned_args
+
+
+def append_extra_inputs(nodes, layer_node_list):
+    # there are some nodes in the block which are used but not in the list. 
+    # e.g. a global dict used in UP or EOD.
+    extra_inputs = [] 
+    for node in layer_node_list:
+        for arg in _flatten_args(node.args):
+            if isinstance(arg, torch.fx.Node):
+                if arg not in layer_node_list:
+                    extra_inputs.append(arg)
+    return extra_inputs
+
+
+def find_cur_node(layer_node_list):
+    for node in reversed(layer_node_list):
+        if node.target == 'update':
+            continue 
+        if isinstance(node.target, str) and 'const' in node.target:
+            continue 
+        return node
+    raise ValueError('Bad layer node list provided.')
+
 def subgraph_reconstruction(subgraph, cached_inps, cached_oups, config):
     global USE_LINK
     global USE_DDP
@@ -247,13 +281,13 @@ def subgraph_reconstruction(subgraph, cached_inps, cached_oups, config):
             layer.prob = 1.0   # recover to promise that drop activation quantization only occurs at reconstruction phase
 
 
-def extract_subgraph(orig_module: nn.Module, nodes: List[fx.Node], inputs: List[fx.Node], output: fx.Node):
+def extract_subgraph(orig_module: nn.Module, nodes: List[fx.Node], inputs: List[fx.Node], extra_inputs: List[fx.Node], output: fx.Node):
     """
     Given lists of nodes from an existing graph that represent a subgraph, returns a submodule that executes that subgraph.
     """
     new_graph = fx.Graph()
     env = dict()
-    for input in inputs:
+    for input in set(inputs + extra_inputs):
         new_node = new_graph.placeholder(input.name)
         env[input] = new_node
     for node in nodes:
@@ -403,7 +437,8 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
                 layer_node_list = extract_block(node.all_input_nodes, fp32_modules)
             else:
                 raise NotImplementedError
-            cur_node = layer_node_list[-1]
+            extra_inputs = append_extra_inputs(nodes, layer_node_list)
+            cur_node = find_cur_node(layer_node_list)
             fp32_module = fp32_modules[cur_node.target]
             fp32_inp_module = fp32_modules[node.target]
             quant_module = quant_modules[node.target]
@@ -413,7 +448,7 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
                                               store_oup=False, keep_gpu=config.keep_gpu)
             logger.info('the node list is below!')
             logger.info(layer_node_list)
-            subgraph = extract_subgraph(quant_modules, layer_node_list, node.all_input_nodes, cur_node)
+            subgraph = extract_subgraph(quant_modules, layer_node_list, node.all_input_nodes, extra_inputs, cur_node)
             logger.info(subgraph)
             cached_inps = (quant_inps, fp32_inps) if config.prob < 1.0 else quant_inps
             cached_oups = fp32_oups
