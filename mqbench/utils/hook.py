@@ -22,3 +22,21 @@ class DataSaverHook:
             self.output_store = output_batch
         if self.stop_forward:
             raise StopForwardException
+
+class DataSaveHookByNode:
+    """
+    Forward hook that store a dict with the node as key.
+    """
+    def __init__(self, input_node, output_node, store_input, store_output):
+        self.input_node = input_node
+        self.output_node = output_node 
+        self.store_input = store_input
+        self.store_output = store_output 
+        self.input_store = {}
+        self.output_store = {}
+
+    def __call__(self, module, input_batch, output_batch):
+        if self.store_input:
+            self.input_store.update({self.input_node: input_batch})
+        if self.store_output:
+            self.output_store.update({self.output_node: output_batch})

@@ -22,7 +22,7 @@ import numpy as np
 from typing import List
 
 from mqbench.utils.logger import logger
-from mqbench.utils.hook import DataSaverHook, StopForwardException
+from mqbench.utils.hook import DataSaveHookByNode
 from mqbench.utils import deepcopy_graphmodule
 from mqbench.utils.state import enable_quantization, disable_all
 
@@ -36,48 +36,73 @@ def lp_loss(pred, tgt, p=2.0):
     return (pred - tgt).abs().pow(p).sum(1).mean()
 
 
-def save_inp_oup_data(model: GraphModule, inp_module: Module, oup_module: Module, cali_data: list, store_inp=True, store_oup=True,
-                      keep_gpu: bool = True):
-    """
-    Save input data and output data of a particular layer/block over calibration dataset.
-    :param fp_model: fp_model
-    :param quant_model: quant_model
-    :param cali_data: calibration data set
-    :param keep_gpu: put saved data on GPU for faster optimization
-    :return: input and output data
-    """
+def to_device(data, device='cpu'):
+    if isinstance(data, torch.Tensor):
+        return data.to(device)
+    elif isinstance(data, dict):
+        for key in data:
+            data[key] = to_device(data[key], device)
+        return data
+    else:
+        return data
+
+
+def tensor_detach(data):
+    if isinstance(data, torch.Tensor):
+        return data.detach()
+    elif isinstance(data, dict):
+        for key in data:
+            data[key] = tensor_detach(data[key])
+        return data 
+    else:
+        return data 
+
+
+def save_inps_data_by_node(model, modules, inp_nodes, out_node, node2idx, cali_data, keep_gpu):
+    # return a tuple of two list
+    # return a batch x args input and batch output 
+    # provides each node's output
+    for inp in inp_nodes:
+        assert node2idx[inp] < node2idx[out_node], 'topology error'
     device = next(model.parameters()).device
-    if store_inp:
-        assert inp_module is not None
-        inp_saver = DataSaverHook(store_input=store_inp, store_output=False, stop_forward=(not store_oup))
-        inp_handle = inp_module.register_forward_hook(inp_saver)
-    if store_oup:
-        assert oup_module is not None
-        oup_saver = DataSaverHook(store_input=False, store_output=store_oup, stop_forward=True)
-        oup_handle = oup_module.register_forward_hook(oup_saver)
-    cached = ([], [])
+    inp_savers = []
+    handles = []
+    for inp in inp_nodes:
+        module = modules[inp.target]
+        inp_saver = DataSaveHookByNode(None, inp, False, True)
+        handle = module.register_forward_hook(inp_saver)
+        inp_savers.append(inp_saver)
+        handles.append(handle)
+    handles.append(handle)
+    cached_in = []
     with torch.no_grad():
         for batch in cali_data:
-            try:
-                _ = model(batch.to(device))
-            except StopForwardException:
-                pass
-            if store_inp:
-                if keep_gpu:
-                    cached[0].append([inp.detach() for inp in inp_saver.input_store])
-                else:
-                    cached[0].append([inp.detach().cpu() for inp in inp_saver.input_store])  # tuple/list one
-            if store_oup:
-                if keep_gpu:
-                    cached[1].append(oup_saver.output_store.detach())
-                else:
-                    cached[1].append(oup_saver.output_store.detach().cpu())
-    if store_inp:
-        inp_handle.remove()
-    if store_oup:
-        oup_handle.remove()
+            cache_inp_dict = {}
+            model(to_device(batch, device))
+            for inp_saver in inp_savers:
+                cache_inp_dict.update(inp_saver.output_store)
+            if not keep_gpu:
+                cache_inp_dict = to_device(cache_inp_dict, 'cpu')
+            cached_in.append(cache_inp_dict)
+    for handle in handles:
+        handle.remove()
     torch.cuda.empty_cache()
-    return cached
+    return cached_in
+
+def save_oup_data_by_node(subgraph, cached_fp_inps, keep_gpu):
+    device = next(subgraph.parameters()).device
+    cached_out = []
+    with torch.no_grad():
+        for batch in cached_fp_inps:
+            cur_fp_inp = to_device(batch, device)
+            cur_inp_dict = {}
+            for node in cur_fp_inp:
+                cur_inp_dict[node.name] = cur_fp_inp[node]
+            cur_fp_out = subgraph(**cur_inp_dict)
+            if not keep_gpu:
+                cur_fp_inp = to_device(cur_fp_inp, 'cpu')
+            cached_out.append(cur_fp_out)
+    return cached_out
 
 
 class LinearTempDecay:
@@ -179,6 +204,27 @@ def _flatten_args(node):
     return flattned_args
 
 
+def _drop_input(q, fp, rate):
+    if isinstance(q, torch.Tensor):
+        return torch.where(torch.rand_like(q) < rate, q, fp)
+    elif isinstance(q, dict):
+        out = {}
+        for k in q:
+            out[k] = _drop_input(q[k], fp[k], rate)
+        return out
+    elif isinstance(q, list):
+        out = []
+        for idx in range(len(q)):
+            out.append(_drop_input(q[idx], fp[idx], rate))
+        return out 
+    elif isinstance(q, tuple):
+        out = []
+        for idx in range(len(q)):
+            out.append(_drop_input(q[idx], fp[idx], rate))
+        return tuple(out)
+    else:
+        raise ValueError('Data type not supported.')
+
 def append_extra_inputs(nodes, layer_node_list):
     # there are some nodes in the block which are used but not in the list. 
     # e.g. a global dict used in UP or EOD.
@@ -200,7 +246,7 @@ def find_cur_node(layer_node_list):
         return node
     raise ValueError('Bad layer node list provided.')
 
-def subgraph_reconstruction(subgraph, cached_inps, cached_oups, config):
+def subgraph_reconstruction(subgraph, placeholders, cached_inps, cached_oups, config):
     global USE_LINK
     global USE_DDP
     device = next(subgraph.parameters()).device
@@ -211,7 +257,6 @@ def subgraph_reconstruction(subgraph, cached_inps, cached_oups, config):
     for name, layer in subgraph.named_modules():
         if isinstance(layer, _ADAROUND_SUPPORT_TYPE):
             weight_quantizer = layer.weight_fake_quant
-            # assert isinstance(weight_quantizer, adaround_quantizer) is True
             weight_quantizer.init(layer.weight.data, config.round_mode)
             w_para += [weight_quantizer.alpha]
         if isinstance(layer, torch.quantization.FakeQuantizeBase) and 'post_act_fake_quantize' in name:
@@ -229,8 +274,10 @@ def subgraph_reconstruction(subgraph, cached_inps, cached_oups, config):
     loss_func = LossFunction(subgraph=subgraph, weight=config.weight, max_count=config.max_count, b_range=config.b_range,
                              warm_up=config.warm_up)
 
-    if any([USE_DDP, USE_LINK]):
-        world_size = link.get_world_size() if USE_LINK else dist.get_world_size()
+    if USE_LINK:
+        world_size = link.get_world_size()
+    elif USE_DDP:
+        world_size = dist.get_world_size()
     else:
         world_size = 1
 
@@ -244,18 +291,22 @@ def subgraph_reconstruction(subgraph, cached_inps, cached_oups, config):
     for i in range(config.max_count):
         idx = np.random.randint(0, sz)
         if config.prob < 1.0:
-            cur_inp = [inp.to(device) for inp in cached_inps[0][idx]]
-            cur_sym = [sym.to(device) for sym in cached_inps[1][idx]]
-            cur_inp = [torch.where(torch.rand_like(inp) < config.prob, inp, sym) for inp, sym in zip(cur_inp, cur_sym)]
+            cur_inp = to_device(cached_inps[0][idx], device)
+            cur_sym = to_device(cached_inps[1][idx], device)
+            cur_inp = _drop_input(cur_inp, cur_sym, config.prob)
         else:
             cur_inp = cached_inps[idx]
-            cur_inp = [inp.to(device) for inp in cur_inp]
-        cur_out = cached_oups[idx].to(device)
+            cur_inp = to_device(cur_inp, device)
+        cur_out = to_device(cached_oups[idx], device)
         if a_opt:
             a_opt.zero_grad()
         w_opt.zero_grad()
-        out_quant = subgraph(*cur_inp)
-        err = loss_func(out_quant, cur_out)
+        cur_inp_dict = {} 
+        for node in cur_inp:
+            cur_inp_dict[node.name] = cur_inp[node]
+        cur_out_tensor = cur_out
+        out_quant = subgraph(**cur_inp_dict)
+        err = loss_func(out_quant, cur_out_tensor)
         err /= world_size
         err.backward()
         if world_size > 1:
@@ -281,22 +332,26 @@ def subgraph_reconstruction(subgraph, cached_inps, cached_oups, config):
             layer.prob = 1.0   # recover to promise that drop activation quantization only occurs at reconstruction phase
 
 
-def extract_subgraph(orig_module: nn.Module, nodes: List[fx.Node], inputs: List[fx.Node], extra_inputs: List[fx.Node], output: fx.Node):
+
+
+def extract_subgraph_with_placeholder(orig_module: nn.Module, nodes: List[fx.Node], inputs: List[fx.Node], output: fx.Node, extra_inputs: List[fx.Node]):
     """
     Given lists of nodes from an existing graph that represent a subgraph, returns a submodule that executes that subgraph.
     """
     new_graph = fx.Graph()
     env = dict()
+    placeholders = []
     for input in set(inputs + extra_inputs):
         new_node = new_graph.placeholder(input.name)
         env[input] = new_node
+        placeholders.append(input)
     for node in nodes:
         new_node = new_graph.node_copy(node, lambda x: env[x])
         env[node] = new_node
     # create this or there will not be return value
     new_graph.output(env[output])
     new_graph.lint()
-    return fx.GraphModule(orig_module, new_graph)
+    return fx.GraphModule(orig_module, new_graph), placeholders
 
 
 def find_num_nodes(nodes):
@@ -343,6 +398,7 @@ def extract_block(input_nodes, fp32_modules, depth=0):
     layer_node_list = []
     is_block = False
     cnt = dict()
+    cur_node = None
     q, p = [], []  # q records the completed node, p records the uncompleted nodes
     for input in input_nodes:
         for user in input.users:
@@ -372,12 +428,90 @@ def extract_block(input_nodes, fp32_modules, depth=0):
                 q.append(user)
                 p.remove(user)
         logger.debug('uncompleted nodes are {}'.format(p))
+    if not cur_node:
+        return layer_node_list
+    if cur_node.target == 'update':
+        if len(q) > 0:
+            cur_node = q.pop(0)
+        else:
+            exp_nodes = []
+            is_next_block = False
     exp_nodes, is_next_block = extract_layer(cur_node, fp32_modules)
     if is_block or is_next_block:
         return layer_node_list + exp_nodes
     else:
         return layer_node_list + exp_nodes + extract_block([exp_nodes[-1]], fp32_modules, depth + 1)
 
+
+
+def _get_items_for_the_graph(model: GraphModule) -> dict:
+    def _update_getitem_path(getitem_args_dict):
+        for node in getitem_args_dict:
+            args_list = getitem_args_dict[node]
+            while args_list[0] in getitem_args_dict:
+                args_list = getitem_args_dict[args_list[0]] + args_list[1:]
+            getitem_args_dict[node] = args_list
+        return getitem_args_dict
+
+    def _getitem_from_args(args, original_args_dict):
+        ret = original_args_dict
+        for a in args:
+            try:
+                ret = ret[a]
+            except (IndexError, KeyError):
+                return {}
+        return ret 
+    import operator
+    nodes = list(model.graph.nodes)
+    # the getitem's call graph
+    getitem_args_dict = {}
+    # the dict used in the model 
+    original_key_dict = {}
+    getitem2node = {}
+    for node in nodes:
+        # update the getitems
+        if node.target == operator.getitem:
+            getitem_args_dict[node] = list(node.args)
+            getitem_args_dict = _update_getitem_path(getitem_args_dict)
+        elif node.target == 'update':
+            if node.args[0] not in original_key_dict:
+                original_key_dict[node.args[0]] = {}
+            original_key_dict[node.args[0]].update(node.args[1])
+    for node in getitem_args_dict:
+        val = _getitem_from_args(getitem_args_dict[node], original_key_dict)
+        if isinstance(val, torch.fx.node.Node):
+            getitem2node[node] = val
+    node2idx = {}
+    for idx, node in enumerate(model.graph.nodes):
+        node2idx[node] = idx 
+
+    return getitem2node, node2idx
+
+
+def replace_getitems(layer_node_list, getitem2node):
+    for idx, _ in enumerate(layer_node_list):
+        if layer_node_list[idx] in getitem2node:
+            layer_node_list[idx] = getitem2node[layer_node_list[idx]]
+    return layer_node_list 
+
+
+
+def remove_non_tensor_nodes(node_list):
+    remove_list = []
+    for node in node_list:
+        if node.target == 'update':
+            if len(node.args[0].users) == 1:
+                remove_list.append(node.args[0])
+            remove_list.append(node)
+    return [node for node in node_list if node not in remove_list]
+
+
+def nodes_from_name(nodes, special_block, prefix):
+    input_nodes = []
+    for node in nodes:
+        if node.name in special_block[prefix]:
+            input_nodes.append(node)
+    return input_nodes 
 
 def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
     r"""
@@ -426,33 +560,34 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
     fp32_modules = dict(fp32_model.named_modules())
     quant_modules = dict(quant_model.named_modules())
     checked_nodes = dict()
+    getitem2node, node2idx = _get_items_for_the_graph(quant_model)
     for node in nodes:
         if node in checked_nodes:
             continue
         if node.op == "call_module" and isinstance(fp32_modules[node.target], _ADAROUND_SUPPORT_TYPE):
             logger.info('prepare {} reconstruction for {}'.format(config.pattern, node.target))
+            input_nodes = node.all_input_nodes
             if config.pattern == 'layer':
                 layer_node_list, _ = extract_layer(node, fp32_modules)
             elif config.pattern == 'block':
-                layer_node_list = extract_block(node.all_input_nodes, fp32_modules)
+                layer_node_list = extract_block(input_nodes, fp32_modules)
             else:
                 raise NotImplementedError
-            extra_inputs = append_extra_inputs(nodes, layer_node_list)
+            layer_node_list = replace_getitems(layer_node_list, getitem2node)
+            layer_node_list = sorted(layer_node_list, key=lambda x: node2idx[x])
+            layer_node_list = remove_non_tensor_nodes(layer_node_list)
             cur_node = find_cur_node(layer_node_list)
-            fp32_module = fp32_modules[cur_node.target]
-            fp32_inp_module = fp32_modules[node.target]
-            quant_module = quant_modules[node.target]
-            fp32_inps, fp32_oups = save_inp_oup_data(fp32_model, fp32_inp_module, fp32_module, cali_data,
-                                                     store_inp=(config.prob < 1.0), store_oup=True, keep_gpu=config.keep_gpu)
-            quant_inps, _ = save_inp_oup_data(quant_model, quant_module, None, cali_data, store_inp=True,
-                                              store_oup=False, keep_gpu=config.keep_gpu)
             logger.info('the node list is below!')
             logger.info(layer_node_list)
-            subgraph = extract_subgraph(quant_modules, layer_node_list, node.all_input_nodes, extra_inputs, cur_node)
+            extra_inputs = append_extra_inputs(nodes, layer_node_list)
+            subgraph, placeholders = extract_subgraph_with_placeholder(quant_modules, layer_node_list, input_nodes, cur_node, extra_inputs)
             logger.info(subgraph)
+            fp32_inps = save_inps_data_by_node(fp32_model, fp32_modules, placeholders, cur_node, node2idx, cali_data, config.keep_gpu)
+            quant_inps = save_inps_data_by_node(quant_model, quant_modules, placeholders, cur_node, node2idx, cali_data, config.keep_gpu)
+            fp32_oups = save_oup_data_by_node(subgraph, fp32_inps, config.keep_gpu)
             cached_inps = (quant_inps, fp32_inps) if config.prob < 1.0 else quant_inps
             cached_oups = fp32_oups
-            subgraph_reconstruction(subgraph, cached_inps, cached_oups, config)
+            subgraph_reconstruction(subgraph, placeholders, cached_inps, cached_oups, config)
             for x in layer_node_list:
                 checked_nodes[x] = True
     return quant_model
