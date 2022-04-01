@@ -211,21 +211,25 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
     if deploy_backend == BackendType.Academic:
         w_qscheme = QuantizeScheme(**extra_qparams['w_qscheme'])
         a_qscheme = QuantizeScheme(**extra_qparams['a_qscheme'])
-    elif deploy_backend == BackendType.Tensorrt:
+    else:
         w_qscheme = extra_qparams.get('w_qscheme', None)
         if w_qscheme is None:
             w_qscheme = backend_params['w_qscheme']
         else:
+            logger.info("Weight Quant Scheme is overrided!")
             w_qscheme = QuantizeScheme(**w_qscheme)
         a_qscheme = extra_qparams.get('a_qscheme', None)
         if a_qscheme is None:
             a_qscheme = backend_params['a_qscheme']
         else:
+            logger.info("Activation Quant Scheme is overrided!")
             a_qscheme = QuantizeScheme(**a_qscheme)
-    else:
-        w_qscheme = backend_params['w_qscheme']
-        a_qscheme = backend_params['a_qscheme']
 
+    # Set extra args for observers.
+    w_observer_extra_args = extra_qparams.get('w_observer_extra_args', {})
+    a_observer_extra_args = extra_qparams.get('a_observer_extra_args', {})
+    w_qscheme.kwargs.update(w_observer_extra_args)
+    a_qscheme.kwargs.update(a_observer_extra_args)
     # Get weight / act fake quantize function and params. And bias fake quantizer if needed(Vitis)
     if not w_fakequantize:
         w_fakequantize = backend_params['default_weight_quantize']
@@ -233,7 +237,7 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
     if not a_fakequantize:
         a_fakequantize = backend_params['default_act_quantize']
     a_fakeq_params = extra_qparams.get('a_fakeq_params', {})
-    # Observer dot not need extra params for now.
+    # Get default observer type.
     if not w_observer:
         w_observer = backend_params['default_weight_observer']
     if not a_observer:
