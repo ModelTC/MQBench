@@ -3,6 +3,8 @@ class StopForwardException(Exception):
     Used to throw and catch an exception to stop traversing the graph
     """
     pass
+
+
 class DataSaverHook:
     """
     Forward hook that stores the input and output of a layer/block

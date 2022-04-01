@@ -162,9 +162,9 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
             if deploy_backend == BackendType.Academic keys below will be used:
             'w_qscheme': {
                 'bit': bitwidth,
-                'symmetry': weather quantize scheme is symmetric,
-                'per_channel': weather quantize scheme is perchannel,
-                'pot_scale': weather scale is power of two.
+                'symmetry': whether quantize scheme is symmetric,
+                'per_channel': whether quantize scheme is perchannel,
+                'pot_scale': whether scale is power of two.
             }
             'a_qscheme': {
                 same with w_qscheme.

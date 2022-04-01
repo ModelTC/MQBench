@@ -1,4 +1,5 @@
 import torch
+import torch.nn.intrinsic.qat as nniqat
 from torch.fx import GraphModule, Node
 from torch import fx, nn
 from torch.nn import Module
@@ -272,8 +273,17 @@ def subgraph_reconstruction(subgraph, cached_inps, cached_oups, config):
         if a_scheduler:
             a_scheduler.step()
     torch.cuda.empty_cache()
-    for name, layer in subgraph.named_modules():
-        if isinstance(layer, _ADAROUND_SUPPORT_TYPE):
+    for name, layer in subgraph.named_modules():        
+        if isinstance(layer, (nniqat.ConvBnReLU2d, nniqat.ConvBn2d)):
+            # We need to do bn fold simulation here.
+            weight_quantizer = layer.weight_fake_quant
+            scale_factor = layer.bn.weight / torch.sqrt(layer.bn.running_var + layer.bn.eps)
+            merged_rounded_weight = weight_quantizer.get_hard_value(
+                layer.weight.data * scale_factor.reshape([-1] + [1] * (len(layer.weight.shape) - 1)))
+            layer.weight.data = merged_rounded_weight / scale_factor.reshape([-1] + [1] * (len(merged_rounded_weight.shape) - 1))
+            weight_quantizer.adaround = False
+        elif isinstance(layer, _ADAROUND_SUPPORT_TYPE):
+            assert not hasattr(layer, 'bn'), 'Layer {} has BN ! Should not reach here.'.format(name)
             weight_quantizer = layer.weight_fake_quant
             layer.weight.data = weight_quantizer.get_hard_value(layer.weight.data)
             weight_quantizer.adaround = False
