@@ -82,7 +82,7 @@ class ONNXQLinearPass(ONNXQNNPass):
                 # In onnx, quantize linear node values are in [-128, 127], this step is to remove inconsistency
                 if qmax - qmin == 2 ** 8 - 2:
                     self.clip_weight(node, name2data, named_initializer)
-                #? for model mixed constant and initializer
+                # ? for model mixed constant and initializer
                 # scale
                 try:
                     scale_proto = self.onnx_model.initializer[scale][0]
