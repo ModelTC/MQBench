@@ -31,16 +31,16 @@ quantize:
         round_mode: learned_hard_sigmoid
         prob: 1.0
     deploy:
-        output_path: 'path-of-output'
+        output_path: /path-of-output
         model_name: 'res18'
         deploy_to_qlinear: True
 model:                    # architecture details
     type: resnet18        # model name
     kwargs:
         num_classes: 1000
-    path: /data/zhiwei.dong/sensetime/model_zoo/resnet18_imagenet.pth.tar
+    path: /path-of-pretrained
 data:
-    path: /rdata/share/datasets/imagenet
+    path: /path-of-imagenet
     batch_size: 64
     num_workers: 4
     pin_memory: True
