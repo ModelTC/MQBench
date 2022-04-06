@@ -31,7 +31,7 @@ quantize:
         round_mode: learned_hard_sigmoid
         prob: 1.0
     deploy:
-        output_path: './trt-88-naiveqdq'
+        output_path: 'path-of-output'
         model_name: 'res18'
         deploy_to_qlinear: True
 model:                    # architecture details
