@@ -172,6 +172,7 @@ if __name__ == '__main__':
         onnx2trt(args.onnx_path,
                  trt_path=args.trt_path,
                  mode=args.mode,
+                 is_explicit=args.explicit,
                  dataset_path=args.data_path,
                  batch_size=args.batch_size,
                  cali_batch=10,
