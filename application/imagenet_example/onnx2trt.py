@@ -21,6 +21,7 @@ def onnx2trt(onnx_model,
              max_workspace_size=1 << 30,
              device_id=0,
              mode='fp32',
+             is_explicit=False,
              dynamic_range_file=None):
     if os.path.exists(trt_path):
         print(f'The "{trt_path}" exists. Remove it and continue.')
@@ -70,6 +71,9 @@ def onnx2trt(onnx_model,
                     amax = dynamic_range[output_tensor.name]
                     output_tensor.dynamic_range = (-amax, amax)
                     print(f'Set dynamic range of {output_tensor.name} as [{-amax}, {amax}]')
+        elif is_explicit:
+            # explicit mode do not need calibrator
+            pass
         else:
             from calibrator import ImagenetCalibrator
             calidir = os.path.join(dataset_path, 'cali')
@@ -88,29 +92,30 @@ def onnx2trt(onnx_model,
             print(f'Calibration Set!')
 
     # create engine
-    with torch.cuda.device(device):
-        engine = builder.build_engine(network, config)
+    engine = builder.build_engine(network, config)
 
     with open(trt_path, mode='wb') as f:
         f.write(bytearray(engine.serialize()))
     return engine
 
 def infer(engine, img, batch_size, context):
-    h_input = img
-    h_output = cuda.pagelocked_empty(batch_size * trt.volume(engine.get_binding_shape(1)[1:]), dtype=np.float32)
+    h_input = img = img
+    h_input_mem = cuda.pagelocked_empty(batch_size * trt.volume(engine.get_binding_shape(0)[1:]), dtype=np.float32)
+    h_output_mem = cuda.pagelocked_empty(batch_size * trt.volume(engine.get_binding_shape(1)[1:]), dtype=np.float32)
+    # import pdb; pdb.set_trace()
     # Allocate device memory for inputs and outputs.
-    d_input = cuda.mem_alloc(4 * trt.volume(engine.get_binding_shape(0)))
-    d_output = cuda.mem_alloc(4 * trt.volume(engine.get_binding_shape(1)))
+    d_input = cuda.mem_alloc(h_input_mem.nbytes)
+    d_output = cuda.mem_alloc(h_output_mem.nbytes)
     # Transfer input data to the GPU.
     cuda.memcpy_htod(d_input, h_input)
     # Run inference.
-    context.execute_v2(bindings=[int(d_input), int(d_output)])
+    context.execute_v2([d_input, d_output])
     # Return the host output.
-    cuda.memcpy_dtoh(h_output, d_output)
+    cuda.memcpy_dtoh(h_output_mem, d_output)
     d_input.free()
     d_output.free()
 
-    return h_output.reshape(batch_size, *engine.get_binding_shape(1)[1:])
+    return h_output_mem.reshape(batch_size, *engine.get_binding_shape(1)[1:])
 
 def validate(trt_file, batch_size=64, dataset_path=None):
     # deserialize engine
@@ -156,9 +161,10 @@ if __name__ == '__main__':
     parser.add_argument('--trt-path', type=str, default=None)
     parser.add_argument('--mode', choices=['fp32', 'int8'], default='int8')
     parser.add_argument('--clip-range-file', type=str, default=None)
-    parser.add_argument('--batch-size', type=int, default=10)
+    parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--evaluate', action='store_true')
     parser.add_argument('--verbose', action='store_true')
+    parser.add_argument('--explicit', action='store_true')
     parser.add_argument('--data-path', type=str, required=True)
     args = parser.parse_args()
 
@@ -166,8 +172,9 @@ if __name__ == '__main__':
         onnx2trt(args.onnx_path,
                  trt_path=args.trt_path,
                  mode=args.mode,
+                 is_explicit=args.explicit,
                  dataset_path=args.data_path,
-                 batch_size=10,
+                 batch_size=args.batch_size,
                  cali_batch=10,
                  log_level=trt.Logger.VERBOSE if args.verbose else trt.Logger.ERROR,
                  dynamic_range_file=args.clip_range_file)

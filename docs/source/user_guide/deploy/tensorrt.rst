@@ -28,29 +28,23 @@ Deploy on TensorRT
 
 **Requirements**:
 
-- Install TensorRT=7.2.1.6 from `NVIDIA <https://developer.nvidia.com/tensorrt/>`_
+- Install TensorRT>=8.0EA from `NVIDIA <https://developer.nvidia.com/tensorrt/>`_
 
 **Deployment**:
 
-We provide the example to deploy the quantized model to TensorRT.
+We provide the example to deploy the quantized model to TensorRT using AdaRound and explicit mode.
 
-- First export the quantized model to ONNX [tensorrt_deploy_model.onnx] and dump the clip ranges [tensorrt_clip_ranges.json] for activations.
+- First edit </path-of-MQBench/application/imagenet_example/PTQ/configs/adaround/r18_8_8_trt.yaml>'s datasets, pretrained and output path, then export the quantized model to onnx.
 
     .. code-block:: shell
         :linenos:
 
-        python main.py -a [model_name] --resume [model_save_path]
+        cd /path-of-MQBench/application/imagenet_example/PTQ/ptq
+        python ptq.py --config /path-of-MQBench/application/imagenet_example/PTQ/configs/adaround/r18_8_8_trt.yaml
 
 - Second build the TensorRT INT8 engine and evaluate, please make sure [dataset_path] contains subfolder [val].
 
     .. code-block:: shell
         :linenos:
 
-        python onnx2trt.py --onnx [tensorrt_deploy_model.onnx] --trt [model_name.trt] --clip [tensorrt_clip_ranges.json] --data [dataset_path] --evaluate
-
-- If you don’t pass in external clip ranges [tensorrt_clip_ranges.json], TenosrRT will do calibration using default algorithm IInt8EntropyCalibrator2 with 100 images. So, please make sure [dataset_path] contains subfolder [cali].
-
-    .. code-block:: shell
-        :linenos:
-
-        python onnx2trt.py --onnx [tensorrt_deploy_model.onnx] --trt [model_name.trt] --data [dataset_path] --evaluate
+        python onnx2trt.py --onnx <path-of-onnx_quantized_deploy_model.onnx> --trt <model_name.trt> --data <dataset_path> --evaluate

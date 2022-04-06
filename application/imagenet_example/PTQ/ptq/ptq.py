@@ -5,6 +5,19 @@ from models import load_model
 from utils import parse_config, seed_all, evaluate
 from mqbench.prepare_by_platform import prepare_by_platform, BackendType
 from mqbench.advanced_ptq import ptq_reconstruction
+from mqbench.convert_deploy import convert_deploy
+
+backend_dict = {
+    'Academic': BackendType.Academic,
+    'Tensorrt': BackendType.Tensorrt,
+    'SNPE': BackendType.SNPE,
+    'PPLW8A16': BackendType.PPLW8A16,
+    'NNIE': BackendType.NNIE,
+    'Vitis': BackendType.Vitis,
+    'ONNX_QNN': BackendType.ONNX_QNN,
+    'PPLCUDA': BackendType.PPLCUDA,
+}
+
 
 def load_calibrate_data(train_loader, cali_batchsize):
     cali_data = []
@@ -16,22 +29,25 @@ def load_calibrate_data(train_loader, cali_batchsize):
 
 
 def get_quantize_model(model, config):
-    backend_dict = {
-            'Academic': BackendType.Academic,
-            'Tensorrt': BackendType.Tensorrt,
-            'SNPE': BackendType.SNPE,
-            'PPLW8A16': BackendType.PPLW8A16,
-            'NNIE': BackendType.NNIE,
-            'Vitis': BackendType.Vitis,
-            'ONNX_QNN': BackendType.ONNX_QNN,
-            'PPLCUDA': BackendType.PPLCUDA,
-    }
     backend_type = BackendType.Academic if not hasattr(
-        config, 'backend') else backend_dict[config.backend]
+        config.quantize, 'backend') else backend_dict[config.quantize.backend]
     extra_prepare_dict = {} if not hasattr(
         config, 'extra_prepare_dict') else config.extra_prepare_dict
     return prepare_by_platform(
         model, backend_type, extra_prepare_dict)
+
+
+def deploy(model, config):
+    backend_type = BackendType.Academic if not hasattr(
+        config.quantize, 'backend') else backend_dict[config.quantize.backend]
+    output_path = './' if not hasattr(
+        config.quantize, 'deploy') else config.quantize.deploy.output_path
+    model_name = config.quantize.deploy.model_name
+    deploy_to_qlinear = False if not hasattr(
+        config.quantize.deploy, 'deploy_to_qlinear') else config.quantize.deploy.deploy_to_qlinear
+
+    convert_deploy(model, backend_type, {
+                   'input': [1, 3, 224, 224]}, output_path=output_path, model_name=model_name, deploy_to_qlinear=deploy_to_qlinear)
 
 
 if __name__ == '__main__':
@@ -68,6 +84,8 @@ if __name__ == '__main__':
                 model, cali_data, config.quantize.reconstruction)
         enable_quantization(model)
         evaluate(val_loader, model)
+        if hasattr(config.quantize, 'deploy'):
+            deploy(model, config)
     elif config.quantize.quantize_type == 'naive_ptq':
         print('begin calibration now!')
         cali_data = load_calibrate_data(train_loader, cali_batchsize=config.quantize.cali_batchsize)
@@ -82,6 +100,8 @@ if __name__ == '__main__':
         print('begin quantization now!')
         enable_quantization(model)
         evaluate(val_loader, model)
+        if hasattr(config.quantize, 'deploy'):
+            deploy(model, config)
     else:
         print("The quantize_type must in 'naive_ptq' or 'advanced_ptq',")
         print("and 'advanced_ptq' need reconstruction configration.")
