@@ -1,3 +1,4 @@
+from copy import deepcopy
 from enum import Enum
 from typing import Any, Dict
 
@@ -287,6 +288,30 @@ class CustomedTracer(Tracer):
             return True
         return m.__module__.startswith('torch.nn') and not isinstance(m, torch.nn.Sequential)
 
+def duplicate_reused_nodes(graph: torch.fx.Graph, modules: Dict[str, Any] = {}):
+    _dup_prefix = '_dup'
+    target_dict = dict()
+    dup_modules = dict()
+    for node in graph.nodes:
+        if isinstance(node.target, str):
+            if node.target not in target_dict:
+                target_dict[node.target] = [node]
+            else:
+                target_dict[node.target].append(node)
+    for key in target_dict:
+        if len(target_dict[key]) > 1:
+            for idx, node in enumerate(target_dict[key]):
+                if idx == 0:
+                    continue
+                module = deepcopy(modules[node.target])
+                node.target += _dup_prefix + str(idx)
+                dup_modules[node.target] = module
+    graph.lint()
+    return graph, dup_modules
+
+
+
+
 
 def prepare_by_platform(
         model: torch.nn.Module,
@@ -338,7 +363,10 @@ def prepare_by_platform(
         tracer = custom_tracer
     graph = tracer.trace(model, concrete_args)
     name = model.__class__.__name__ if isinstance(model, torch.nn.Module) else model.__name__
-    graph_module = GraphModule(model, graph, name)
+    modules = dict(model.named_modules())
+    graph, duplicated_modules = duplicate_reused_nodes(graph, modules)
+    modules.update(duplicated_modules)
+    graph_module = GraphModule(modules, graph, name)
     # Model fusion.
     extra_fuse_dict = prepare_custom_config_dict.get('extra_fuse_dict', {})
     extra_fuse_dict.update(fuse_custom_config_dict)
