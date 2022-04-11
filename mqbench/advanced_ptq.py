@@ -37,6 +37,32 @@ def lp_loss(pred, tgt, p=2.0):
     return (pred - tgt).abs().pow(p).sum(1).mean()
 
 
+def to_device(data, device='cpu'):
+    if isinstance(data, torch.Tensor):
+        return data.to(device)
+    elif isinstance(data, dict):
+        for key in data:
+            data[key] = to_device(data[key], device)
+        return data
+    elif isinstance(data, list):
+        for idx, _ in enumerate(data):
+            data[idx] = to_device(data[idx], device)
+        return data
+    else:
+        return data
+
+
+def tensor_detach(data):
+    if isinstance(data, torch.Tensor):
+        return data.detach()
+    elif isinstance(data, dict):
+        for key in data:
+            data[key] = tensor_detach(data[key])
+        return data 
+    else:
+        return data 
+
+
 def save_inp_oup_data(model: GraphModule, inp_module: Module, oup_module: Module, cali_data: list, store_inp=True, store_oup=True,
                       keep_gpu: bool = True):
     """
@@ -60,19 +86,19 @@ def save_inp_oup_data(model: GraphModule, inp_module: Module, oup_module: Module
     with torch.no_grad():
         for batch in cali_data:
             try:
-                _ = model(batch.to(device))
+                _ = model(to_device(batch, device))
             except StopForwardException:
                 pass
             if store_inp:
                 if keep_gpu:
-                    cached[0].append([inp.detach() for inp in inp_saver.input_store])
+                    cached[0].append([tensor_detach(inp) for inp in inp_saver.input_store])
                 else:
-                    cached[0].append([inp.detach().cpu() for inp in inp_saver.input_store])  # tuple/list one
+                    cached[0].append([to_device(tensor_detach(inp), 'cpu') for inp in inp_saver.input_store])  # tuple/list one
             if store_oup:
                 if keep_gpu:
-                    cached[1].append(oup_saver.output_store.detach())
+                    cached[1].append(tensor_detach(oup_saver.output_store))
                 else:
-                    cached[1].append(oup_saver.output_store.detach().cpu())
+                    cached[1].append(to_device(tensor_detach(oup_saver.output_store), 'cpu'))
     if store_inp:
         inp_handle.remove()
     if store_oup:
@@ -245,13 +271,13 @@ def subgraph_reconstruction(subgraph, cached_inps, cached_oups, config):
     for i in range(config.max_count):
         idx = np.random.randint(0, sz)
         if config.prob < 1.0:
-            cur_inp = [inp.to(device) for inp in cached_inps[0][idx]]
-            cur_sym = [sym.to(device) for sym in cached_inps[1][idx]]
+            cur_inp = [to_device(inp, device) for inp in cached_inps[0][idx]]
+            cur_sym = [to_device(sym, device) for sym in cached_inps[1][idx]]
             cur_inp = [torch.where(torch.rand_like(inp) < config.prob, inp, sym) for inp, sym in zip(cur_inp, cur_sym)]
         else:
             cur_inp = cached_inps[idx]
-            cur_inp = [inp.to(device) for inp in cur_inp]
-        cur_out = cached_oups[idx].to(device)
+            cur_inp = [to_device(inp, device) for inp in cur_inp]
+        cur_out = to_device(cached_oups[idx], device)
         if a_opt:
             a_opt.zero_grad()
         w_opt.zero_grad()
