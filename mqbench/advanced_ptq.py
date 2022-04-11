@@ -24,7 +24,7 @@ from typing import List
 
 from mqbench.utils.logger import logger
 from mqbench.utils.hook import DataSaverHook, StopForwardException
-from mqbench.utils import deepcopy_graphmodule
+from mqbench.utils import deepcopy_graphmodule, topology_order
 from mqbench.utils.state import enable_quantization, disable_all
 
 _ADAROUND_SUPPORT_TYPE = (torch.nn.Conv2d, torch.nn.Linear)
@@ -206,17 +206,6 @@ def _flatten_args(node):
     return flattned_args
 
 
-def append_extra_inputs(nodes, layer_node_list):
-    # there are some nodes in the block which are used but not in the list. 
-    # e.g. a global dict used in UP or EOD.
-    extra_inputs = [] 
-    for node in layer_node_list:
-        for arg in _flatten_args(node.args):
-            if isinstance(arg, torch.fx.Node):
-                if arg not in layer_node_list:
-                    extra_inputs.append(arg)
-    return extra_inputs
-
 
 def find_cur_node(layer_node_list):
     for node in reversed(layer_node_list):
@@ -265,18 +254,25 @@ def subgraph_reconstruction(subgraph, cached_inps, cached_oups, config):
     '''start training'''
     logger.info('start tuning by adaround')
     if config.prob < 1.0:
-        sz = len(cached_inps[0])
+        # cache inps: drop x args x batch x data
+        sz = len(cached_inps[0][0])
+        num_args = len(cached_inps[0])
     else:
-        sz = len(cached_inps)
+        # cache inps: args x batch x data
+        sz = len(cached_inps[0])
+        num_args = len(cached_inps)
     for i in range(config.max_count):
         idx = np.random.randint(0, sz)
-        if config.prob < 1.0:
-            cur_inp = [to_device(inp, device) for inp in cached_inps[0][idx]]
-            cur_sym = [to_device(sym, device) for sym in cached_inps[1][idx]]
-            cur_inp = [torch.where(torch.rand_like(inp) < config.prob, inp, sym) for inp, sym in zip(cur_inp, cur_sym)]
-        else:
-            cur_inp = cached_inps[idx]
-            cur_inp = [to_device(inp, device) for inp in cur_inp]
+        cur_args = []
+        for a in range(num_args):
+            if config.prob < 1.0:
+                cur_inp = to_device(cached_inps[0][a][idx], device)
+                cur_sym = to_device(cached_inps[1][a][idx], device)
+                cur_inp = torch.where(torch.rand_like(cur_inp) < config.prob, cur_inp, cur_sym)
+            else:
+                cur_inp = to_device(cached_inps[a][idx], device)
+            cur_args.append(cur_inp)
+        cur_args = tuple(cur_args)
         cur_out = to_device(cached_oups[idx], device)
         if a_opt:
             a_opt.zero_grad()
@@ -317,15 +313,18 @@ def subgraph_reconstruction(subgraph, cached_inps, cached_oups, config):
             layer.prob = 1.0   # recover to promise that drop activation quantization only occurs at reconstruction phase
 
 
-def extract_subgraph(orig_module: nn.Module, nodes: List[fx.Node], inputs: List[fx.Node], extra_inputs: List[fx.Node], output: fx.Node):
+def extract_subgraph(orig_module: nn.Module, nodes: List[fx.Node], output: fx.Node):
     """
     Given lists of nodes from an existing graph that represent a subgraph, returns a submodule that executes that subgraph.
     """
     new_graph = fx.Graph()
     env = dict()
-    for input in set(inputs + extra_inputs):
-        new_node = new_graph.placeholder(input.name)
-        env[input] = new_node
+    for node in nodes:
+        for arg in _flatten_args(node.args):
+            if isinstance(arg, torch.fx.Node):
+                if arg not in nodes:
+                    new_node = new_graph.placeholder(arg.name)
+                    env[arg] = new_node
     for node in nodes:
         new_node = new_graph.node_copy(node, lambda x: env[x])
         env[node] = new_node
@@ -473,21 +472,44 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
                 layer_node_list = extract_block(node.all_input_nodes, fp32_modules)
             else:
                 raise NotImplementedError
-            extra_inputs = append_extra_inputs(nodes, layer_node_list)
-            cur_node = find_cur_node(layer_node_list)
-            fp32_module = fp32_modules[cur_node.target]
-            fp32_inp_module = fp32_modules[node.target]
-            quant_module = quant_modules[node.target]
-            fp32_inps, fp32_oups = save_inp_oup_data(fp32_model, fp32_inp_module, fp32_module, cali_data,
-                                                     store_inp=(config.prob < 1.0), store_oup=True, keep_gpu=config.keep_gpu)
-            quant_inps, _ = save_inp_oup_data(quant_model, quant_module, None, cali_data, store_inp=True,
-                                              store_oup=False, keep_gpu=config.keep_gpu)
+            missing_inputs = [] 
+            for node in layer_node_list:
+                for arg in _flatten_args(node.args):
+                    if isinstance(arg, torch.fx.Node):
+                        if arg not in layer_node_list:
+                            missing_inputs.append(arg)
+            layer_node_list.extend(missing_inputs)
+            layer_node_list = sorted(layer_node_list, key=lambda x: topology_order(quant_model)[x])
             logger.info('the node list is below!')
             logger.info(layer_node_list)
-            subgraph = extract_subgraph(quant_modules, layer_node_list, node.all_input_nodes, extra_inputs, cur_node)
-            logger.info(subgraph)
+            cur_node = find_cur_node(layer_node_list)
+            fp32_module = fp32_modules[cur_node.target]
+            fp32_all_inps = []
+            quant_all_inps = []
+            fp32_final_oups = None
+            out_is_cached = False
+            for _node in layer_node_list:
+                if all([arg in layer_node_list for arg in _flatten_args(_node.args) if isinstance(arg, torch.fx.Node)]):
+                    continue
+                else:
+                    fp32_inp_module = fp32_modules[_node.target]
+                    quant_module = quant_modules[_node.target]
+                    # fp32 inps: [out_b1, out_b2, ...]
+                    _, fp32_inps = save_inp_oup_data(fp32_model, None, fp32_inp_module, cali_data,
+                                                     store_inp=False, store_oup=(config.prob < 1.0), keep_gpu=config.keep_gpu)
+                    _, fp32_oups = save_inp_oup_data(fp32_model, None, fp32_module, cali_data,
+                                                     store_inp=False, store_oup=(not out_is_cached), keep_gpu=config.keep_gpu)
+                    _, quant_inps = save_inp_oup_data(quant_model, None, quant_module, cali_data, store_inp=False,
+                                                      store_oup=True, keep_gpu=config.keep_gpu)
+                    fp32_all_inps.append(fp32_inps)
+                    quant_all_inps.append(quant_all_inps)
+                    if not out_is_cached:
+                        fp32_final_oups = fp32_oups
+                        out_is_cached = True
             cached_inps = (quant_inps, fp32_inps) if config.prob < 1.0 else quant_inps
-            cached_oups = fp32_oups
+            cached_oups = fp32_final_oups
+            subgraph = extract_subgraph(quant_modules, layer_node_list, cur_node)
+            logger.info(subgraph)
             subgraph_reconstruction(subgraph, cached_inps, cached_oups, config)
             for x in layer_node_list:
                 checked_nodes[x] = True
