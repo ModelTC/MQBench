@@ -309,10 +309,6 @@ def duplicate_reused_nodes(graph: torch.fx.Graph, modules: Dict[str, Any] = {}):
     graph.lint()
     return graph, dup_modules
 
-
-
-
-
 def prepare_by_platform(
         model: torch.nn.Module,
         deploy_backend: BackendType,
