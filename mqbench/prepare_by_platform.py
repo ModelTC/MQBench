@@ -296,7 +296,7 @@ def duplicate_reused_nodes(graph: torch.fx.Graph, modules: Dict[str, Any] = {}):
     target_dict = dict()
     dup_modules = dict()
     for node in graph.nodes:
-        if isinstance(node.target, str):
+        if node.op == "call_module":
             if node.target not in target_dict:
                 target_dict[node.target] = [node]
             else:
