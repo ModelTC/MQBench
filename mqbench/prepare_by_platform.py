@@ -50,6 +50,7 @@ class BackendType(Enum):
     OPENVINO = 'OPENVINO'
     Tengine_u8 = "Tengine_u8"
     Tensorrt_NLP = "Tensorrt_NLP"
+    Academic_NLP = "Academic_NLP"
 
 
 ParamsTable = {
@@ -119,6 +120,8 @@ ParamsTable = {
                                  default_weight_observer=MinMaxObserver,
                                  default_act_observer=EMAMinMaxObserver),
 }
+ParamsTable[BackendType.Tensorrt_NLP] = ParamsTable[BackendType.Tensorrt]
+ParamsTable[BackendType.Academic_NLP] = ParamsTable[BackendType.Academic]
 
 ObserverDict = {
     'MinMaxObserver':           MinMaxObserver,                                    # noqa: E241
@@ -208,7 +211,7 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
         return QConfig(activation=a_config, weight=w_config)
 
     # Academic setting should specific quant scheme in config.
-    if deploy_backend == BackendType.Academic:
+    if deploy_backend in [BackendType.Academic, BackendType.Academic_NLP]:
         w_qscheme = QuantizeScheme(**extra_qparams['w_qscheme'])
         a_qscheme = QuantizeScheme(**extra_qparams['a_qscheme'])
     else:
