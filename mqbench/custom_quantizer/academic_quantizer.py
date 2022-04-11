@@ -7,7 +7,7 @@ from torch.fx import GraphModule
 from torch.quantization import propagate_qconfig_
 from torch.quantization.fx.qconfig_utils import get_flattened_qconfig_dict
 
-from mqbench.utils import is_symmetric_quant
+from mqbench.utils import is_symmetric_quant, getitem2node
 from mqbench.utils.logger import logger
 from mqbench.utils.registry import register_model_quantizer
 from mqbench.prepare_by_platform import BackendType
@@ -81,6 +81,34 @@ class AcademicQuantizer(ModelQuantizer):
                 for _arg in node.args:
                     if isinstance(_arg, torch.fx.node.Node):
                         self.io_module[_arg.target] = _arg
+
+    def _find_act_quants(self, model: GraphModule) -> List:
+        nodes = list(model.graph.nodes)
+        modules = dict(model.named_modules())
+        node_need_to_quantize_output = []
+        g2node = getitem2node(model)
+        for node in nodes:
+            if ((node.op == "call_module" and node.target in self.exclude_module_name) or
+                ((node.op == 'call_function' or node.op == 'call_method') and
+                 node.target in self.exclude_function_type) or
+                    node.name in self.exclude_node_name) and node.name not in self.additional_node_name:
+                logger.info("Exclude skip: {}".format(node.name))
+                continue
+            if (node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_input)) or \
+                ((node.op == 'call_function' or node.op == 'call_method') and
+                    node.target in self.function_type_to_quant_input) or node.name in self.additional_node_name:
+                input_node_list = self._flatten_args(node.args)
+                # Means this is not Tensor + Tensor.
+                if not all([isinstance(_node, torch.fx.node.Node) for _node in input_node_list]):
+                    continue
+                for _node in input_node_list:
+                    if self._is_implicit_merge(modules, (node, _node)):
+                        logger.info("Implicit merge: {} + {}".format(_node.name, node.name))
+                        continue
+                    if _node in g2node:
+                        _node = g2node[_node]
+                    node_need_to_quantize_output.append(_node)
+        return node_need_to_quantize_output
 
     def _insert_fake_quantize_for_act_quant(self, model: GraphModule, qconfig):
         graph = model.graph
