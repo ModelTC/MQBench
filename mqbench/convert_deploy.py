@@ -42,6 +42,8 @@ def convert_merge_bn(model: GraphModule, **kwargs):
                 FUSED_MODULE_CONVERT_FUNCTION[type(modules[node.target])](model, node)
 
 
+@register_deploy_function(BackendType.Academic_NLP)
+@register_deploy_function(BackendType.Tensorrt_NLP)
 @register_deploy_function(BackendType.Tengine_u8)
 @register_deploy_function(BackendType.PPLCUDA)
 @register_deploy_function(BackendType.ONNX_QNN)

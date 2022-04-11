@@ -155,6 +155,7 @@ fuse_custom_config_dict = {
         qnni.ConvTransposeBnReLU2d: qnniqat.ConvTransposeBnReLU2d,
         qnni.ConvFreezebn2d: qnniqat.ConvFreezebn2d,
         qnni.ConvFreezebnReLU2d: qnniqat.ConvFreezebnReLU2d,
+        nn.Embedding: qnn.qat.Embedding,
     },
 }
 
