@@ -6,6 +6,7 @@ Code Snippets
 
 You can follow this snippet to start your mission with MQBench! You can find config details in `here <https://github.com/ModelTC/MQBench/tree/main/application/imagenet_example/PTQ/configs>`_, and you can find algorithm details in :doc:`../algorithm/advanced_ptq`.
 
+
 .. code-block:: python
     :linenos:
 
@@ -68,4 +69,3 @@ We follow the `PyTorch official example <https://github.com/pytorch/examples/tre
 5. Replace `/path-of-pretained` and `/path-of-imagenet` in yaml file;
 6. Change directory, `cd /path-of-MQBench/application/imagenet_example/PTQ/ptq`;
 7. Exec `python ptq.py -\-config /path-of-config.yaml`.
-
