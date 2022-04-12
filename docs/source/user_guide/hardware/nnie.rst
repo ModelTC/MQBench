@@ -1,5 +1,6 @@
 NNIE
 ====
+
 NNIE is a Neural Network Inference Engine of Hisilicon. It support INT8/INT16 quantization.
 
 .. _NNIE Quantization Scheme:
@@ -76,7 +77,7 @@ The highest bit represents the sign and the rest represents the absolute value o
 
 NNIE performs a per-layer quantization, which means the inputs of the same layer share the same :math:`z_a` and the weights of the same layer share the same :math:`z_w`.
 
-In fact, when building engine using the official tool of NNIE, it requires the clipping value :math:`c` rather than :math:`z`. :math:`c` needs to be a number in the :download:`gfpq_param_table_8bit.txt` which ensures that :math:`16 * \log_2{c}` is an integer.
+In fact, when building engine using the official tool of NNIE, it requires the clipping value :math:`c` rather than :math:`z`. :math:`c` needs to be a number in the 'gfpq_param_table_8bit.txt' which ensures that :math:`16 * \log_2{c}` is an integer.
 
 .. attention::
     Pooling: ceil_mode = True

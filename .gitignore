@@ -12,3 +12,6 @@ build/
 # model
 *.pth*
 *.onnx
+
+# macOS
+*.DS_Store

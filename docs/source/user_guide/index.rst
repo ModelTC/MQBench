@@ -9,3 +9,6 @@ User Guide
    howtoptq
    howtoqat
    howtodeploy
+   Quantization Hardware <hardware/index.rst>
+   Quantization Algorithm <algorithm/index.rst>
+
