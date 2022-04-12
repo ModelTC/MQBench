@@ -20,7 +20,7 @@ Post-training Quantization v.s. Quantization-aware Training
    Quantize a pre-trained network with limited data and computation resources, including activation range estimation, bn statistics update and other tuning techniques. 
 
 2. Quantization Aware Training (QAT):
-      
+
    End-to-end Finetuning a pre-trained full-precision model, this requires all training data and huge computation resource. 
 
 QAT Algorithms
