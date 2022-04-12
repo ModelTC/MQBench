@@ -1,6 +1,7 @@
 Advanced PTQ
 ============
 
+
 In this part, we'll introduce three advanced post-training quantization methods including AdaRound, BRECQ, and QDrop.
 Fair experimental comparisons can be found in :doc:`../../benchmark/index`.
 
@@ -25,6 +26,7 @@ where :math:`h(\mathbf{V}_{i,j})=clip(\sigma(\mathbf{V}_{i,j})(\zeta-\gamma)+\ga
 BRECQ
 ^^^^^
 
+
 Unlike AdaRound learns to reconstruct the output and tune the weight layer by layer, `BRECQ  <https://arxiv.org/pdf/2102.05426.pdf>`_ focus on the following optimization target, which is a more general format:
 
 .. raw:: latex html
@@ -48,8 +50,10 @@ Here, BRECQ obeys the following rules to determine a block:
     2. Residual connection should be in the block, such as BasicBlock in ResNet.
     3. If there is no residual connection, singles layers should be combined unless there are 3 single layers or the next layer meets condition 2.
 
+
 QDrop
 ^^^^^
+
 
 AdaRound and BRECQ finetune the weight by reconstructing output layer-wise or block-wise and achieves SOTA accuracy. However, they determine the activation quantization after the weight reconstruction stage, which will lead to the same optimized model no matter which bit the activation is in use, which is counterintuitive.
 
@@ -61,10 +65,12 @@ Qdrop investigates how the activation affects weight tuning. they find that by i
 
 However the PTQ is especially sensitive to calibration data. Due to the mismatch between calibration data and test one, introducing the whole activation quantization will highly possible cause overfitting. Inspired by previous experiments, QDrop proposed to further increase the flatness on as many directions as possible. In particular, QDrop randomly disables and enables the quantization of the activation of each forward pass. Finally, QDrop can cover more directions of flatness and thus flatter on test samples.
 
+
 Code Snippets
 ^^^^^^^^^^^^^
 
 You can follow this snippet to start your mission with MQBench, or check our PTQ example and benchmarks: :any:`imagenet-ptq-benchmark`.!
+
 
 .. code-block:: python
     :linenos:
@@ -112,6 +118,8 @@ You can follow this snippet to start your mission with MQBench, or check our PTQ
 
     # do evaluation
     ...
+    
 
     # deploy model, remove fake quantize nodes, and dump quantization params like clip ranges.
+
     convert_deploy(model.eval(), BackendType.Tensorrt, input_shape_dict={'data': [10, 3, 224, 224]})
