@@ -51,15 +51,15 @@ Here, BRECQ obeys the following rules to determine a block:
 QDrop
 ^^^^^
 
-AdaRound and BRECQ finetune the weight by reconstructing output layer-wise or block-wise and achieves SOTA accuracy. However, they determine the activation quantization after the weight reconstruction stage, which will lead to the same optimized model no matter which bit the activation in use, which is counterintuitive.
+AdaRound and BRECQ finetune the weight by reconstructing output layer-wise or block-wise and achieves SOTA accuracy. However, they determine the activation quantization after the weight reconstruction stage, which will lead to the same optimized model no matter which bit the activation is in use, which is counterintuitive.
 
-`QDrop <https://arxiv.org/pdf/2203.05740.pdf>`_ studies how to incorporate the activation quantization into weight tuning. QDrop considers 3 cases, case 1 equals BRECQ’ one, where the weight can not feel any activation quantization during the reconstruction stage. And case 2 and 3 incorporate the activation quantization. However, case 3 will omit the current block’s quantization while case 2 will not.
-
-According to the results, QDrop draws two conclusions:
-    1. For extremely low-bit quantization (e.g., W2A2), there will be huge accuracy improvement when considering activation quantization during weight tuning.
+According to their experiments, `QDrop <https://arxiv.org/pdf/2203.05740.pdf>`_ draws two observations:
+    1. For extremely low-bit quantization, there will be huge accuracy improvement when considering activation quantization during weight tuning.
     2. Partially introducing block-wise activation quantization surpasses introducing the whole activation quantization.
 
-Finally, QDrop replaces the activation quantization value with FP32 one randomly at the neutron level during reconstruction. And QDrop uses the probability of 0.5 to drop activation quantization.
+Qdrop investigates how the activation affects weight tuning. they find that by introducing activation quantization during calibration, the trained quantized model is flatter under some perturbation, and the perturbation direction correlates with input data.
+
+However the PTQ is especially sensitive to calibration data. Due to the mismatch between calibration data and test one, introducing the whole activation quantization will highly possible cause overfitting. Inspired by previous experiments, QDrop proposed to further increase the flatness on as many directions as possible. In particular, QDrop randomly disables and enables the quantization of the activation of each forward pass. Finally, QDrop can cover more directions of flatness and thus flatter on test samples.
 
 Code Snippets
 ^^^^^^^^^^^^^
