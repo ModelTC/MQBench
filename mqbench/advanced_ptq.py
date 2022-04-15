@@ -24,7 +24,8 @@ from typing import List
 
 from mqbench.utils.logger import logger
 from mqbench.utils.hook import DataSaverHook, StopForwardException
-from mqbench.utils import deepcopy_graphmodule, topology_order
+from mqbench.utils import deepcopy_graphmodule, topology_order, getitem2node
+from mqbench.utils.utils import _fix_succ_recursivly
 from mqbench.utils.state import enable_quantization, disable_all
 
 _ADAROUND_SUPPORT_TYPE = (torch.nn.Conv2d, torch.nn.Linear)
@@ -58,9 +59,11 @@ def tensor_detach(data):
     elif isinstance(data, dict):
         for key in data:
             data[key] = tensor_detach(data[key])
-        return data 
+        return data
+    elif isinstance(data, list):
+        data = [tensor_detach(dat) for dat in data]
     else:
-        return data 
+        return data
 
 
 def save_inp_oup_data(model: GraphModule, inp_module: Module, oup_module: Module, cali_data: list, store_inp=True, store_oup=True,
@@ -145,7 +148,6 @@ class LossFunction:
     r'''loss function to calculate mse reconstruction loss and relaxation loss
     use some tempdecay to balance the two losses.
     '''
-
     def __init__(self,
                  subgraph: Module,
                  weight: float = 1.,
@@ -206,15 +208,17 @@ def _flatten_args(node):
     return flattned_args
 
 
-
 def find_cur_node(layer_node_list):
     for node in reversed(layer_node_list):
-        if node.target == 'update':
-            continue 
-        if isinstance(node.target, str) and 'const' in node.target:
-            continue 
-        return node
-    raise ValueError('Bad layer node list provided.')
+        if node.op == 'call_function' or node.op == 'call_method':
+            continue
+        break
+    node_list = []
+    for _node in layer_node_list:
+        node_list.append(_node)
+        if _node is node:
+            return node_list
+
 
 def subgraph_reconstruction(subgraph, cached_inps, cached_oups, config):
     global USE_LINK
@@ -277,7 +281,7 @@ def subgraph_reconstruction(subgraph, cached_inps, cached_oups, config):
         if a_opt:
             a_opt.zero_grad()
         w_opt.zero_grad()
-        out_quant = subgraph(*cur_inp)
+        out_quant = subgraph(*cur_args)
         err = loss_func(out_quant, cur_out)
         err /= world_size
         err.backward()
@@ -313,19 +317,27 @@ def subgraph_reconstruction(subgraph, cached_inps, cached_oups, config):
             layer.prob = 1.0   # recover to promise that drop activation quantization only occurs at reconstruction phase
 
 
-def extract_subgraph(orig_module: nn.Module, nodes: List[fx.Node], output: fx.Node):
+def extract_subgraph(orig_module: nn.Module, nodes: List[fx.Node], output: fx.Node, g2node: dict):
     """
     Given lists of nodes from an existing graph that represent a subgraph, returns a submodule that executes that subgraph.
     """
     new_graph = fx.Graph()
     env = dict()
+    inp_lst = []
     for node in nodes:
         for arg in _flatten_args(node.args):
             if isinstance(arg, torch.fx.Node):
-                if arg not in nodes:
-                    new_node = new_graph.placeholder(arg.name)
+                if arg not in nodes and arg not in inp_lst:
+                    inp_lst.append(arg)
+                    if arg in g2node:
+                        arg_name = g2node[arg].name
+                    else:
+                        arg_name = arg.name
+                    new_node = new_graph.placeholder(arg_name)
                     env[arg] = new_node
     for node in nodes:
+        if node in g2node:
+            node = g2node[node]
         new_node = new_graph.node_copy(node, lambda x: env[x])
         env[node] = new_node
     # create this or there will not be return value
@@ -353,11 +365,15 @@ def extract_layer(node, fp32_modules):
         layer_node_list.append(cur_node)  # valid node here
         stop = (len(cur_node.users) == 0)
         for user in cur_node.users:
-            if user.op == 'call_module' and isinstance(fp32_modules[user.target], _ADAROUND_SUPPORT_TYPE):
+            if user.target == 'update':
+                continue
+            if user.op == 'call_module' and isinstance(
+                    fp32_modules[user.target], _ADAROUND_SUPPORT_TYPE):
                 stop = True
             # TODO: only short-cut here, consider more here
             # TODO: can also use un/completed to check here.
-            if ('add' in user.name and user.op in ['call_function', 'call_method']):
+            if ('add' in user.name
+                    and user.op in ['call_function', 'call_method']):
                 stop = True
             if user.op == 'output':
                 is_next_block, stop = True, True
@@ -379,6 +395,7 @@ def extract_block(input_nodes, fp32_modules, depth=0):
     is_block = False
     cnt = dict()
     q, p = [], []  # q records the completed node, p records the uncompleted nodes
+    cur_node = None
     for input in input_nodes:
         for user in input.users:
             if user not in cnt:
@@ -393,6 +410,8 @@ def extract_block(input_nodes, fp32_modules, depth=0):
     while len(q) != 0:
         cur_node = q.pop(0)  # valid node here
         logger.debug('cur node is {}'.format(cur_node))
+        if cur_node.target == 'update':
+            continue
         if len(p) == 0 and len(q) == 0:
             break
         layer_node_list.append(cur_node)
@@ -407,11 +426,14 @@ def extract_block(input_nodes, fp32_modules, depth=0):
                 q.append(user)
                 p.remove(user)
         logger.debug('uncompleted nodes are {}'.format(p))
+    if not cur_node:
+        return layer_node_list
     exp_nodes, is_next_block = extract_layer(cur_node, fp32_modules)
     if is_block or is_next_block:
         return layer_node_list + exp_nodes
     else:
-        return layer_node_list + exp_nodes + extract_block([exp_nodes[-1]], fp32_modules, depth + 1)
+        return layer_node_list + exp_nodes + extract_block(
+            [exp_nodes[-1]], fp32_modules, depth + 1)
 
 
 def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
@@ -460,6 +482,7 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
     nodes = list(quant_model.graph.nodes)
     fp32_modules = dict(fp32_model.named_modules())
     quant_modules = dict(quant_model.named_modules())
+    g2node = getitem2node(quant_model)
     checked_nodes = dict()
     for node in nodes:
         if node in checked_nodes:
@@ -472,18 +495,39 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
                 layer_node_list = extract_block(node.all_input_nodes, fp32_modules)
             else:
                 raise NotImplementedError
-            missing_inputs = [] 
-            for node in layer_node_list:
-                for arg in _flatten_args(node.args):
+            # if the update is not used in the block, remove it
+            if not all([n.target != 'update' for n in layer_node_list]):
+                remove_nodes = []
+                for idx, n in enumerate(layer_node_list):
+                    if n.target == 'update':
+                        src = n.args[0]
+                        remove = True
+                        for _idx in range(idx + 1, len(layer_node_list)):
+                            if src in _flatten_args(
+                                    layer_node_list[_idx].args):
+                                remove = False
+                                break
+                        if remove:
+                            remove_nodes.append(n)
+                layer_node_list = [n for n in layer_node_list if n not in remove_nodes]
+            missing_inputs = []
+            for _node in layer_node_list:
+                for arg in _flatten_args(_node.args):
                     if isinstance(arg, torch.fx.Node):
-                        if arg not in layer_node_list:
+                        if arg not in layer_node_list and arg not in missing_inputs:
                             missing_inputs.append(arg)
             layer_node_list.extend(missing_inputs)
+            # replace getitem nodes into its source node
+            layer_node_list = [n if n not in g2node else g2node[n] for n in layer_node_list]
+            for _node in layer_node_list:
+                src = [arg for arg in _flatten_args(_node.args) if arg in g2node]
+                for arg in src:
+                    _node.args = _fix_succ_recursivly(_node.args, arg, g2node[arg])
             layer_node_list = sorted(layer_node_list, key=lambda x: topology_order(quant_model)[x])
+            layer_node_list = find_cur_node(layer_node_list)
             logger.info('the node list is below!')
             logger.info(layer_node_list)
-            cur_node = find_cur_node(layer_node_list)
-            fp32_module = fp32_modules[cur_node.target]
+            fp32_module = fp32_modules[layer_node_list[-1].target]
             fp32_all_inps = []
             quant_all_inps = []
             fp32_final_oups = None
@@ -495,21 +539,22 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
                     fp32_inp_module = fp32_modules[_node.target]
                     quant_module = quant_modules[_node.target]
                     # fp32 inps: [out_b1, out_b2, ...]
-                    _, fp32_inps = save_inp_oup_data(fp32_model, None, fp32_inp_module, cali_data,
+                    _, fp32_inps = save_inp_oup_data(fp32_model, None, fp32_inp_module, cali_data, 
                                                      store_inp=False, store_oup=(config.prob < 1.0), keep_gpu=config.keep_gpu)
                     _, fp32_oups = save_inp_oup_data(fp32_model, None, fp32_module, cali_data,
-                                                     store_inp=False, store_oup=(not out_is_cached), keep_gpu=config.keep_gpu)
-                    _, quant_inps = save_inp_oup_data(quant_model, None, quant_module, cali_data, store_inp=False,
-                                                      store_oup=True, keep_gpu=config.keep_gpu)
+                        store_inp=False, store_oup=(not out_is_cached), keep_gpu=config.keep_gpu)
+                    _, quant_inps = save_inp_oup_data(quant_model, None, quant_module, cali_data,
+                                                      store_inp=False, store_oup=True, keep_gpu=config.keep_gpu)
                     fp32_all_inps.append(fp32_inps)
-                    quant_all_inps.append(quant_all_inps)
+                    quant_all_inps.append(quant_inps)
                     if not out_is_cached:
                         fp32_final_oups = fp32_oups
                         out_is_cached = True
-            cached_inps = (quant_inps, fp32_inps) if config.prob < 1.0 else quant_inps
+            cached_inps = (quant_all_inps, fp32_all_inps) if config.prob < 1.0 else quant_all_inps
             cached_oups = fp32_final_oups
-            subgraph = extract_subgraph(quant_modules, layer_node_list, cur_node)
-            logger.info(subgraph)
+            subgraph = extract_subgraph(quant_modules, layer_node_list,
+                                        layer_node_list[-1], g2node)
+            logger.info(subgraph.code)
             subgraph_reconstruction(subgraph, cached_inps, cached_oups, config)
             for x in layer_node_list:
                 checked_nodes[x] = True

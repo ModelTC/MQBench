@@ -1,6 +1,7 @@
 import copy
 
 import torch
+import torch.fx
 from torch.fx import GraphModule
 
 USE_LINK = False
@@ -102,15 +103,46 @@ def getitem2node(model: GraphModule) -> dict:
         if node.target == operator.getitem:
             getitem_args_dict[node] = list(node.args)
             getitem_args_dict = _update_getitem_path(getitem_args_dict)
+            for _node in getitem_args_dict:
+                if _node in getitem2node:
+                    continue
+                val = _getitem_from_args(getitem_args_dict[_node], original_key_dict)
+                if isinstance(val, torch.fx.node.Node):
+                    getitem2node[_node] = val
         elif node.target == 'update':
             if node.args[0] not in original_key_dict:
                 original_key_dict[node.args[0]] = {}
             original_key_dict[node.args[0]].update(node.args[1])
-    for node in getitem_args_dict:
-        val = _getitem_from_args(getitem_args_dict[node], original_key_dict)
-        if isinstance(val, torch.fx.node.Node):
-            getitem2node[node] = val
     return getitem2node
+
+
+def _fix_succ_recursivly(args, target_node, inserted_node):
+    # List / Tuple
+    if isinstance(args, (list, tuple)):
+        _tmp = list(args)
+        for _i, _arg in enumerate(args):
+            if _arg == target_node:
+                _tmp[_i] = inserted_node
+            elif isinstance(_arg, tuple):
+                _tmp[_i] = _fix_succ_recursivly(_arg, target_node, inserted_node)
+            elif isinstance(_arg, list):
+                _tmp[_i] = list(_fix_succ_recursivly(_arg, target_node, inserted_node))
+            elif isinstance(_arg, dict):
+                _tmp[_i] = _fix_succ_recursivly(_arg, target_node, inserted_node)
+        return tuple(_tmp)
+    # Dict
+    elif isinstance(args, dict):
+        _tmp = {}
+        for k, v in args.items():
+            if v == target_node:
+                _tmp[k] = inserted_node
+            elif not isinstance(v, torch.fx.node.Node):
+                _tmp[k] = _fix_succ_recursivly(v, target_node, inserted_node)
+            else:
+                _tmp[k] = v
+        return _tmp
+    else:
+        raise NotImplementedError('{} can not be handled now.'.format(type(args)))
 
 
 def topology_order(model):
