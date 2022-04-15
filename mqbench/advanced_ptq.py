@@ -208,12 +208,46 @@ def _flatten_args(node):
     return flattned_args
 
 
+def find_used_times(nodes, target):
+    used = len([_node for _node in target.users if _node in nodes])    
+    return used
+
+
+
+
 def find_cur_node(layer_node_list):
-    for node in reversed(layer_node_list):
+    node_list = []
+    used_later = []
+    for idx, node in enumerate(layer_node_list):
+        for _node in layer_node_list[idx + 1:]:
+            if node in _flatten_args(_node.args):
+                used_later.append(node)
+                break
+    not_used_later = [node for node in layer_node_list if node not in used_later]
+    single_branch = dict()
+    for node in not_used_later:
+        single_branch[node] = set([node])
+        q = [node]
+        while True:
+            now_args = sum([_flatten_args(_node.args) for _node in q], [])
+            p = [_node for _node in now_args if isinstance(_node, torch.fx.Node) and find_used_times(layer_node_list, _node) == 1]
+            single_branch[node] = single_branch[node].union(set(p))
+            if len(p) == 0:
+                break
+            else:
+                q = p
+    for node in layer_node_list:
         if node.op == 'call_function' or node.op == 'call_method':
             continue
-        break
-    node_list = []
+        if node not in used_later:
+            break
+    unwanted = set()
+    for key in single_branch:
+        if key is node:
+            continue 
+        else:
+            unwanted = unwanted.union(single_branch[key])
+    layer_node_list = [_node for _node in layer_node_list if _node not in unwanted]
     for _node in layer_node_list:
         node_list.append(_node)
         if _node is node:
@@ -328,14 +362,17 @@ def extract_subgraph(orig_module: nn.Module, nodes: List[fx.Node], output: fx.No
         for arg in _flatten_args(node.args):
             if isinstance(arg, torch.fx.Node):
                 if arg not in nodes and arg not in inp_lst:
-                    inp_lst.append(arg)
-                    if arg in g2node:
-                        arg_name = g2node[arg].name
+                    inp_lst.append(node)
+                    if node in g2node:
+                        arg_name = g2node[node].name
                     else:
-                        arg_name = arg.name
+                        arg_name = node.name
                     new_node = new_graph.placeholder(arg_name)
-                    env[arg] = new_node
+                    env[node] = new_node
+                    break
     for node in nodes:
+        if node in inp_lst:
+            continue
         if node in g2node:
             node = g2node[node]
         new_node = new_graph.node_copy(node, lambda x: env[x])
@@ -344,7 +381,6 @@ def extract_subgraph(orig_module: nn.Module, nodes: List[fx.Node], output: fx.No
     new_graph.output(env[output])
     new_graph.lint()
     return fx.GraphModule(orig_module, new_graph)
-
 
 def find_num_nodes(nodes):
     num = 0
@@ -542,7 +578,7 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
                     _, fp32_inps = save_inp_oup_data(fp32_model, None, fp32_inp_module, cali_data, 
                                                      store_inp=False, store_oup=(config.prob < 1.0), keep_gpu=config.keep_gpu)
                     _, fp32_oups = save_inp_oup_data(fp32_model, None, fp32_module, cali_data,
-                        store_inp=False, store_oup=(not out_is_cached), keep_gpu=config.keep_gpu)
+                                                     store_inp=False, store_oup=(not out_is_cached), keep_gpu=config.keep_gpu)
                     _, quant_inps = save_inp_oup_data(quant_model, None, quant_module, cali_data,
                                                       store_inp=False, store_oup=True, keep_gpu=config.keep_gpu)
                     fp32_all_inps.append(fp32_inps)
