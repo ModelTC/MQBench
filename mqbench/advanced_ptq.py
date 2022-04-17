@@ -505,7 +505,7 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
     """
     # assert model is on cuda
     if not config.keep_gpu:
-        cali_data = [inp.cpu() for inp in cali_data]
+        cali_data = [to_device(inp, 'cpu') for inp in cali_data]
     '''set state first'''
 
     fp32_model = model
