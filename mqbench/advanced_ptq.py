@@ -521,6 +521,15 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
     g2node = getitem2node(quant_model)
     checked_nodes = dict()
     for node in nodes:
+        if 'exclude_node_prefix' in config:
+            cont = False
+            for prefix in config['exclude_node']:
+                if node.name.startswith(prefix):
+                    cont = True
+                    break
+            if cont:
+                logger.info(f'Exclude node {node}')
+                continue
         if node in checked_nodes:
             continue
         if node.op == "call_module" and isinstance(fp32_modules[node.target], _ADAROUND_SUPPORT_TYPE):
@@ -594,4 +603,9 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
             subgraph_reconstruction(subgraph, cached_inps, cached_oups, config)
             for x in layer_node_list:
                 checked_nodes[x] = True
+    disable_all(quant_model)
+    for node in checked_nodes:
+        if node.op == 'call_module':
+            enable_quantization(quant_modules[node.target])
+            logger.info(f'set the node {node.target} in quant')
     return quant_model
