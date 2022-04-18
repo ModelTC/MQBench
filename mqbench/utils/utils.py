@@ -1,6 +1,7 @@
 import copy
 
 import torch
+import torch.fx
 from torch.fx import GraphModule
 
 USE_LINK = False
@@ -71,3 +72,81 @@ def deepcopy_graphmodule(gm: GraphModule):
     copied_gm = copy.deepcopy(gm)
     copied_gm.graph = copy.deepcopy(gm.graph)
     return copied_gm
+
+
+def getitem2node(model: GraphModule) -> dict:
+    def _update_getitem_path(getitem_args_dict):
+        for node in getitem_args_dict:
+            args_list = getitem_args_dict[node]
+            while args_list[0] in getitem_args_dict:
+                args_list = getitem_args_dict[args_list[0]] + args_list[1:]
+            getitem_args_dict[node] = args_list
+        return getitem_args_dict
+
+    def _getitem_from_args(args, original_args_dict):
+        ret = original_args_dict
+        for a in args:
+            try:
+                ret = ret[a]
+            except (IndexError, KeyError):
+                return {}
+        return ret 
+    import operator
+    nodes = list(model.graph.nodes)
+    # the getitem's call graph
+    getitem_args_dict = {}
+    # the dict used in the model 
+    original_key_dict = {}
+    getitem2node = {}
+    for node in nodes:
+        # update the getitems
+        if node.target == operator.getitem:
+            getitem_args_dict[node] = list(node.args)
+            getitem_args_dict = _update_getitem_path(getitem_args_dict)
+            for _node in getitem_args_dict:
+                if _node in getitem2node:
+                    continue
+                val = _getitem_from_args(getitem_args_dict[_node], original_key_dict)
+                if isinstance(val, torch.fx.node.Node):
+                    getitem2node[_node] = val
+        elif node.target == 'update':
+            if node.args[0] not in original_key_dict:
+                original_key_dict[node.args[0]] = {}
+            original_key_dict[node.args[0]].update(node.args[1])
+    return getitem2node
+
+
+def _fix_succ_recursivly(args, target_node, inserted_node):
+    # List / Tuple
+    if isinstance(args, (list, tuple)):
+        _tmp = list(args)
+        for _i, _arg in enumerate(args):
+            if _arg == target_node:
+                _tmp[_i] = inserted_node
+            elif isinstance(_arg, tuple):
+                _tmp[_i] = _fix_succ_recursivly(_arg, target_node, inserted_node)
+            elif isinstance(_arg, list):
+                _tmp[_i] = list(_fix_succ_recursivly(_arg, target_node, inserted_node))
+            elif isinstance(_arg, dict):
+                _tmp[_i] = _fix_succ_recursivly(_arg, target_node, inserted_node)
+        return tuple(_tmp)
+    # Dict
+    elif isinstance(args, dict):
+        _tmp = {}
+        for k, v in args.items():
+            if v == target_node:
+                _tmp[k] = inserted_node
+            elif not isinstance(v, torch.fx.node.Node):
+                _tmp[k] = _fix_succ_recursivly(v, target_node, inserted_node)
+            else:
+                _tmp[k] = v
+        return _tmp
+    else:
+        raise NotImplementedError('{} can not be handled now.'.format(type(args)))
+
+
+def topology_order(model):
+    node2idx = {}
+    for idx, node in enumerate(model.graph.nodes):
+        node2idx[node] = idx 
+    return node2idx

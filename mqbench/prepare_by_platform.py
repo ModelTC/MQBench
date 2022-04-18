@@ -312,6 +312,14 @@ def duplicate_reused_nodes(graph: torch.fx.Graph, modules: Dict[str, Any] = {}):
     graph.lint()
     return graph, dup_modules
 
+def prepare_constant_dict(graph: torch.fx.Graph, model: torch.nn.Module):
+    constant_dict = dict()
+    for node in graph.nodes:
+        if node.op == 'get_attr':
+            constant_dict[node.target] = getattr(model, node.target)
+    return constant_dict
+
+
 def prepare_by_platform(
         model: torch.nn.Module,
         deploy_backend: BackendType,
@@ -364,7 +372,9 @@ def prepare_by_platform(
     name = model.__class__.__name__ if isinstance(model, torch.nn.Module) else model.__name__
     modules = dict(model.named_modules())
     graph, duplicated_modules = duplicate_reused_nodes(graph, modules)
+    constant_nodes = prepare_constant_dict(graph, model)
     modules.update(duplicated_modules)
+    modules.update(constant_nodes)
     graph_module = GraphModule(modules, graph, name)
     # Model fusion.
     extra_fuse_dict = prepare_custom_config_dict.get('extra_fuse_dict', {})
