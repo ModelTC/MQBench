@@ -4,12 +4,12 @@ import torch.nn as nn
 import torch.nn.intrinsic as nni
 import torch.nn.functional as F
 from torch.nn import init
-from torch.nn.modules.utils import _pair
+from torch.nn.modules.utils import _pair, _single
 from torch.nn.parameter import Parameter
 from typing import TypeVar
 import mqbench.nn.intrinsic as qnni
 from mqbench.nn.modules import FrozenBatchNorm2d
-
+from .deconv_fused import _ConvTransposeBnNd
 
 MOD = TypeVar('MOD', bound=nn.modules.conv._ConvNd)
 
@@ -280,3 +280,169 @@ class ConvFreezebnReLU2d(ConvFreezebn2d):
     @classmethod
     def from_float(cls, mod):
         return super(ConvFreezebnReLU2d, cls).from_float(mod)
+
+
+class _ConvTransposeFreezebnNd(_ConvTransposeBnNd):
+
+    _version = 2
+    _FLOAT_MODULE = MOD
+
+    def __init__(
+            self,
+            # ConvTransposeBnNd args
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride,
+            bias,
+            transposed,
+            padding,
+            output_padding,
+            groups,
+            dilation,
+            padding_mode,
+            # bn args
+            # BatchNormNd args
+            # num_features: out_channels
+            eps=1e-05,
+            momentum=0.1,
+            # affine: True
+            # track_running_stats: True
+            # Args for this module
+            freeze_bn=False,
+            qconfig=None,
+            dim=2):
+        kernel_size = _single(kernel_size)
+        stride = _single(stride)
+        padding = _single(padding)
+        dilation = _single(dilation)
+        output_padding = _single(output_padding)
+        nn.modules.conv._ConvTransposeNd.__init__(self, in_channels,
+                                                  out_channels, kernel_size,
+                                                  stride, padding, dilation,
+                                                  transposed, output_padding,
+                                                  groups, False, padding_mode)
+        assert qconfig, 'qconfig must be provided for a QAT module'
+        self.qconfig = qconfig
+        self.freeze_bn = freeze_bn if self.training else True
+        self.bn = FrozenBatchNorm2d(out_channels, eps, momentum, True, True)
+        self.weight_fake_quant = self.qconfig.weight()
+        # ConvTranspose do per-channel quantize on output channel.
+        if self.weight_fake_quant.ch_axis != -1:
+            self.weight_fake_quant.ch_axis = 1
+            self.weight_fake_quant.activation_post_process.ch_axis = 1
+        if bias:
+            self.bias = Parameter(torch.Tensor(out_channels))
+        else:
+            self.register_parameter('bias', None)
+        self.reset_bn_parameters()
+
+        if self.training:
+            if freeze_bn:
+                self.freeze_bn_stats()
+            else:
+                self.update_bn_stats()
+        else:
+            self.freeze_bn_stats()
+
+
+class ConvTransposeFreezebn2d(_ConvTransposeFreezebnNd, nn.ConvTranspose2d):
+    _FLOAT_MODULE = qnni.ConvTransposeFreezebn2d
+
+    def __init__(
+            self,
+            # ConvTransposeBnNd args
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride=1,
+            bias=None,
+            transposed=True,
+            padding=0,
+            output_padding=0,
+            groups=1,
+            dilation=1,
+            padding_mode='zeros',
+            # bn args
+            # BatchNormNd args
+            # num_features: out_channels
+            eps=1e-05,
+            momentum=0.1,
+            # affine: True
+            # track_running_stats: True
+            # Args for this module
+            freeze_bn=False,
+            qconfig=None):
+        kernel_size = _pair(kernel_size)
+        stride = _pair(stride)
+        padding = _pair(padding)
+        dilation = _pair(dilation)
+        _ConvTransposeFreezebnNd.__init__(self, in_channels, out_channels,
+                                          kernel_size, stride, bias, transposed,
+                                          padding, output_padding, groups, dilation,
+                                          padding_mode, eps, momentum, freeze_bn,
+                                          qconfig)
+
+    def _convtransposed_forward(self, x, w, b):
+        output_padding = self._output_padding(x, None, self.stride,
+                                              self.padding, self.kernel_size,
+                                              self.dilation)
+        return F.conv_transpose2d(x, w, b, self.stride, self.padding,
+                                  output_padding, self.groups, self.dilation)
+
+
+class ConvTransposeFreezebnReLU2d(ConvTransposeFreezebn2d):
+    _FLOAT_MODULE = qnni.ConvTransposeFreezebnReLU2d
+
+    def __init__(
+            self,
+            # ConvTransposeBnNd args
+            in_channels,
+            out_channels,
+            kernel_size,
+            stride=1,
+            bias=None,
+            transposed=True,
+            padding=0,
+            output_padding=0,
+            groups=1,
+            dilation=1,
+            padding_mode='zeros',
+            # bn args
+            # BatchNormNd args
+            # num_features: out_channels
+            eps=1e-05,
+            momentum=0.1,
+            # affine: True
+            # track_running_stats: True
+            # Args for this module
+            freeze_bn=False,
+            qconfig=None):
+        # super(ConvTransposeBnReLU2d, self).__init__(in_channels, out_channels, kernel_size, stride,
+        #                                             padding, dilation, groups, bias,
+        #                                             padding_mode, eps, momentum,
+        #                                             freeze_bn,
+        #                                             qconfig)
+        super(ConvTransposeFreezebnReLU2d,
+              self).__init__(in_channels,
+                             out_channels,
+                             kernel_size,
+                             stride=stride,
+                             bias=bias,
+                             transposed=transposed,
+                             padding=padding,
+                             output_padding=output_padding,
+                             groups=groups,
+                             dilation=dilation,
+                             padding_mode=padding_mode,
+                             eps=eps,
+                             momentum=momentum,
+                             freeze_bn=freeze_bn,
+                             qconfig=qconfig)
+
+    def forward(self, input):
+        return F.relu(ConvTransposeFreezebn2d._forward(self, input))
+
+    @classmethod
+    def from_float(cls, mod):
+        return super(ConvTransposeFreezebnReLU2d, cls).from_float(mod)
