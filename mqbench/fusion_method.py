@@ -93,6 +93,28 @@ def convert_nniqat_convbnrelu(model, fused_node):
     model.graph.lint()
 
 
+@register_convert_function(qnni.ConvTransposeFreezebn2d)
+@register_convert_function(qnni.ConvTransposeBn2d)
+def convert_qnni_deconvbn(model, fused_node):
+    modules = dict(model.named_modules())
+    fused_module = modules[fused_node.target]
+    fused_module_deconv = fused_module[0]
+    fused_module_bn = fused_module[1]
+    # Create a ConvTranspose2d from FusedModule.
+    deconv = torch.nn.ConvTranspose2d(fused_module_deconv.in_channels, fused_module_deconv.out_channels, fused_module_deconv.kernel_size, 
+                                      stride=fused_module_deconv.stride, padding=fused_module_deconv.padding, output_padding=fused_module_deconv.output_padding,
+                                      groups=fused_module_deconv.groups, bias=fused_module_deconv.bias is not None, 
+                                      dilation=fused_module_deconv.dilation,
+                                      padding_mode=fused_module_deconv.padding_mode) 
+    deconv.weight = fused_module_deconv.weight
+    if fused_module_deconv.bias is not None:
+        deconv.bias = fused_module_deconv.bias
+    fused_deconv = fuse_deconv_bn_eval(deconv.eval(), fused_module_bn)
+    deconv_parent_name, deconv_name = _parent_name(fused_node.target)
+    setattr(modules[deconv_parent_name], deconv_name, fused_deconv)
+
+
+@register_convert_function(qnniqat.ConvTransposeFreezebn2d)
 @register_convert_function(qnniqat.ConvTransposeBn2d)
 def convert_qnniqat_deconvbn(model, fused_node):
     modules = dict(model.named_modules())
@@ -116,6 +138,35 @@ def convert_qnniqat_deconvbn(model, fused_node):
     setattr(modules[deconv_parent_name], deconv_name, fused_deconv)
 
 
+@register_convert_function(qnni.ConvTransposeFreezebnReLU2d)
+@register_convert_function(qnni.ConvTransposeBnReLU2d)
+def convert_qnni_deconvbnrelu(model, fused_node):
+    convert_qnni_deconvbn(model, fused_node)
+    modules = dict(model.named_modules())
+    fused_module = modules[fused_node.target]
+    deconv_parent_name, deconv_name = _parent_name(fused_node.target)
+    relu_name = 'relu'
+    if not hasattr(modules[deconv_parent_name], relu_name):
+        setattr(modules[deconv_parent_name], relu_name, torch.nn.ReLU(inplace=True).train(fused_module.training))
+    # Update modules.
+    modules = dict(model.named_modules())
+    graph = model.graph
+    nodes = list(model.graph.nodes)
+    with graph.inserting_after(fused_node):
+        relu_node_name = relu_name if deconv_parent_name == "" else "{}.{}".format(deconv_parent_name, relu_name)
+        assert relu_node_name in modules and isinstance(modules[relu_node_name], torch.nn.ReLU)
+        inserted_node = graph.create_node("call_module", relu_node_name, (fused_node,), {})
+        for _node in nodes:
+            for i, _arg in enumerate(_node.args):
+                if _arg == fused_node:
+                    _tmp = list(_node.args)
+                    _tmp[i] = inserted_node
+                    _node.args = tuple(_tmp)
+    model.recompile()
+    model.graph.lint()
+
+
+@register_convert_function(qnniqat.ConvTransposeFreezebnReLU2d)
 @register_convert_function(qnniqat.ConvTransposeBnReLU2d)
 def convert_qnniqat_deconvbnrelu(model, fused_node):
     convert_qnniqat_deconvbn(model, fused_node)

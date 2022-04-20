@@ -70,3 +70,17 @@ class ConvFreezebnReLU2d(_FusedModule):
             'Incorrect types for input modules{}{}{}'.format(
                 type(conv), type(bn), type(relu))
         super().__init__(conv, bn, relu)
+
+class ConvTransposeFreezebn2d(_FusedModule):
+    def __init__(self, deconv, bn):
+        assert type(deconv) == ConvTranspose2d and type(bn) == FrozenBatchNorm2d, \
+            'Incorrect types for input modules{}{}'.format(
+                type(deconv), type(bn))
+        super().__init__(deconv, bn)
+
+class ConvTransposeFreezebnReLU2d(_FusedModule):
+    def __init__(self, deconv, bn, relu):
+        assert type(deconv) == ConvTranspose2d and type(bn) == FrozenBatchNorm2d and type(relu) == ReLU, \
+            'Incorrect types for input modules{}{}{}'.format(
+                type(deconv), type(bn), type(relu))
+        super().__init__(deconv, bn, relu)

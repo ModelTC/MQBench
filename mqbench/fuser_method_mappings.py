@@ -120,6 +120,31 @@ def fuse_conv_freezebn_relu(conv, bn, relu):
         fused_conv = nn.utils.fusion.fuse_conv_bn_eval(conv, bn)
         return fused_module(fused_conv, relu)
 
+
+def fuse_deconv_freezebn(deconv, bn):
+    assert(bn.training is False), "Freezebn must be eval."
+
+    if deconv.training:
+        assert bn.num_features == deconv.out_channels, 'Output channel of ConvTranspose2d must match num_features of BatchNorm2d'
+        assert bn.affine, 'Only support fusing BatchNorm2d with affine set to True'
+        assert bn.track_running_stats, 'Only support fusing BatchNorm2d with tracking_running_stats set to True'
+        return qnni.ConvTransposeFreezebn2d(deconv, bn)
+    else:
+        return fuse_deconv_bn_eval(deconv, bn)
+
+
+def fuse_deconv_freezebn_relu(deconv, bn, relu):
+    assert(deconv.training == relu.training and bn.training is False), "Conv and relu both must be in the same mode (train or eval) and bn must be eval."
+
+    if deconv.training:
+        assert bn.num_features == deconv.out_channels, 'Output channel of ConvTranspose2d must match num_features of BatchNorm2d'
+        assert bn.affine, 'Only support fusing BatchNorm2d with affine set to True'
+        assert bn.track_running_stats, 'Only support fusing BatchNorm2d with tracking_running_stats set to True'
+        return qnni.ConvTransposeFreezebnReLU2d(deconv, bn, relu)
+    else:
+        return qnni.ConvTransposeReLU2d(fuse_deconv_bn_eval(deconv, bn), relu)
+
+
 fuse_custom_config_dict = {
     "additional_fuser_method_mapping": {
         (torch.nn.Linear, torch.nn.BatchNorm1d): fuse_linear_bn,
@@ -128,6 +153,8 @@ fuse_custom_config_dict = {
         (torch.nn.ConvTranspose2d, torch.nn.ReLU): qnni.ConvTransposeReLU2d,
         (nn.Conv2d, FrozenBatchNorm2d, nn.ReLU): fuse_conv_freezebn_relu,
         (nn.Conv2d, FrozenBatchNorm2d): fuse_conv_freezebn,
+        (nn.ConvTranspose2d, FrozenBatchNorm2d, nn.ReLU): fuse_deconv_freezebn_relu,
+        (nn.ConvTranspose2d, FrozenBatchNorm2d): fuse_deconv_freezebn,
     },
     "additional_fusion_pattern": {
         (torch.nn.BatchNorm1d, torch.nn.Linear):
@@ -146,6 +173,10 @@ fuse_custom_config_dict = {
         ConvFreezebnReLUFusion,
         (FrozenBatchNorm2d, torch.nn.Conv2d):
         ConvFreezebnReLUFusion,
+        (torch.nn.ReLU, (FrozenBatchNorm2d, torch.nn.ConvTranspose2d)):
+        ConvFreezebnReLUFusion,
+        (FrozenBatchNorm2d, torch.nn.ConvTranspose2d):
+        ConvFreezebnReLUFusion,
     },
     "additional_qat_module_mappings": {
         nn.ConvTranspose2d: qnn.qat.ConvTranspose2d,
@@ -155,6 +186,8 @@ fuse_custom_config_dict = {
         qnni.ConvTransposeBnReLU2d: qnniqat.ConvTransposeBnReLU2d,
         qnni.ConvFreezebn2d: qnniqat.ConvFreezebn2d,
         qnni.ConvFreezebnReLU2d: qnniqat.ConvFreezebnReLU2d,
+        qnni.ConvTransposeFreezebn2d: qnniqat.ConvTransposeFreezebn2d,
+        qnni.ConvTransposeFreezebnReLU2d: qnniqat.ConvTransposeFreezebnReLU2d,
         nn.Embedding: qnn.qat.Embedding,
     },
 }
