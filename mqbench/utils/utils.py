@@ -3,6 +3,7 @@ import copy
 import torch
 import torch.fx
 from torch.fx import GraphModule
+from torch.nn import Module
 
 USE_LINK = False
 USE_DDP = False
@@ -72,6 +73,25 @@ def deepcopy_graphmodule(gm: GraphModule):
     copied_gm = copy.deepcopy(gm)
     copied_gm.graph = copy.deepcopy(gm.graph)
     return copied_gm
+
+
+def deepcopy_mixedmodule(mm: Module, module_list: list):
+    """Support for `module_list` which splits modules' nn part and post precess.
+
+    Args:
+        mm (nn.Module)
+        module_list (list): the children of the mm who are a GraphModule.
+
+    Returns:
+        nn.Module
+    """
+    copied_mm = copy.deepcopy(mm)
+    for mname in module_list:
+        mod = getattr(mm, mname)
+        child_graph = copy.deepcopy(mod.graph)
+        copied_child = getattr(copied_mm, mname)
+        setattr(copied_child, 'graph', child_graph)
+    return copied_mm
 
 
 def getitem2node(model: GraphModule) -> dict:

@@ -24,11 +24,31 @@ from typing import List
 
 from mqbench.utils.logger import logger
 from mqbench.utils.hook import DataSaverHook, StopForwardException
-from mqbench.utils import deepcopy_graphmodule, topology_order, getitem2node
+from mqbench.utils import deepcopy_graphmodule, deepcopy_mixedmodule, topology_order, getitem2node
 from mqbench.utils.utils import _fix_succ_recursivly
 from mqbench.utils.state import enable_quantization, disable_all
+import mqbench.nn.intrinsic.qat as qnniqat
 
 _ADAROUND_SUPPORT_TYPE = (torch.nn.Conv2d, torch.nn.Linear)
+_FUSED_TYPE = (nniqat.ConvBnReLU2d, nniqat.ConvBn2d, qnniqat.ConvFreezebn2d, qnniqat.ConvFreezebnReLU2d)
+_WEIGHTS_MODULE_TYPE = (torch.nn.Conv2d, torch.nn.Linear)
+
+def node2modules(name2modules, nodes):
+    modules = dict()
+    for node in nodes:
+        if node.target in name2modules:
+            modules[node] = name2modules[node.target]
+    return modules
+
+
+def layer_has_weights(nodes, modules):
+    has_weights = False
+    for node in nodes:
+        if node in modules:
+            if isinstance(modules[node], _WEIGHTS_MODULE_TYPE):
+                has_weights = True
+                break 
+    return has_weights
 
 
 def lp_loss(pred, tgt, p=2.0):
@@ -334,7 +354,7 @@ def subgraph_reconstruction(subgraph, cached_inps, cached_oups, config):
             a_scheduler.step()
     torch.cuda.empty_cache()
     for name, layer in subgraph.named_modules():        
-        if isinstance(layer, (nniqat.ConvBnReLU2d, nniqat.ConvBn2d)):
+        if isinstance(layer, _FUSED_TYPE):
             # We need to do bn fold simulation here.
             weight_quantizer = layer.weight_fake_quant
             scale_factor = layer.bn.weight / torch.sqrt(layer.bn.running_var + layer.bn.eps)
@@ -343,7 +363,7 @@ def subgraph_reconstruction(subgraph, cached_inps, cached_oups, config):
             layer.weight.data = merged_rounded_weight / scale_factor.reshape([-1] + [1] * (len(merged_rounded_weight.shape) - 1))
             weight_quantizer.adaround = False
         elif isinstance(layer, _ADAROUND_SUPPORT_TYPE):
-            assert not hasattr(layer, 'bn'), 'Layer {} has BN ! Should not reach here.'.format(name)
+            assert not hasattr(layer, 'bn'), 'Layer {} with type {} has BN ! Should not reach here.'.format(name, type(layer))
             weight_quantizer = layer.weight_fake_quant
             layer.weight.data = weight_quantizer.get_hard_value(layer.weight.data)
             weight_quantizer.adaround = False
@@ -404,7 +424,7 @@ def extract_layer(node, fp32_modules):
             if user.target == 'update':
                 continue
             if user.op == 'call_module' and isinstance(
-                    fp32_modules[user.target], _ADAROUND_SUPPORT_TYPE):
+                    fp32_modules[user], _ADAROUND_SUPPORT_TYPE):
                 stop = True
             # TODO: only short-cut here, consider more here
             # TODO: can also use un/completed to check here.
@@ -472,7 +492,7 @@ def extract_block(input_nodes, fp32_modules, depth=0):
             [exp_nodes[-1]], fp32_modules, depth + 1)
 
 
-def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
+def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict, graph_module_list: list = None):
     r"""
     Reconsturction for AdaRound, BRECQ, QDrop.
     Basic optimization objective:
@@ -489,6 +509,7 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
         model (torch.nn.Module): a prepared GraphModule to do PTQ
         cali_data (List): a list of calibration tensor
         config (dict): a config for PTQ reconstruction
+        graph_module_list (list): a list of model's children modules which need quantization. if this is used, the model is partial quantized; if not, the model is fully quantized.
 
     >>> sample config : {
             pattern: block (str, Available options are [layer, block].)
@@ -510,15 +531,44 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
 
     fp32_model = model
     fp32_model.eval()
-    quant_model = deepcopy_graphmodule(model)
+    if graph_module_list is None:
+        assert isinstance(fp32_model, torch.fx.GraphModule)
+        quant_model = deepcopy_graphmodule(model)
+        nodes = list(quant_model.graph.nodes)
+        g2node = getitem2node(quant_model)
+        fp32_modules = node2modules(dict(fp32_model.named_modules()), fp32_model.graph.nodes)
+        quant_modules = node2modules(dict(quant_model.named_modules()), quant_model.graph.nodes)
+        topology_order_by_node = topology_order(quant_model)
+    else:
+        quant_model = deepcopy_mixedmodule(model, graph_module_list)
+        nodes = []
+        g2node = dict()
+        fp32_modules = dict()
+        quant_modules = dict()
+        topology_order_by_node = {}
+        topo_cnt = 0
+        for mname in graph_module_list:
+            child = getattr(quant_model, mname)
+            assert isinstance(child, torch.fx.GraphModule)
+            nodes += list(child.graph.nodes)
+            g2node.update(getitem2node(child))
+        for mname in graph_module_list:
+            fp_child = getattr(fp32_model, mname)
+            q_child = getattr(quant_model, mname)
+            # note: the nodes we use is from the quant model, so build q_node2fp_module, rather than fp2fp.
+            fp_modules = node2modules(dict(fp_child.named_modules()), q_child.graph.nodes)
+            q_modules = node2modules(dict(q_child.named_modules()), q_child.graph.nodes)
+            fp32_modules.update(fp_modules)
+            quant_modules.update(q_modules)
+            child_topo = topology_order(q_child)
+            for k in child_topo:
+                child_topo[k] += topo_cnt
+            topology_order_by_node.update(child_topo)
+            topo_cnt += len(topology_order_by_node)
     quant_model.eval()
     disable_all(fp32_model)
     enable_quantization(quant_model)
     torch.cuda.empty_cache()
-    nodes = list(quant_model.graph.nodes)
-    fp32_modules = dict(fp32_model.named_modules())
-    quant_modules = dict(quant_model.named_modules())
-    g2node = getitem2node(quant_model)
     checked_nodes = dict()
     for node in nodes:
         if 'exclude_node_prefix' in config:
@@ -532,8 +582,8 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
                 continue
         if node in checked_nodes:
             continue
-        if node.op == "call_module" and isinstance(fp32_modules[node.target], _ADAROUND_SUPPORT_TYPE):
-            logger.info('prepare {} reconstruction for {}'.format(config.pattern, node.target))
+        if node.op == "call_module" and isinstance(quant_modules[node], _ADAROUND_SUPPORT_TYPE):
+            logger.info('prepare {} reconstruction for {}'.format(config.pattern, node))
             if config.pattern == 'layer':
                 layer_node_list, _ = extract_layer(node, fp32_modules)
             elif config.pattern == 'block':
@@ -568,11 +618,15 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
                 src = [arg for arg in _flatten_args(_node.args) if arg in g2node]
                 for arg in src:
                     _node.args = _fix_succ_recursivly(_node.args, arg, g2node[arg])
-            layer_node_list = sorted(layer_node_list, key=lambda x: topology_order(quant_model)[x])
+            layer_node_list = sorted(layer_node_list, key=lambda x: topology_order_by_node[x])
             layer_node_list = find_cur_node(layer_node_list)
+            if layer_has_weights(layer_node_list, quant_modules):
+                pass
+            else:
+                continue
             logger.info('the node list is below!')
             logger.info(layer_node_list)
-            fp32_module = fp32_modules[layer_node_list[-1].target]
+            fp32_module = fp32_modules[layer_node_list[-1]]
             fp32_all_inps = []
             quant_all_inps = []
             fp32_final_oups = None
@@ -581,8 +635,8 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
                 if all([arg in layer_node_list for arg in _flatten_args(_node.args) if isinstance(arg, torch.fx.Node)]):
                     continue
                 else:
-                    fp32_inp_module = fp32_modules[_node.target]
-                    quant_module = quant_modules[_node.target]
+                    fp32_inp_module = fp32_modules[_node]
+                    quant_module = quant_modules[_node]
                     # fp32 inps: [out_b1, out_b2, ...]
                     _, fp32_inps = save_inp_oup_data(fp32_model, None, fp32_inp_module, cali_data, 
                                                      store_inp=False, store_oup=(config.prob < 1.0), keep_gpu=config.keep_gpu)
@@ -597,7 +651,11 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
                         out_is_cached = True
             cached_inps = (quant_all_inps, fp32_all_inps) if config.prob < 1.0 else quant_all_inps
             cached_oups = fp32_final_oups
-            subgraph = extract_subgraph(quant_modules, layer_node_list,
+            quant_modules_by_name = dict()
+            for node in layer_node_list:
+                if node.op == 'call_module':
+                    quant_modules_by_name[node.target] = quant_modules[node]
+            subgraph = extract_subgraph(quant_modules_by_name, layer_node_list,
                                         layer_node_list[-1], g2node)
             logger.info(subgraph.code)
             subgraph_reconstruction(subgraph, cached_inps, cached_oups, config)
@@ -606,6 +664,6 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict):
     disable_all(quant_model)
     for node in checked_nodes:
         if node.op == 'call_module':
-            enable_quantization(quant_modules[node.target])
+            enable_quantization(quant_modules[node])
             logger.info(f'set the node {node.target} in quant')
     return quant_model
