@@ -313,10 +313,15 @@ def duplicate_reused_nodes(graph: torch.fx.Graph, modules: Dict[str, Any] = {}):
     return graph, dup_modules
 
 def prepare_constant_dict(graph: torch.fx.Graph, model: torch.nn.Module):
+    def _get_attrs(target, attrs):
+        attrs = attrs.split('.')
+        for att in attrs:
+            target = getattr(target, att)
+        return target
     constant_dict = dict()
     for node in graph.nodes:
         if node.op == 'get_attr':
-            constant_dict[node.target] = getattr(model, node.target)
+            constant_dict[node.target] = _get_attrs(model, node.target)
     return constant_dict
 
 
