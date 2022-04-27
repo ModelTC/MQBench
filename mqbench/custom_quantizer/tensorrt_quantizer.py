@@ -126,7 +126,7 @@ class TensorrtNLPQuantizer(ModelQuantizer):
                     continue
                 # Embedding Add and MSA mask Add should be skipped.
                 if node.op == "call_function" and node.target == operator.add and \
-                    self._is_skiped_add(node, modules, input_node_list):
+                        self._is_skiped_add(node, modules, input_node_list):
                     continue
                 if node.op == "call_function" and node.target == operator.add:
                     import pdb
