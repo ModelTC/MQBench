@@ -4,6 +4,7 @@ import torch
 
 from mqbench.fake_quantize.quantize_base import QuantizeBase
 from mqbench.utils import is_tracing_state
+from mqbench.utils.hook import PerChannelLoadHook
 
 
 def dsq_function_per_tensor(x, scale, zero_point, quant_min, quant_max, alpha):
@@ -44,6 +45,7 @@ class DSQFakeQuantize(QuantizeBase):
         self.register_buffer('scale', torch.tensor([1.0], dtype=torch.float))
         self.register_buffer('zero_point', torch.tensor([0], dtype=torch.int))
         self.alpha = alpha
+        self.load_state_dict_hook = PerChannelLoadHook(self)
 
     def forward(self, X):
         if self.training:

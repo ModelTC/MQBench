@@ -2,7 +2,7 @@ import torch
 from torch.nn.parameter import Parameter
 
 from mqbench.fake_quantize.quantize_base import QuantizeBase
-
+from mqbench.utils.hook import PerChannelLoadHook
 
 _version_under_1100 = int(torch.__version__.split('.')[1]) < 10
 
@@ -48,6 +48,7 @@ class AdaRoundFakeQuantize(QuantizeBase):
         self.register_buffer('scale', torch.tensor([1.0], dtype=torch.float))
         self.register_buffer('zero_point', torch.tensor([0], dtype=torch.int))
         self.adaround = False
+        self.load_state_dict_hook = PerChannelLoadHook(self)
 
     def init(self, weight_tensor: torch.Tensor, round_mode='learned_hard_sigmoid', ):
         self.adaround = True

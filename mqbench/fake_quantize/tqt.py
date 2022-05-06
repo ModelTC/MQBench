@@ -15,29 +15,6 @@ class TqtFakeQuantize(QuantizeBase):
         self.quant_type = None
         self.mth = None
 
-        class PerChannelLoadHook:
-            def __init__(self, module):
-                self.hook = module._register_load_state_dict_pre_hook(partial(self.hook_fn, module=module))
-
-            def hook_fn(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs,
-                        module):
-                if module.ch_axis == -1:
-                    # no per-channel parameters
-                    return
-                for module_key, param in module._parameters.items():
-                    if module_key not in ["scale", "zero_point"]:
-                        continue
-                    candidate = prefix + module_key
-                    if candidate in state_dict:
-                        input_param = state_dict[candidate]
-                        if param.shape != input_param.shape:
-                            param.data = torch.ones_like(input_param, dtype=param.dtype, device=param.device)
-
-            def close(self):
-                self.hook.remove()
-
-        self.load_state_dict_hook = PerChannelLoadHook(self)
-
     @torch.jit.export
     def extra_repr(self):
         return 'fake_quant_enabled={}, observer_enabled={}, ' \

@@ -1,10 +1,9 @@
-from functools import partial
-
 import torch
 from torch.nn.parameter import Parameter
 
 from mqbench.fake_quantize.quantize_base import QuantizeBase
 from mqbench.utils import is_symmetric_quant, is_tracing_state
+from mqbench.utils.hook import PerChannelLoadHook
 
 
 class LearnableFakeQuantize(QuantizeBase):
@@ -24,28 +23,6 @@ class LearnableFakeQuantize(QuantizeBase):
         self.register_buffer('eps', torch.tensor([torch.finfo(torch.float32).eps]))
         # Check whether the module will load a state dict;
         # Initialize the shape of per-channel 'scale' and 'zero-point' before copying values
-
-        class PerChannelLoadHook:
-            def __init__(self, module):
-                self.hook = module._register_load_state_dict_pre_hook(partial(self.hook_fn, module=module))
-
-            def hook_fn(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs,
-                        module):
-                if module.ch_axis == -1:
-                    # no per-channel parameters
-                    return
-                for module_key, param in module._parameters.items():
-                    if module_key not in ["scale", "zero_point"]:
-                        continue
-                    candidate = prefix + module_key
-                    if candidate in state_dict:
-                        input_param = state_dict[candidate]
-                        if param.shape != input_param.shape:
-                            param.data = torch.ones_like(input_param, dtype=param.dtype, device=param.device)
-
-            def close(self):
-                self.hook.remove()
-
         self.load_state_dict_hook = PerChannelLoadHook(self)
 
     @torch.jit.export
