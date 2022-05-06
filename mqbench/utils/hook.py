@@ -50,4 +50,3 @@ class PerChannelLoadHook:
 
     def close(self):
         self.hook.remove()
-

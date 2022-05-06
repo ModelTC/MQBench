@@ -1,5 +1,3 @@
-from functools import partial
-
 import torch
 
 from mqbench.fake_quantize.quantize_base import QuantizeBase
