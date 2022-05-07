@@ -1,6 +1,7 @@
 import torch
 
 from mqbench.fake_quantize.quantize_base import QuantizeBase
+from mqbench.utils.hook import PerChannelLoadHook
 
 
 _version_under_1100 = int(torch.__version__.split('.')[1]) < 10
@@ -12,6 +13,7 @@ class FixedFakeQuantize(QuantizeBase):
         super(FixedFakeQuantize, self).__init__(observer, **observer_kwargs)
         self.register_buffer('scale', torch.tensor([1.0], dtype=torch.float))
         self.register_buffer('zero_point', torch.tensor([0], dtype=torch.int))
+        self.load_state_dict_hook = PerChannelLoadHook(self)
 
     def forward(self, X):
         if self.observer_enabled[0] == 1:
