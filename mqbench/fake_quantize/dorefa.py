@@ -33,5 +33,5 @@ class DoReFaFakeQuantize(QuantizeBase):
                     self.ch_axis, self.quant_min, self.quant_max)
             else:
                 X = torch.fake_quantize_per_tensor_affine(
-                    X, self.scale.item(), self.zero_point.item(), self.quant_min, self.quant_max)
+                    X, self.scale.item(), int(self.zero_point.item()), self.quant_min, self.quant_max)
         return X

@@ -47,6 +47,6 @@ class PACTFakeQuantize(QuantizeBase):
 
         if self.fake_quant_enabled[0] == 1:
             X = torch.fake_quantize_per_tensor_affine(
-                X, self.scale.item(), self.zero_point.item(), self.quant_min, self.quant_max)
+                X, self.scale.item(), int(self.zero_point.item()), self.quant_min, self.quant_max)
 
         return X
