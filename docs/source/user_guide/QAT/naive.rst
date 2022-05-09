@@ -17,7 +17,7 @@ The training only requires some additional operations compared to ordinary fine-
 
     # then, we will trace the original model using torch.fx and \
     # insert fake quantize nodes according to different hardware backends (e.g. TensorRT).
-    model = prepare_qat_fx_by_platform(model, BackendType.Tensorrt)
+    model = prepare_by_platform(model, BackendType.Tensorrt)
 
     # before training, we recommend to enable observers for calibration in several batches, and then enable quantization.
     model.eval()

@@ -4,8 +4,7 @@ Advanced PTQ
 Code Snippets
 ^^^^^^^^^^^^^
 
-You can follow this snippet to start your mission with MQBench! You can find config details in `here <https://github.com/ModelTC/MQBench/tree/main/application/imagenet_example/PTQ/configs>`_, and you can find algorithm details in :doc:`../algorithm/advanced_ptq`.
-
+You can follow this snippet to start your mission with MQBench!
 
 .. code-block:: python
     :linenos:
@@ -56,6 +55,8 @@ You can follow this snippet to start your mission with MQBench! You can find con
 
     # deploy model, remove fake quantize nodes, and dump quantization params like clip ranges.
     convert_deploy(model.eval(), BackendType.Tensorrt, input_shape_dict={'data': [10, 3, 224, 224]})
+
+You can find config details in `here <https://github.com/ModelTC/MQBench/tree/main/application/imagenet_example/PTQ/configs>`_, and you can find algorithm details in :doc:`../algorithm/advanced_ptq`.
 
 MQBench examples
 ^^^^^^^^^^^^^^^^^
