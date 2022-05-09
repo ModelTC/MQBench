@@ -1,9 +1,9 @@
-Object detection with Mqbench
+Object detection with MQBench
 ================================
-This part, we introduce how to quantize an object detection model using mqbench.
+This part, we introduce how to quantize an object detection model using MQBench.
 
 Getting Started
------------------
+---------------
 
 **1**. **Clone the repositories.**
 

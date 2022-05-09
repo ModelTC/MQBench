@@ -1,6 +1,9 @@
 Learn MQBench configuration
 ===========================
 
+Configuration
+^^^^^^^^^^^^^
+
 MQBench provides a primary API **prepare_by_platform** for users to quantize their model. 
 MQBench contains many backends presets for **hardware alignment**, but you maybe want to customize your backend.
 We provide a guide for learning MQBench configuration, and it will be helpful.
@@ -36,8 +39,6 @@ We provide a guide for learning MQBench configuration, and it will be helpful.
 .. code-block:: python
 
     prepared = prepare_by_platform(model, backend, extra_config)
-
-**3.** **Now MQBench support this Observers and Quantizers**
 
 Observer
 ^^^^^^^^
