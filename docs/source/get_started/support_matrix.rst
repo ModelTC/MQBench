@@ -1,16 +1,21 @@
 Support Matrix
 ==============
 
-**Now we support this hardwares and algorithms, updating.**
+**Now we support following hardwares and algorithms, still in updating.**
 
-Hardware & Backend
-^^^^^^^^^^^^^^^^^^
+Hardware/Backend
+^^^^^^^^^^^^^^^^
 
 1. :doc:`../user_guide/deploy/tensorrt`
 2. :doc:`../user_guide/deploy/snpe`
 3. NNIE
 4. Vitis
 5. ONNX_QNN
+6. PPLW8A16
+7. PPLCUDA
+8. OPENVINO
+9. Tengine_u8
+10. Tensorrt_NLP
 
 Algorithm
 ^^^^^^^^^

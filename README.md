@@ -1,6 +1,5 @@
 <div align="center">
-  <img src="resources/logo.png" width="700"/>
-
+    <img src="resources/logo.png" width="700" />
 </div>
 
 ------------
@@ -13,31 +12,29 @@
 MQBench is an open-source model quantization toolkit based on PyTorch fx.
 
 The envision of MQBench is to provide:
-- **SOTA Algorithms**. With MQBench, the hardware vendors and researchers can benefit from the latest research progress in academia.
+
+- **SOTA Algorithms**. With MQBench, the hardware vendors and researchers can benefit from the latest research progress in academic.
 - **Powerful Toolkits**. With the toolkit, quantization node can be inserted to the original PyTorch module automatically with respect to the specific hardware. After training, the quantized model can be smoothly converted to the format that can inference on the real device.
 
-
 ## Installation
-```
 
+```shell
 git clone git@github.com:ModelTC/MQBench.git
 cd MQBench
 python setup.py install
 ```
 
-
 ## Documentation
 
 MQBench aims to support (1) various deployable quantization algorithms and (2) hardware backend libraries to facilitate the development of the community.
 
-For the detailed information, please refer to [mqbench documentation](http://mqbench.tech/assets/docs/html/) or [latest version](https://mqbench.readthedocs.io/en/main/).
-
+For the detailed information, please refer to [MQBench documentation](https://mqbench.readthedocs.io/en/latest/).
 
 ## Citation
 
 If you use this toolkit or benchmark in your research, please cite this project.
 
-```
+```latex
 @article{MQBench,
   title   = {MQBench: Towards Reproducible and Deployable Model Quantization Benchmark},
   author  = {Yuhang Li* and Mingzhu Shen* and Jian Ma* and Yan Ren* and Mingxin Zhao* and
@@ -46,7 +43,6 @@ If you use this toolkit or benchmark in your research, please cite this project.
   year={2021}
 }
 ```
-
 
 ## License
 

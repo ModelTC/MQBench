@@ -7,6 +7,6 @@ This tutorial will give details about the whole work-through to do quantization 
    :titlesonly:
 
    setup
-   quick_start_academic
    quick_start_deploy
+   quick_start_academic
    support_matrix

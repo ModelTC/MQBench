@@ -1,15 +1,12 @@
 Quick Start -- Embrace Best Research Experience
 =================================================
 
-This page is for researchers **who want to validate their marvelous quantization idea using MQBench**, 
-if you want to get started with deployment using MQBench, check :doc:`quick_start_deploy`.
+This page is for researchers **who want to validate their marvelous quantization idea using MQBench**, if you want to get started with deployment using MQBench, check :doc:`quick_start_deploy`.
 
-MQBench is a benchmark, a framework and a good tool for researchers. MQBench is designed easy-to-use for researchers, 
-for example, you can easily custom Academic Backend by provide a extra config dict to conduct any experiment.
+MQBench is a benchmark, a framework and a good tool for researchers. MQBench is designed easy-to-use for researchers, for example, you can easily custom Academic Backend by providing an extra config dict to conduct any experiment.
 We provide step-by-step instructions and detailed comments below to help you finish deploying the **PyTorch ResNet18** model to a **Custom Academic** Backend.
 
-Before starting, you should install MQBench first. Now we start the tour.
-
+Before starting, you should have done the MQBench setup in :doc:`setup`. Now we start the tour.
 
 **1**. **To begin with, let's import MQBench and prepare FP32 model.**
 
@@ -27,7 +24,7 @@ Before starting, you should install MQBench first. Now we start the tour.
 **2**. **Then we learn the extra configration to custom Academic Backend.**
 
 You can also learn this section through MQBench `source code <https://github.com/ModelTC/MQBench/blob/main/mqbench/prepare_by_platform.py#L125>`_.
-Learn which option you can choose below config through our :doc:`../user_guide/internal/learn_config`
+Learn all options through our :doc:`../user_guide/internal/learn_config`
 
 .. code-block:: python
 
@@ -52,7 +49,7 @@ Learn which option you can choose below config through our :doc:`../user_guide/i
         }
     }
 
-**3**. **The next step prepares to conduct the experiment, take PTQ as example.**
+**3**. **The next step prepares to conduct the experiment, take PTQ as the example.**
 
 .. code-block:: python
 
@@ -73,6 +70,6 @@ Learn which option you can choose below config through our :doc:`../user_guide/i
         # do forward procedures
         ...
 
-**You already know all basics about how to validate your marvelous quantization idea with MQBench, congratulations!**
+**You have already known all basics about how to validate your marvelous quantization idea with MQBench, congratulations!**
 
 Now you can follow our advanced :doc:`user guide <../developer_guide/index>` and :doc:`developer guide <../user_guide/index>` to know more about MQBench.

@@ -27,14 +27,30 @@ Before starting, you should install MQBench first. Now we start the tour.
     model = models.__dict__["resnet18"](pretrained=True)          # use vision pre-defined model
     model.eval()
 
-**2**. **The next step prepares to quantize the model.**
+**2**. **Choose your backend.**
 
 .. code-block:: python
 
-    model = prepare_by_platform(model, BackendType.Tensorrt)      #! line 1. trace model and add quant nodes for model on Tensorrt Backend
-    enable_calibration(model)                                     #! line 2. turn on calibration, ready for gathering data
+    # backend options
+    backend = BackendType.Tensorrt
+    # backend = BackendType.SNPE
+    # backend = BackendType.PPLW8A16
+    # backend = BackendType.NNIE
+    # backend = BackendType.Vitis
+    # backend = BackendType.ONNX_QNN
+    # backend = BackendType.PPLCUDA
+    # backend = BackendType.OPENVINO
+    # backend = BackendType.Tengine_u8
+    # backend = BackendType.Tensorrt_NLP
+
+**3**. **Prepares to quantize the model.**
+
+.. code-block:: python
+
+    model = prepare_by_platform(model, backend)                   #! line 1. trace model and add quant nodes for model on Tensorrt Backend
 
     # calibration loop
+    enable_calibration(model)                                     #! line 2. turn on calibration, ready for gathering data
     for i, batch in enumerate(data):
         # do forward procedures
         ...
@@ -46,9 +62,13 @@ Before starting, you should install MQBench first. Now we start the tour.
         # do forward procedures
         ...
 
+**4**. **Export quantized model.**
+
+.. code-block:: python
+
     # define dummy data for model export.
     input_shape={'data': [10, 3, 224, 224]}
-    convert_deploy(model, BackendType.Tensorrt, input_shape)      #! line 4. remove quant nodes, ready for deploying to real-world hardware
+    convert_deploy(model, backend, input_shape)                   #! line 4. remove quant nodes, ready for deploying to real-world hardware
 
 If you want to know more about deploying to a customize backend, check :doc:`../user_guide/internal/learn_config` and :doc:`../user_guide/howtodeploy`
 
