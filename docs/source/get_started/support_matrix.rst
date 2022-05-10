@@ -27,3 +27,5 @@ Algorithm
 5. `APoT <https://arxiv.org/pdf/1909.13144v2.pdf>`_
 6. `AdaRound <https://arxiv.org/pdf/2004.10568.pdf>`_
 7. `QIL <https://arxiv.org/pdf/1808.05779.pdf>`_
+8. `BRECQ  <https://arxiv.org/pdf/2102.05426.pdf>`_
+9. `QDrop <https://arxiv.org/pdf/2203.05740.pdf>`_
