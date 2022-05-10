@@ -6,3 +6,4 @@ How to conduct PTQ
 
    Naive PTQ <PTQ/naive.rst>
    Advanced PTQ <PTQ/advanced.rst>
+   NLP PTQ<PTQ/nlp.rst>
