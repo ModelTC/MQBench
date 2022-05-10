@@ -20,7 +20,7 @@ Getting Started
     # Prepare your float pretrained model.
     cd eod/scripts
     # Follow the prompts to set config in train_quant.sh.
-    sh train_quant.sh
+    sh train_qat.sh
 
 
 **We have several examples of qat config in EOD repository:**

@@ -23,7 +23,7 @@ MQBench provides a simple API for advanced PTQ, learn our step-by-step instructi
 
     # configuration
     ptq_reconstruction_config = {
-        'pattern': 'block',                   #? 'layer' for Adaround or 'block' for BRECQ
+        'pattern': 'block',                   #? 'layer' for Adaround or 'block' for BRECQ and QDROP
         'scale_lr': 4.0e-5,                   #? learning rate for learning step size of activation
         'warm_up': 0.2,                       #? 0.2 * max_count iters without regularization to floor or ceil
         'weight': 0.01,                       #? loss weight for regularization item
@@ -31,7 +31,7 @@ MQBench provides a simple API for advanced PTQ, learn our step-by-step instructi
         'b_range': [20,2],                    #? beta decaying range
         'keep_gpu': True,                     #? calibration data restore in gpu or cpu
         'round_mode': 'learned_hard_sigmoid', #? ways to reconstruct the weight, currently only support learned_hard_sigmoid
-        'prob': 0.5,                          #? dropping probability of QDROP
+        'prob': 1.0,                          #? dropping probability of QDROP, 1.0 for Adaround and BRECQ
     }
 
     # backend options
