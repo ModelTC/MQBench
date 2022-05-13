@@ -41,6 +41,12 @@ def node2modules(name2modules, nodes):
     return modules
 
 
+def qnode2fpnode(quant_modules, fp32_modules):
+    quant_named_nodes = {node.target: node for node in quant_modules}
+    fp32_named_nodes = {node.target: node for node in fp32_modules}
+    qnode2fpnode_dict = {quant_named_nodes[key]: fp32_named_nodes[key] for key in quant_named_nodes}
+    return qnode2fpnode_dict
+
 def layer_has_weights(nodes, modules):
     has_weights = False
     for node in nodes:
@@ -565,6 +571,7 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict, graph_
                 child_topo[k] += topo_cnt
             topology_order_by_node.update(child_topo)
             topo_cnt += len(topology_order_by_node)
+    qnode2fpnode_dict = qnode2fpnode(quant_modules, fp32_modules)
     quant_model.eval()
     disable_all(fp32_model)
     enable_quantization(quant_model)
@@ -585,9 +592,9 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict, graph_
         if node.op == "call_module" and isinstance(quant_modules[node], _ADAROUND_SUPPORT_TYPE):
             logger.info('prepare {} reconstruction for {}'.format(config.pattern, node))
             if config.pattern == 'layer':
-                layer_node_list, _ = extract_layer(node, fp32_modules)
+                layer_node_list, _ = extract_layer(node, quant_modules)
             elif config.pattern == 'block':
-                layer_node_list = extract_block(node.all_input_nodes, fp32_modules)
+                layer_node_list = extract_block(node.all_input_nodes, quant_modules)
             else:
                 raise NotImplementedError
             # if the update is not used in the block, remove it
@@ -626,7 +633,7 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict, graph_
                 continue
             logger.info('the node list is below!')
             logger.info(layer_node_list)
-            fp32_module = fp32_modules[layer_node_list[-1]]
+            fp32_module = fp32_modules[qnode2fpnode_dict[layer_node_list[-1]]]
             fp32_all_inps = []
             quant_all_inps = []
             fp32_final_oups = None
@@ -635,7 +642,7 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict, graph_
                 if all([arg in layer_node_list for arg in _flatten_args(_node.args) if isinstance(arg, torch.fx.Node)]):
                     continue
                 else:
-                    fp32_inp_module = fp32_modules[_node]
+                    fp32_inp_module = fp32_modules[qnode2fpnode_dict[_node]]
                     quant_module = quant_modules[_node]
                     # fp32 inps: [out_b1, out_b2, ...]
                     _, fp32_inps = save_inp_oup_data(fp32_model, None, fp32_inp_module, cali_data, 
