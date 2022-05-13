@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict
 
 import torch
 import numpy as np
@@ -13,7 +13,7 @@ class hessian_per_layer(hessian):
             if isinstance(mod, (torch.nn.Conv2d, torch.nn.Linear)):
                 self.first_order_grad_dict[name] = mod.weight.grad + 0.
 
-    def layer_eigenvalues(self, maxIter=100, tol=1e-3):
+    def layer_eigenvalues(self, maxIter=100, tol=1e-3) -> Dict:
         """
         compute the top_n eigenvalues in one model by layer.
         """
@@ -53,34 +53,31 @@ class hessian_per_layer(hessian):
 
         return max_eigenvalues_dict
 
-    def layer_trace(self, maxIter=100, tol=1e-3) -> List:
+    def layer_trace(self, maxIter=100, tol=1e-3) -> Dict:
         """
         Compute the trace of hessian in one model by layer.
         """
         device = self.device
-        trace_vhv = []
-        trace = 0.
-
+        trace_dict = {}
         for name, mod in self.model.named_modules():
-            if mod.hasattr('weight'):
+            if isinstance(mod, (torch.nn.Conv2d, torch.nn.Linear)):
+                trace_vhv = []
+                trace = 0.
+                weight = mod.weight
+                first_order_grad = self.first_order_grad_dict[name]
                 for i in range(maxIter):
                     self.model.zero_grad()
-                    v = [
-                        torch.randint_like(p, high=2, device=device)
-                        for p in self.params
-                    ]
+                    v = torch.randint_like(weight, high=2, device=device)
                     # generate Rademacher random variables
-                    for v_i in v:
-                        v_i[v_i == 0] = -1
+                    v[v == 0] = -1
+                    v = [v]
 
-                    if self.full_dataset:
-                        _, Hv = self.dataloader_hv_product(v)
-                    else:
-                        Hv = hessian_vector_product(self.gradsH, self.params, v)
+                    Hv = hessian_vector_product(first_order_grad, weight, v)
                     trace_vhv.append(group_product(Hv, v).cpu().item())
                     if abs(np.mean(trace_vhv) - trace) / (trace + 1e-6) < tol:
-                        return trace_vhv
+                        break
                     else:
                         trace = np.mean(trace_vhv)
+                trace_dict[name] = trace
 
-        return trace_vhv
+        return trace_dict
