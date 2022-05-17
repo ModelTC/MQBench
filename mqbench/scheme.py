@@ -13,11 +13,16 @@ class QuantizeScheme(object):
             self.torch_qscheme = torch.per_channel_symmetric if self.symmetry else torch.per_channel_affine
         else:
             self.torch_qscheme = torch.per_tensor_symmetric if self.symmetry else torch.per_tensor_affine
+        if 'symmetric_range' in kwargs:
+            self.symmetric_range = kwargs['symmetric_range']
+            del kwargs['symmetric_range']
+        else:
+            self.symmetric_range = False
         self.kwargs = kwargs
 
     def to_observer_params(self):
         naive_para = {
-            'quant_min': (-2 ** (self.bit - 1) + 1 if self.kwargs.get('symmetric_range', False) else -2 ** (self.bit - 1)) \
+            'quant_min': (-2 ** (self.bit - 1) + 1 if self.symmetric_range else -2 ** (self.bit - 1)) \
                 if self.symmetry else 0,
             'quant_max': 2 ** (self.bit - 1) - 1 if self.symmetry else 2 ** self.bit - 1,
             'dtype': torch.qint8 if self.symmetry else torch.quint8,
