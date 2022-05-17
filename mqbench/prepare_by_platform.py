@@ -64,8 +64,8 @@ ParamsTable = {
                                  default_weight_observer=MinMaxObserver,
                                  default_act_observer=EMAMinMaxObserver),
     BackendType.Tensorrt:   dict(qtype='affine',     # noqa: E241
-                                 w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8),
-                                 a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
+                                 w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8, symmetric_range=True),
+                                 a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8, symmetric_range=True),
                                  default_weight_quantize=LearnableFakeQuantize,
                                  default_act_quantize=LearnableFakeQuantize,
                                  default_weight_observer=MinMaxObserver,
@@ -136,7 +136,7 @@ ObserverDict = {
 }
 
 FakeQuantizeDict = {
-    'FixedFakeQuantize':     FixedFakeQuantize,      # Unlearnable scale/zeropoint  # noqa: E241
+    'FixedFakeQuantize': FixedFakeQuantize,      # Unlearnable scale/zeropoint  # noqa: E241
     'LearnableFakeQuantize': LearnableFakeQuantize,  # Learnable scale/zeropoint    # noqa: E241
     'NNIEFakeQuantize':      NNIEFakeQuantize,       # Quantize function for NNIE   # noqa: E241
     'DoReFaFakeQuantize':    DoReFaFakeQuantize,     # Dorefa                       # noqa: E241

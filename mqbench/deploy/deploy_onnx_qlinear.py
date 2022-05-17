@@ -79,8 +79,12 @@ class ONNXQLinearPass(ONNXQNNPass):
                     qmin = self.onnx_model.get_constant(qmin)
                     qmax = self.onnx_model.get_constant(qmax)
                 assert qmax - qmin in (2 ** 8 - 1, 2 ** 8 - 2), "Only 8 bit quantization support deployment to ONNX."
-                # In onnx, quantize linear node values are in [-128, 127], this step is to remove inconsistency
-                if qmax - qmin == 2 ** 8 - 2:
+                # In onnx, quantize linear node value is within [-128, 127]. This step is to remove inconsistency for
+                # fake quantize node which clips to [-127, 127] by clipping its value to [-127 * scale, 127 * scale]
+                # in advance
+                # Notice: If the node is not a weight node, then the inconsistency between onnx model and pytorch 
+                # model persists.
+                if qmax - qmin == 2 ** 8 - 2 and node.op_type == 'FakeQuantizeLearnablePerchannelAffine':
                     self.clip_weight(node, name2data, named_initializer)
                 # ? for model mixed constant and initializer
                 # scale
@@ -97,7 +101,8 @@ class ONNXQLinearPass(ONNXQNNPass):
                     zero_point_data = self.onnx_model.get_initializer(zero_point)
                 except KeyError:
                     zero_point_data = self.wrap_onnx_constant(self.onnx_model.get_constant(zero_point))
-                assert not np.any(zero_point_data != 0), "Asymmetric quantization is not supported for TensorRT Backend."
+                assert not np.any(zero_point_data != 0), "This pass is only supposed to be used with TensorRT Backend which" \
+                    "does not support asymmetric quantization."
                 if qmin == 0:
                     self.onnx_model.set_initializer(zero_point, zero_point_data.astype(np.uint8), raw=False)
                 else:
