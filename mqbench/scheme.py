@@ -16,6 +16,10 @@ class QuantizeScheme(object):
         if 'symmetric_range' in kwargs:
             self.symmetric_range = kwargs['symmetric_range']
             del kwargs['symmetric_range']
+            assert isinstance(kwargs.get('factory_kwargs', None), dict) \
+                and kwargs['factory_kwargs'].get('not_calc_quant_min_max', False), \
+                "QuantizeScheme with `symmetric_range=True` should provide kwargs " \
+                "factory_kwargs={not_calc_quant_min_max: True, ...}"
         else:
             self.symmetric_range = False
         self.kwargs = kwargs
