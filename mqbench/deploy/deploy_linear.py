@@ -96,7 +96,7 @@ class LinearQuantizer_process(object):
         data = name2data[tensor_name]
         clip_range_min = ((qmin - zero_point) * scale).astype(data.dtype)
         clip_range_max = ((qmax - zero_point) * scale).astype(data.dtype)
-        if scale.shape[0] > 1:
+        if len(scale.shape) > 0 and scale.shape[0] > 1:
             new_data = []
             transposed = False
             next_node = inp2node[node.output[0]]
