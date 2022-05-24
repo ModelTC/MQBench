@@ -22,6 +22,9 @@ jobs:
       run: |
         conda install flake8
         flake8 .
+    - name: Install Protobuf
+      run:
+        conda install protobuf=3.20.1
     - name: Install MQBench
       run: |
         python setup.py develop
