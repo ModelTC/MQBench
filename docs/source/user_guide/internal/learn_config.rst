@@ -13,7 +13,7 @@ We provide a guide for learning MQBench configuration, and it will be helpful.
 .. code-block:: python
 
     extra_config = {
-        extra_qconfig_dict: {
+        'extra_qconfig_dict': {
             'w_observer': 'MSEObserver',                              # custom weight observer
             'a_observer': 'MSEObserver',                              # custom activation observer
             'w_fakequantize': 'FixedFakeQuantize',                    # custom weight fake quantize function
@@ -31,7 +31,7 @@ We provide a guide for learning MQBench configuration, and it will be helpful.
                 'pot_scale': False,                                   # custom whether scale is power of two for activation.
             }
         },
-        extra_quantizer_dict: {
+        'extra_quantizer_dict': {
             'additional_function_type': [operator.add,],              # additional function type, a list, use function full name, like operator.add.
             'additional_module_type': (torch.nn.Upsample),            # additional module type, a tuple, use class full name, like torch.nn.Upsample.
             'additional_node_name': [layer1_1_conv1] ,                # addition node name, a list, use full node name, like layer1_1_conv1.
@@ -39,13 +39,13 @@ We provide a guide for learning MQBench configuration, and it will be helpful.
             'exclude_function_type': [operator.mul,] ,                # skip specific module, a list, use function full name, like operator.mul
             'exclude_node_name': [layer1_1_conv1],                    # skip specific module, a list, use full node name, like layer1_1_conv1.
         },
-        preserve_attr: {
+        'preserve_attr': {
             '': ["func1"],                                            # Specify attribute of model which should be preserved
             'backbone': ['func2'],                                    # after prepare. Since symbolic_trace only store attributes which is
                                                                       # in forward. If model.func1 and model.backbone.func2 should be preserved,
                                                                       # {'': ['func1'], 'backbone': ['func2'] } should work.
         }
-        extra_fuse_dict: {                                            # checkout https://github.com/ModelTC/MQBench/blob/main/mqbench/fuser_method_mappings.py for more fuse details.
+        'extra_fuse_dict': {                                            # checkout https://github.com/ModelTC/MQBench/blob/main/mqbench/fuser_method_mappings.py for more fuse details.
             'additional_fuser_method_mapping': {
                 (torch.nn.Linear, torch.nn.BatchNorm1d):
                     fuse_linear_bn,                                   # fuse use method
@@ -59,7 +59,7 @@ We provide a guide for learning MQBench configuration, and it will be helpful.
                 nn.ConvTranspose2d: qnn.qat.ConvTranspose2d,          # mapping qat module
             } ,
         },
-        concrect_args: {
+        'concrect_args': {
         }                                                             # custom tracer behavior, checkout https://github.com/pytorch/pytorch/blob/efcbbb177eacdacda80b94ad4ce34b9ed6cf687a/torch/fx/_symbolic_trace.py#L836
     }
 
