@@ -74,12 +74,12 @@ class TRTModelQuantizer(ModelQuantizer):
 class TensorrtNLPQuantizer(ModelQuantizer):
     """
     NLP model quantizer for Tensorrt settings.
-    We should uantize Linear / Embedding weights.
+    We should quantize Linear / Embedding weights.
     Linear / Matmul / Add layer inputs(activations).
     We notice embedding add(word + pos + token_type) is not quantized,
     so we find and skiped.
     Add in MSA(add mask) should not be quantized either, we skipped it
-    by implicit_merge. 
+    by implicit_merge.
     """
     @property
     def implicit_merge_patterns(self) -> list:
@@ -142,4 +142,4 @@ class TensorrtNLPQuantizer(ModelQuantizer):
         for _node in input_node_list:
             if _node.op == "call_module" and isinstance(modules[_node.target], (qnnqat.Embedding, torch.nn.Embedding)):
                 logger.info("Skip embedding add: {}".format(node.name))
-                return True    
+                return True

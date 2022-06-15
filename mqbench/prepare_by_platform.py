@@ -339,7 +339,7 @@ def prepare_by_platform(
         deploy_backend (BackendType):
 
     >>> prepare_custom_config_dict : {
-            extra_qconfig_dict : Dict, Find explainations in get_qconfig_by_platform,
+            extra_qconfig_dict : Dict, Find explanations in get_qconfig_by_platform,
             extra_quantizer_dict: Extra params for quantizer.
             preserve_attr: Dict, Specify attribute of model which should be preserved
                 after prepare. Since symbolic_trace only store attributes which is

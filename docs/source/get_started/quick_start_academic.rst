@@ -29,7 +29,7 @@ Learn all options through our :doc:`../user_guide/internal/learn_config`
 .. code-block:: python
 
     extra_config = {
-        extra_qconfig_dict: {
+        'extra_qconfig_dict': {
             'w_observer': 'MSEObserver',                              # custom weight observer
             'a_observer': 'MSEObserver',                              # custom activation observer
             'w_fakequantize': 'FixedFakeQuantize',                    # custom weight fake quantize function
