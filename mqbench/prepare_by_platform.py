@@ -1,6 +1,8 @@
 from copy import deepcopy
 from enum import Enum
 from typing import Any, Dict
+import types
+import inspect
 
 import torch
 from torch.fx import Tracer
@@ -396,10 +398,15 @@ def prepare_by_platform(
     if 'preserve_attr' in prepare_custom_config_dict:
         for submodule_name in prepare_custom_config_dict['preserve_attr']:
             cur_module = prepared
+            _type = type(model)
             if submodule_name != "":
                 cur_module = getattr(prepared, submodule_name)
+                _type = type(getattr(model, submodule_name))
             preserve_attr_list = prepare_custom_config_dict['preserve_attr'][submodule_name]
-            for attr in preserve_attr_list:
-                logger.info("Preserve attr: {}.{}".format(submodule_name, attr))
-                setattr(cur_module, attr, preserve_attr_dict[submodule_name][attr])
+            for attr_name in preserve_attr_list:
+                logger.info("Preserve attr: {}.{}".format(submodule_name, attr_name))
+                _attr = preserve_attr_dict[submodule_name][attr_name]
+                if inspect.ismethod(_attr):
+                    _attr = types.MethodType(getattr(_type, attr_name), cur_module)
+                setattr(cur_module, attr_name, _attr)
     return prepared
