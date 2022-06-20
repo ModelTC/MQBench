@@ -382,8 +382,6 @@ class ConvTransposeReLU2d(qnnqat.ConvTranspose2d):
                              padding_mode=padding_mode,
                              qconfig=qconfig)
         assert qconfig, 'qconfig must be provided for QAT module'
-        self.qconfig = qconfig
-        self.weight_fake_quant = self.qconfig.weight()
 
     def forward(self, input, output_size=None):
         output_padding = self._output_padding(input, output_size, self.stride,
