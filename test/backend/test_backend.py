@@ -5,6 +5,7 @@ from mqbench.prepare_by_platform import prepare_by_platform, BackendType
 from mqbench.convert_deploy import convert_deploy
 from mqbench.utils.state import enable_calibration, enable_quantization
 
+from .test_model.unet import UNet
 from ..version import GITHUB_RES
 
 
@@ -117,8 +118,21 @@ class TestQuantizeBackend(unittest.TestCase):
         else:
             pass
 
-    def test_quantize_onnxqnn(self):
+    def test_quantize_onnxqnn_1(self):
         model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
+        dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
+        model_to_quantize.train()
+        model_prepared = prepare_by_platform(model_to_quantize, BackendType.ONNX_QNN)
+        enable_calibration(model_prepared)
+        model_prepared(dummy_input)
+        enable_quantization(model_prepared)
+        loss = model_prepared(dummy_input).sum()
+        loss.backward()
+        model_prepared.eval()
+        convert_deploy(model_prepared, BackendType.ONNX_QNN, {'x': [1, 3, 224, 224]}, model_name='resnet18_onnx_qnn.onnx')
+
+    def test_quantize_onnxqnn_2(self):
+        model_to_quantize = UNet(3, 2)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         model_prepared = prepare_by_platform(model_to_quantize, BackendType.ONNX_QNN)
