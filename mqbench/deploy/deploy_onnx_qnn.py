@@ -210,7 +210,8 @@ class ONNXQNNPass(object):
                     if prev_node != 'INPUT_TOKEN' and prev_node.op_type in self.qlinear_op_type and \
                             next_node != 'OUTPUT_TOKEN' and next_node.op_type in self.qlinear_op_type:
                         search_and_replace_input(next_node, node.output[0], node.input[0])
-                    elif prev_node != 'INPUT_TOKEN' and prev_node.op_type in self.qlinear_op_type:
+                    elif prev_node != 'INPUT_TOKEN' and prev_node.op_type in self.qlinear_op_type and \
+                            next_node == 'OUTPUT_TOKEN':
                         if dequantize_node is None:
                             output_value_info = [f'{node.output[0]}_DequantizeLinear']
                             dequantize_node = onnx.helper.make_node("DequantizeLinear",
@@ -218,7 +219,6 @@ class ONNXQNNPass(object):
                                                                     output_value_info,
                                                                     ('input' if prev_node == 'INPUT_TOKEN' else prev_node.name) + '_dequantized')
                             self.onnx_model.insert_node_purely(dequantize_node)
-                        search_and_replace_input(next_node, node.output[0], dequantize_node.output[0])
                     else:
                         if quantize_node is None:
                             output_value_info = [f'{node.output[0]}_QuantizeLinear']
