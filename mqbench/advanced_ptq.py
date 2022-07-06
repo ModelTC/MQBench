@@ -577,6 +577,9 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict, graph_
     enable_quantization(quant_model)
     torch.cuda.empty_cache()
     checked_nodes = dict()
+
+    # setup for the reconstruction block node list 
+    block_list = []
     for node in nodes:
         if 'exclude_node_prefix' in config:
             cont = False
@@ -633,41 +636,45 @@ def ptq_reconstruction(model: GraphModule, cali_data: list, config: dict, graph_
                 continue
             logger.info('the node list is below!')
             logger.info(layer_node_list)
-            fp32_module = fp32_modules[qnode2fpnode_dict[layer_node_list[-1]]]
-            fp32_all_inps = []
-            quant_all_inps = []
-            fp32_final_oups = None
-            out_is_cached = False
-            for _node in layer_node_list:
-                if all([arg in layer_node_list for arg in _flatten_args(_node.args) if isinstance(arg, torch.fx.Node)]):
-                    continue
-                else:
-                    fp32_inp_module = fp32_modules[qnode2fpnode_dict[_node]]
-                    quant_module = quant_modules[_node]
-                    # fp32 inps: [out_b1, out_b2, ...]
-                    _, fp32_inps = save_inp_oup_data(fp32_model, None, fp32_inp_module, cali_data, 
-                                                     store_inp=False, store_oup=(config.prob < 1.0), keep_gpu=config.keep_gpu)
-                    _, fp32_oups = save_inp_oup_data(fp32_model, None, fp32_module, cali_data,
-                                                     store_inp=False, store_oup=(not out_is_cached), keep_gpu=config.keep_gpu)
-                    _, quant_inps = save_inp_oup_data(quant_model, None, quant_module, cali_data,
-                                                      store_inp=False, store_oup=True, keep_gpu=config.keep_gpu)
-                    fp32_all_inps.append(fp32_inps)
-                    quant_all_inps.append(quant_inps)
-                    if not out_is_cached:
-                        fp32_final_oups = fp32_oups
-                        out_is_cached = True
-            cached_inps = (quant_all_inps, fp32_all_inps) if config.prob < 1.0 else quant_all_inps
-            cached_oups = fp32_final_oups
-            quant_modules_by_name = dict()
-            for node in layer_node_list:
-                if node.op == 'call_module':
-                    quant_modules_by_name[node.target] = quant_modules[node]
-            subgraph = extract_subgraph(quant_modules_by_name, layer_node_list,
-                                        layer_node_list[-1], g2node)
-            logger.info(subgraph.code)
-            subgraph_reconstruction(subgraph, cached_inps, cached_oups, config)
+            block_list.append(layer_node_list)
             for x in layer_node_list:
                 checked_nodes[x] = True
+
+    for layer_node_list in block_list:
+        fp32_module = fp32_modules[qnode2fpnode_dict[layer_node_list[-1]]]
+        fp32_all_inps = []
+        quant_all_inps = []
+        fp32_final_oups = None
+        out_is_cached = False
+        for _node in layer_node_list:
+            if all([arg in layer_node_list for arg in _flatten_args(_node.args) if isinstance(arg, torch.fx.Node)]):
+                continue
+            else:
+                fp32_inp_module = fp32_modules[qnode2fpnode_dict[_node]]
+                quant_module = quant_modules[_node]
+                # fp32 inps: [out_b1, out_b2, ...]
+                _, fp32_inps = save_inp_oup_data(fp32_model, None, fp32_inp_module, cali_data, 
+                                                 store_inp=False, store_oup=(config.prob < 1.0), keep_gpu=config.keep_gpu)
+                _, fp32_oups = save_inp_oup_data(fp32_model, None, fp32_module, cali_data,
+                                                 store_inp=False, store_oup=(not out_is_cached), keep_gpu=config.keep_gpu)
+                _, quant_inps = save_inp_oup_data(quant_model, None, quant_module, cali_data,
+                                                  store_inp=False, store_oup=True, keep_gpu=config.keep_gpu)
+                fp32_all_inps.append(fp32_inps)
+                quant_all_inps.append(quant_inps)
+                if not out_is_cached:
+                    fp32_final_oups = fp32_oups
+                    out_is_cached = True
+        cached_inps = (quant_all_inps, fp32_all_inps) if config.prob < 1.0 else quant_all_inps
+        cached_oups = fp32_final_oups
+        quant_modules_by_name = dict()
+        for node in layer_node_list:
+            if node.op == 'call_module':
+                quant_modules_by_name[node.target] = quant_modules[node]
+        subgraph = extract_subgraph(quant_modules_by_name, layer_node_list,
+                                    layer_node_list[-1], g2node)
+        logger.info(subgraph.code)
+        subgraph_reconstruction(subgraph, cached_inps, cached_oups, config)
+
     disable_all(quant_model)
     for node in checked_nodes:
         if node.op == 'call_module':
