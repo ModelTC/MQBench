@@ -8,6 +8,7 @@ from torch.quantization.quantize_fx import _fuse_fx
 
 import mqbench.nn.intrinsic as qnni 
 import mqbench.nn.intrinsic.qat as qnniqat
+from mqbench.utils import getitem2node
 from mqbench.utils.logger import logger
 from mqbench.utils.registry import register_model_quantizer
 from mqbench.prepare_by_platform import BackendType
@@ -57,7 +58,6 @@ class VitisQuantizer(ModelQuantizer):
             # Linear
             torch.nn.qat.modules.linear.Linear,
             # Pooling
-            torch.nn.modules.pooling.MaxPool2d,
             torch.nn.modules.pooling.AvgPool2d,
             torch.nn.modules.pooling.AdaptiveAvgPool2d,
             # BN
@@ -77,19 +77,11 @@ class VitisQuantizer(ModelQuantizer):
             torch.cat,
             torch.nn.functional.adaptive_avg_pool2d,
             torch.nn.functional.avg_pool2d,
-            torch.nn.functional.max_pool2d,
             torch.nn.functional.relu,
             torch.nn.functional.conv2d,
             torch.nn.functional.linear,
             torch.nn.functional.interpolate,
         ] 
-
-    @property
-    def function_type_not_to_quant_alone(self) -> List:
-        return [
-            operator.getitem,
-        ]
-
 
     def prepare(self, model: GraphModule, qconfig):
         model = _fuse_fx(model, self.extra_fuse_dict)
@@ -106,7 +98,7 @@ class VitisQuantizer(ModelQuantizer):
         if hasattr(self, 'node_need_to_quantize_output'):
             return self.node_need_to_quantize_output
         self.node_need_to_quantize_output = []
-        getitem2node = self._get_items_for_the_graph(model)
+        g2node = getitem2node(model)
         for node in nodes:
             if (node.op == "call_module" and node.target in self.exclude_module_name) or \
                 ((node.op == 'call_function' or node.op == 'call_method') and
@@ -116,60 +108,9 @@ class VitisQuantizer(ModelQuantizer):
             if (node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_output)) or \
                 ((node.op == 'call_function' or node.op == 'call_method') and
                     node.target in self.function_type_to_quant_output):
-                input_node_list = self._flatten_args(node.args)
-                for _node in input_node_list:
-                    if isinstance(_node, torch.fx.node.Node):
-                        if self._is_implicit_merge(modules, (node, _node)):
-                            logger.info("Implicit merge: {} + {}".format(_node.name, node.name))
-                            continue
-                        if (_node.op == 'placeholder') or \
-                            ((_node.op == 'call_function' or _node.op == 'call_method') and
-                                _node.target in self.function_type_not_to_quant_alone):
-                            if _node not in getitem2node:
-                                self.node_need_to_quantize_output.append(_node)
-                            logger.info(f'Add {_node.name}/{_node.target}/{_node.op} to input quantize')                        
                 self.node_need_to_quantize_output.append(node)
                 logger.info(f'Add {node.name} to output quantize')
         return self.node_need_to_quantize_output
-
-    def _get_items_for_the_graph(self, model: GraphModule) -> dict:
-        def _update_getitem_path(getitem_args_dict):
-            for node in getitem_args_dict:
-                args_list = getitem_args_dict[node]
-                while args_list[0] in getitem_args_dict:
-                    args_list = getitem_args_dict[args_list[0]] + args_list[1:]
-                getitem_args_dict[node] = args_list
-            return getitem_args_dict
-
-        def _getitem_from_args(args, original_args_dict):
-            ret = original_args_dict
-            for a in args:
-                try:
-                    ret = ret[a]
-                except (IndexError, KeyError):
-                    return {}
-            return ret 
-        nodes = list(model.graph.nodes)
-        # the getitem's call graph
-        getitem_args_dict = {}
-        # the dict used in the model 
-        original_key_dict = {}
-        getitem2node = {}
-        for node in nodes:
-            # update the getitems
-            if node.target in [operator.getitem]:
-                getitem_args_dict[node] = list(node.args)
-                getitem_args_dict = _update_getitem_path(getitem_args_dict)
-            elif node.target == 'update':
-                if node.args[0] not in original_key_dict:
-                    original_key_dict[node.args[0]] = {}
-                original_key_dict[node.args[0]].update(node.args[1])
-        for node in getitem_args_dict:
-            val = _getitem_from_args(getitem_args_dict[node], original_key_dict)
-            if isinstance(val, torch.fx.node.Node):
-                getitem2node[node] = val
-        return getitem2node
-
 
     def _find_input_quants(self, model) -> List:
         node_need_to_quantize_weight = []
@@ -178,7 +119,6 @@ class VitisQuantizer(ModelQuantizer):
             if node.op == 'placeholder' and node.all_input_nodes == []:
                 node_need_to_quantize_weight.append(list(node.users)[0])
         return node_need_to_quantize_weight
-
 
     def _find_weight_quants(self, model) -> List:
         node_need_to_quantize_weight = []
