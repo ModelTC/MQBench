@@ -67,10 +67,10 @@ class ObserverBase(_ObserverBase):
     def calculate_qparams(self) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""Calculates the quantization parameters."""
         scale, zero_point = self._calculate_qparams(self.min_val, self.max_val)
-        if self.pot_scale:
-            scale = pot_quantization(scale)
         scale.data = sync_tensor(scale).data
         zero_point.data = sync_tensor(zero_point).data
+        if self.pot_scale:
+            scale = pot_quantization(scale)
         return scale, zero_point
 
     @torch.jit.export
@@ -456,14 +456,14 @@ class LSQObserver(ObserverBase):
 
     def calculate_qparams(self):
         scale = 2 * self.tensor_norm / math.sqrt(self.quant_max)
+        zero_point = torch.zeros_like(self.tensor_norm)
+        sync_tensor(scale)
+        sync_tensor(zero_point)
         if self.pot_scale:
             scale = pot_quantization(scale)
-        zero_point = torch.zeros_like(self.tensor_norm)
         if not is_symmetric_quant(self.qscheme):
             if self.min_val >= 0.:
                 zero_point = self.quant_min - torch.round(self.min_val / scale)
-        sync_tensor(scale)
-        sync_tensor(zero_point)
         return scale, zero_point
 
 
@@ -505,14 +505,14 @@ class LSQPlusObserver(ObserverBase):
     def calculate_qparams(self):
         scale = torch.maximum((self.mean - 3 * self.std).abs(),
                               (self.mean + 3 * self.std).abs()) / (self.quant_max - self.quant_min + 1)
+        sync_tensor(scale)
+        sync_tensor(zero_point)
         if self.pot_scale:
             scale = pot_quantization(scale)
         zero_point = torch.zeros_like(self.mean)
         if not is_symmetric_quant(self.qscheme):
             if self.min_val >= 0.:
                 zero_point = self.quant_min - torch.round(self.min_val / scale)
-        sync_tensor(scale)
-        sync_tensor(zero_point)
         return scale, zero_point
 
 
