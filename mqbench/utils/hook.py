@@ -31,8 +31,9 @@ class DataSaverHook:
 
 
 class PerChannelLoadHook:
-    def __init__(self, module):
+    def __init__(self, module, hook_param=["scale", "zero_point"]):
         self.hook = module._register_load_state_dict_pre_hook(partial(self.hook_fn, module=module))
+        self.hook_param = hook_param
 
     def hook_fn(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs,
                 module):
@@ -40,7 +41,7 @@ class PerChannelLoadHook:
             # no per-channel parameters
             return
         for module_key, param in module._parameters.items():
-            if module_key not in ["scale", "zero_point"]:
+            if module_key not in self.hook_param:
                 continue
             candidate = prefix + module_key
             if candidate in state_dict:
