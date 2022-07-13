@@ -48,6 +48,14 @@ class PerChannelLoadHook:
                 input_param = state_dict[candidate]
                 if param.shape != input_param.shape:
                     param.data = torch.ones_like(input_param, dtype=param.dtype, device=param.device)
+        for module_key, param in module._buffers.items():
+            if module_key not in self.hook_param:
+                continue
+            candidate = prefix + module_key
+            if candidate in state_dict:
+                input_param = state_dict[candidate]
+                if param.shape != input_param.shape:
+                    param.data = torch.ones_like(input_param, dtype=param.dtype, device=param.device)
 
     def close(self):
         self.hook.remove()
