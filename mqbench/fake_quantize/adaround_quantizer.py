@@ -48,7 +48,7 @@ class AdaRoundFakeQuantize(QuantizeBase):
         self.register_buffer('scale', torch.tensor([1.0], dtype=torch.float))
         self.register_buffer('zero_point', torch.tensor([0], dtype=torch.int))
         self.adaround = False
-        self.load_state_dict_hook = PerChannelLoadHook(self)
+        self.load_state_dict_hook = PerChannelLoadHook(self, hook_param=['scale', 'zero_point', 'alpha'])
 
     def init(self, weight_tensor: torch.Tensor, round_mode='learned_hard_sigmoid', ):
         self.adaround = True
