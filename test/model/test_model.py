@@ -11,7 +11,9 @@ from ..version import GITHUB_RES
 
 class TestQuantizeModel(unittest.TestCase):
     def test_model_ppl(self):
-        test_model_list = ['alexnet', 'deeplabv3_resnet50', 'densenet121', 'fcn_resnet50', 'mnasnet0_5', 'mobilenet_v2', 'resnet18', 'resnext50_32x4d', 'shufflenet_v2_x0_5', 'squeezenet1_0', 'vgg11', 'vgg11_bn', 'wide_resnet50_2']
+        test_model_list = ['alexnet', 'deeplabv3_resnet50', 'densenet121', 'fcn_resnet50', 'mnasnet0_5',
+                           'mobilenet_v2', 'resnet18', 'resnext50_32x4d', 'shufflenet_v2_x0_5', 'squeezenet1_0',
+                           'vgg11', 'vgg11_bn', 'wide_resnet50_2', 'regnet_x_400mf']
         entrypoints = torch.hub.list(GITHUB_RES, force_reload=False)
         for entrypoint in entrypoints:
             if entrypoint not in test_model_list:
