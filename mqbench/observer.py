@@ -30,11 +30,10 @@ class ObserverBase(_ObserverBase):
                  factory_kwargs=None):
         # Since torch 1.10, function calculate_qmin_qmax is not a member function of observer,
         # but import from utils. It is hard to control. We use try...except here.
-        stored_min, sotred_max = quant_max, quant_min
-        if quant_max and quant_min and quant_max - quant_min + 1 >= 256:
+        stored_min, sotred_max = quant_min, quant_max
+        if quant_max is not None and quant_min is not None and (quant_max - quant_min + 1 > 256):
             quant_min, quant_max = -128, 127
-        super(ObserverBase, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max)      
-        # for compatibility with 1.10, prevent the value of self.quant_min,self.quant_max being modified
+        super(ObserverBase, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max)
         self.quant_min = stored_min
         self.quant_max = sotred_max
         self.quant_min, self.quant_max = self._calculate_qmin_qmax()
