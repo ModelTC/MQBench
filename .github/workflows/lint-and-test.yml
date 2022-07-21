@@ -1,9 +1,9 @@
-name: Lint and test.
+name: Lint and test
 
 on: [push]
 
 jobs:
-  build-linux:
+  Lint-and-test:
     runs-on: ubuntu-latest
     strategy:
       max-parallel: 5

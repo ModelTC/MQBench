@@ -1,7 +1,7 @@
 import math
 from functools import partial
 from typing import Tuple
-from copy import deepcopy
+
 import torch
 from torch.quantization.observer import _ObserverBase
 
@@ -28,12 +28,15 @@ class ObserverBase(_ObserverBase):
     def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine,
                  reduce_range=False, quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False,
                  factory_kwargs=None):
-        factory_kwargs = deepcopy(factory_kwargs)
-        self.not_calc_quant_min_max = factory_kwargs.pop('not_calc_quant_min_max', False) if isinstance(factory_kwargs, dict) else False
-        super(ObserverBase, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max)
+        # Since torch 1.10, function calculate_qmin_qmax is not a member function of observer,
+        # but import from utils. It is hard to control. We use try...except here.
+        stored_min, sotred_max = quant_max, quant_min
+        if quant_max and quant_min and quant_max - quant_min + 1 >= 256:
+            quant_min, quant_max = -128, 127
+        super(ObserverBase, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max)      
         # for compatibility with 1.10, prevent the value of self.quant_min,self.quant_max being modified
-        self.quant_min = quant_min
-        self.quant_max = quant_max
+        self.quant_min = stored_min
+        self.quant_max = sotred_max
         self.quant_min, self.quant_max = self._calculate_qmin_qmax()
         self.ch_axis = ch_axis
         self.pot_scale = pot_scale
@@ -79,28 +82,7 @@ class ObserverBase(_ObserverBase):
         observer datatype and if range is reduced.
         """
         if self.has_customized_qrange:
-            # This initialization here is to be resolve TorchScript compilation issues and allow
-            # using of refinement to decouple initial_qmin and initial_qmax from quantization range.
-            # The actual values of initial_qmin and initial_qmax will be reset below.
-            initial_quant_min, initial_quant_max = 0, 255
-            # The following assignment of self.qmin and self.qmax to the local variables and the if check refine the
-            # attribute from Optional valid integers for use, based on TorchScript's requirements.
-            custom_quant_min, custom_quant_max = self.quant_min, self.quant_max
-            if custom_quant_min is not None and custom_quant_max is not None:
-                initial_quant_min, initial_quant_max = (
-                    custom_quant_min,
-                    custom_quant_max,
-                )
-
-            qrange_len = initial_quant_max - initial_quant_min + 1
-            if is_symmetric_quant(self.qscheme):
-                quant_min, quant_max = -qrange_len // 2, qrange_len // 2 - 1
-            else:
-                quant_min, quant_max = 0, qrange_len - 1
-            if self.reduce_range:
-                quant_min, quant_max = quant_min // 2, quant_max // 2
-            if self.not_calc_quant_min_max:
-                quant_min, quant_max = self.quant_min, self.quant_max
+            quant_min, quant_max = self.quant_min, self.quant_max
         else:
             # Fallback onto default 8-bit qmin and qmax calculation if dynamic range is not used.
             if self.dtype == torch.qint8:
