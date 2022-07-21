@@ -128,9 +128,6 @@ class TensorrtNLPQuantizer(ModelQuantizer):
                 if node.op == "call_function" and node.target == operator.add and \
                         self._is_skiped_add(node, modules, input_node_list):
                     continue
-                if node.op == "call_function" and node.target == operator.add:
-                    import pdb
-                    pdb.set_trace()
                 for _node in input_node_list:
                     if self._is_implicit_merge(modules, (node, _node)):
                         logger.info("Implicit merge: {} + {}".format(_node.name, node.name))

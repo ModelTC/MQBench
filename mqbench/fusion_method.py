@@ -42,20 +42,37 @@ def convert_qnniqat_linearbn(model, fused_node):
 
 @register_convert_function(qnniqat.ConvFreezebn2d)
 @register_convert_function(nniqat.ConvBn2d)
+@register_convert_function(nniqat.ConvBn3d)
 def convert_nniqat_convbn(model, fused_node):
+    """nniqat.ConvBn2d ----> nn.Conv2d ----> nniqat.Conv2d
+    """
+    fused_module_class_map = {
+        qnniqat.ConvFreezebn2d: torch.nn.Conv2d,
+        qnniqat.ConvFreezebnReLU2d: torch.nn.Conv2d,
+        nniqat.ConvBn2d: torch.nn.Conv2d,
+        nniqat.ConvBnReLU2d: torch.nn.Conv2d,
+        nniqat.ConvBn3d: torch.nn.Conv3d,
+        nniqat.ConvBnReLU3d: torch.nn.Conv3d,
+    }
+    fused_qat_module_class_map = {
+        torch.nn.Conv2d: torch.nn.qat.Conv2d,
+        torch.nn.Conv3d: torch.nn.qat.Conv3d,
+    }
     modules = dict(model.named_modules())
     fused_module = modules[fused_node.target]
     # Create a Conv2d from FusedModule.
-    conv = torch.nn.Conv2d(fused_module.in_channels, fused_module.out_channels, fused_module.kernel_size, 
-                           fused_module.stride, fused_module.padding, fused_module.dilation,
-                           fused_module.groups, fused_module.bias is not None, fused_module.padding_mode)
+    conv = fused_module_class_map[type(fused_module)](fused_module.in_channels, fused_module.out_channels,
+                                                      fused_module.kernel_size, fused_module.stride,
+                                                      fused_module.padding, fused_module.dilation,
+                                                      fused_module.groups, fused_module.bias is not None,
+                                                      fused_module.padding_mode)
     conv.weight = fused_module.weight
     if fused_module.bias is not None:
         conv.bias = fused_module.bias
     fused_conv = fuse_conv_bn_eval(conv.eval(), fused_module.bn)
     # We need nn.qat.conv here to export weight quantize node.
     fused_conv.qconfig = fused_module.qconfig
-    fused_conv = torch.nn.qat.Conv2d.from_float(fused_conv)
+    fused_conv = fused_qat_module_class_map[type(conv)].from_float(fused_conv)
     # Attach weight fake quantize params.
     fused_conv.weight_fake_quant = fused_module.weight_fake_quant
     conv_parent_name, conv_name = _parent_name(fused_node.target)
@@ -64,7 +81,8 @@ def convert_nniqat_convbn(model, fused_node):
 
 @register_convert_function(qnniqat.ConvFreezebnReLU2d)
 @register_convert_function(nniqat.ConvBnReLU2d)
-def convert_nniqat_convbnrelu(model, fused_node):
+@register_convert_function(nniqat.ConvBnReLU3d)
+def convert_nniqat_convbnrelu(model, fused_node):    
     convert_nniqat_convbn(model, fused_node)
     modules = dict(model.named_modules())
     fused_module = modules[fused_node.target]
@@ -196,6 +214,9 @@ def convert_qnniqat_deconvbnrelu(model, fused_node):
 
 @register_convert_function(qnniqat.ConvBn2d)
 def convert_qnniqat_convbn(model, fused_node):
+    """mqbench.nn.intrinsic.qat module add bias quant.
+    That is the difference between torch.nn.intrinsic.qat module.
+    """
     modules = dict(model.named_modules())
     fused_module = modules[fused_node.target]
     # Create a Conv2d from FusedModule.
@@ -222,6 +243,9 @@ def convert_qnniqat_convbn(model, fused_node):
 
 @register_convert_function(qnniqat.ConvBnReLU2d)
 def convert_qnniqat_convbnrelu(model, fused_node):
+    """mqbench.nn.intrinsic.qat module add bias quant.
+    That is the difference between torch.nn.intrinsic.qat module.
+    """
     convert_qnniqat_convbn(model, fused_node)
     modules = dict(model.named_modules())
     fused_module = modules[fused_node.target]

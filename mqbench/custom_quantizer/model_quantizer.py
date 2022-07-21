@@ -263,10 +263,6 @@ class ModelQuantizer(object):
             if not isinstance(mod, _FusedModule):
                 self._convert(mod, mapping, True, new_scope)
             reassign[name] = swap_module(mod, mapping, {})
-            if isinstance(mod, torch.nn.ConvTranspose2d):
-                if hasattr(reassign[name], "weight_fake_quant") and reassign[name].weight_fake_quant.ch_axis != -1:
-                    reassign[name].weight_fake_quant.ch_axis = 1
-                    reassign[name].weight_fake_quant.activation_post_process.ch_axis = 1
         for key, value in reassign.items():
             module._modules[key] = value
 

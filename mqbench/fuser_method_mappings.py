@@ -33,6 +33,7 @@ class ConvFreezebnReLUFusion(ConvBNReLUFusion):
         self.conv_node = node
         self.conv = quantizer.modules[self.conv_node.target]
 
+
 def fuse_linear_bn(linear, bn):
     r"""Given the linear and bn modules, fuses them and returns the fused module
 
@@ -83,7 +84,6 @@ def fuse_deconv_bn_relu(deconv, bn, relu):
         return qnni.ConvTransposeReLU2d(fuse_deconv_bn_eval(deconv, bn), relu)
 
 
-
 def fuse_conv_freezebn(conv, bn):
     assert(bn.training is False), "Freezebn must be eval."
 
@@ -99,6 +99,7 @@ def fuse_conv_freezebn(conv, bn):
         return fused_module_class(conv, bn)
     else:
         return nn.utils.fuse_conv_bn_eval(conv, bn)
+
 
 def fuse_conv_freezebn_relu(conv, bn, relu):
     assert(conv.training == relu.training and bn.training is False), "Conv and relu both must be in the same mode (train or eval) and bn must be eval."
