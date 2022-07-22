@@ -22,6 +22,9 @@ jobs:
       run: |
         conda install flake8
         flake8 .
+    - name: Install onnxruntime and onnxsim
+      run:
+        pip install onnxruntime onnx-simplifier
     - name: Install Protobuf
       run:
         conda install protobuf=3.20.1

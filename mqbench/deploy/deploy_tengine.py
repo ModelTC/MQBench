@@ -1,10 +1,6 @@
 import os
 from collections import OrderedDict
 
-import onnx
-from onnx import numpy_helper
-from onnxsim import simplify
-
 from ..utils.logger import logger
 from .deploy_linear import (
     LinearQuantizer_process,
@@ -19,6 +15,14 @@ from .common import (
     OnnxPreprocess,
     get_constant_inputs
 )
+
+import onnx
+from onnx import numpy_helper
+try:
+    from onnxsim import simplify
+except ModuleNotFoundError:
+    logger.warn('onnxsim not found, if you want to use deploy_tengine, please install it.')
+
 
 
 class Tengine_process(LinearQuantizer_process):
