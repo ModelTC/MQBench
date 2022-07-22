@@ -7,8 +7,8 @@ from torch.quantization.quantization_mappings import get_default_qat_module_mapp
 from torch.quantization.utils import get_combined_dict
 
 
-import mqbench.nn as qnn 
-import mqbench.nn.intrinsic as qnni 
+import mqbench.nn as qnn
+import mqbench.nn.intrinsic as qnni
 from mqbench.utils.registry import register_model_quantizer
 from mqbench.prepare_by_platform import BackendType
 from mqbench.custom_quantizer import ModelQuantizer
@@ -57,7 +57,6 @@ class ONNXQNNQuantizer(ModelQuantizer):
             get_default_qat_module_mappings(), additional_qat_module_mapping)
         # There is no QLinearFC in ONNX for now.
         del(all_mappings[torch.nn.modules.linear.Linear])
-        del(all_mappings[torch.nn.modules.linear._LinearWithBias])
         del(all_mappings[torch.nn.intrinsic.modules.fused.LinearReLU])
         del(all_mappings[qnni.modules.fused.LinearBn1d])
         root = self._convert(root, all_mappings, inplace=True)
