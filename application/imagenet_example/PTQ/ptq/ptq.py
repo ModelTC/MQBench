@@ -73,11 +73,13 @@ if __name__ == '__main__':
         from mqbench.utils.state import enable_quantization, enable_calibration_woquantization
         # do activation and weight calibration seperately for quick MSE per-channel for weight one
         model.eval()
-        enable_calibration_woquantization(model, quantizer_type='act_fake_quant')
-        for batch in cali_data:
-            model(batch.cuda())
-        enable_calibration_woquantization(model, quantizer_type='weight_fake_quant')
-        model(cali_data[0].cuda())
+        import torch
+        with torch.no_grad():
+            enable_calibration_woquantization(model, quantizer_type='act_fake_quant')
+            for batch in cali_data:
+                model(batch.cuda())
+            enable_calibration_woquantization(model, quantizer_type='weight_fake_quant')
+            model(cali_data[0].cuda())
         print('begin advanced PTQ now!')
         if hasattr(config.quantize, 'reconstruction'):
             model = ptq_reconstruction(
