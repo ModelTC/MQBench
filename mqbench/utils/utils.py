@@ -132,7 +132,14 @@ def getitem2node(model: GraphModule) -> dict:
         elif node.target == 'update':
             if node.args[0] not in original_key_dict:
                 original_key_dict[node.args[0]] = {}
-            original_key_dict[node.args[0]].update(node.args[1])
+            if isinstance(node.args[1], dict):
+                original_key_dict[node.args[0]].update(node.args[1])
+            elif isinstance(node.args[1], torch.fx.node.Node):
+                original_key_dict[node.args[0]].update(original_key_dict[node.args[1]])
+            else:
+                raise ValueError('Wrong type for update')
+
+
     return getitem2node
 
 

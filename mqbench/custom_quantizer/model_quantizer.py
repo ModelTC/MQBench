@@ -30,6 +30,7 @@ from torch.quantization.quantize_fx import (
     _fuse_fx
 )
 
+from mqbench.utils import getitem2node
 from mqbench.utils.logger import logger
 from mqbench.utils.registry import register_model_quantizer
 from mqbench.prepare_by_platform import BackendType
@@ -220,6 +221,7 @@ class ModelQuantizer(object):
         nodes = list(model.graph.nodes)
         modules = dict(model.named_modules())
         node_need_to_quantize_output = []
+        g2node = getitem2node(model)
         for node in nodes:
             if ((node.op == "call_module" and node.target in self.exclude_module_name) or
                 ((node.op == 'call_function' or node.op == 'call_method') and
@@ -238,6 +240,10 @@ class ModelQuantizer(object):
                     if self._is_implicit_merge(modules, (node, _node)):
                         logger.info("Implicit merge: {} + {}".format(_node.name, node.name))
                         continue
+                    if _node in node_need_to_quantize_output:
+                        continue
+                    if _node in g2node:
+                        _node = g2node[_node]
                     node_need_to_quantize_output.append(_node)
         return node_need_to_quantize_output
 
