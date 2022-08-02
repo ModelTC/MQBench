@@ -2,6 +2,7 @@ import torch
 from torch.fx import GraphModule
 
 from mqbench.utils.registry import register_model_quantizer
+from mqbench.utils import getitem2node
 from mqbench.prepare_by_platform import BackendType
 from mqbench.custom_quantizer import ModelQuantizer
 
@@ -52,6 +53,7 @@ class TengineQuantizer(ModelQuantizer):
         nodes = list(model.graph.nodes)
         modules = dict(model.named_modules())
         node_need_to_quantize_output = super()._find_act_quants(model)
+        g2node = getitem2node(model)
         for node in nodes:
             if (node.op == "call_module" and node.target in self.exclude_module_name) or \
                 ((node.op == 'call_function' or node.op == 'call_method') and
@@ -70,5 +72,8 @@ class TengineQuantizer(ModelQuantizer):
             elif node.op == "output":
                 for _arg in node.args:
                     if isinstance(_arg, torch.fx.node.Node):
+                        if _arg.op == 'placeholder':
+                            continue
                         node_need_to_quantize_output.append(_arg)
+        node_need_to_quantize_output = [node if node not in g2node else g2node[node] for node in node_need_to_quantize_output]
         return node_need_to_quantize_output
