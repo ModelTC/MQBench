@@ -1,5 +1,4 @@
 import math
-from functools import partial
 from typing import Tuple
 
 import torch
@@ -7,6 +6,7 @@ from torch.quantization.observer import _ObserverBase
 
 from mqbench.utils import sync_tensor, pot_quantization, is_symmetric_quant
 from mqbench.utils.logger import logger
+from mqbench.utils.hook import PerChannelLoadHook
 
 
 class ObserverBase(_ObserverBase):
@@ -41,28 +41,6 @@ class ObserverBase(_ObserverBase):
         self.pot_scale = pot_scale
         self.register_buffer("min_val", torch.tensor(float("inf")))
         self.register_buffer("max_val", torch.tensor(float("-inf")))
-
-        class PerChannelLoadHook:
-            def __init__(self, module):
-                self.hook = module._register_load_state_dict_pre_hook(partial(self.hook_fn, module=module))
-
-            def hook_fn(self, state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs,
-                        module):
-                if module.ch_axis == -1:
-                    # no per-channel parameters
-                    return
-                for module_key, param in module._buffers.items():
-                    if module_key not in ['min_val', 'max_val']:
-                        continue
-                    candidate = prefix + module_key
-                    if candidate in state_dict:
-                        input_param = state_dict[candidate]
-                        if param.shape != input_param.shape:
-                            param.data = torch.ones_like(input_param, dtype=param.dtype, device=param.device)
-
-            def close(self):
-                self.hook.remove()
-
         self.load_state_dict_hook = PerChannelLoadHook(self)
 
     @torch.jit.export
