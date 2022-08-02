@@ -1,10 +1,8 @@
 import torch
 from torch.nn.parameter import Parameter
 
-from mqbench.fake_quantize.quantize_base import QuantizeBase
+from mqbench.fake_quantize.quantize_base import QuantizeBase, _version_under_1100 
 from mqbench.utils.hook import PerChannelLoadHook
-
-_version_under_1100 = int(torch.__version__.split('.')[1]) < 10
 
 def _rectified_sigmoid(alpha, zeta, gamma):
     """Function to generate rounding mask.

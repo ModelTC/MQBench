@@ -5,6 +5,7 @@ from torch.quantization.fake_quantize import _is_per_channel, _is_per_tensor
 
 from mqbench.utils import is_symmetric_quant
 
+_version_under_1100 = int(torch.__version__.split('.')[1]) < 10
 
 class QuantizeBase(FakeQuantizeBase):
     r""" This is an extension of the FakeQuantize module in fake_quantize.py, which
