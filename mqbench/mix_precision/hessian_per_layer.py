@@ -41,11 +41,10 @@ class hessian_per_layer(hessian):
 
                     v = normalization(Hv)
 
-                    if eigenvalue == None:
+                    if eigenvalue is None:
                         eigenvalue = tmp_eigenvalue
                     else:
-                        if abs(eigenvalue - tmp_eigenvalue) / (abs(eigenvalue) +
-                                                            1e-6) < tol:
+                        if abs(eigenvalue - tmp_eigenvalue) / (abs(eigenvalue) + 1e-6) < tol:
                             break
                         else:
                             eigenvalue = tmp_eigenvalue
