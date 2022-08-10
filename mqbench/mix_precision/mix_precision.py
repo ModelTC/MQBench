@@ -29,7 +29,7 @@ def mixprecision_profiling(model: Module, quantized_model: Module, bitwidth_list
         for layer, max_eignevalues in eigen_values_dict.items():
             # max_eigne_val: Float
             # delta_w: List shape = bitwidth_list
-            sensetive_dict[layer] = -max_eignevalues * delta_w[layer]
+            sensetive_dict[layer] = max_eignevalues * delta_w[layer]
     elif algo == 'hawq_trace':
         trace_value_dict = hawq(model, data, criterion, type='trace')
         # Do normalize.
@@ -41,7 +41,7 @@ def mixprecision_profiling(model: Module, quantized_model: Module, bitwidth_list
         for layer, trace in trace_value_dict.items():
             # max_eigne_val: Float
             # delta_w: List shape = bitwidth_list
-            sensetive_dict[layer] = -trace * delta_w[layer]
+            sensetive_dict[layer] = trace * delta_w[layer]
     elif algo == 'naive':
         sensetive_dict = prec_degradation_by_layer(model, quantized_model, bitwidth_list, data, criterion)
     else:
@@ -234,26 +234,28 @@ if __name__ == '__main__':
 
     model = torchvision.models.resnet18(pretrained=True).eval()
 
-    def cos_loss(ta, tb):
-        return -torch.sum(ta * tb) / torch.sqrt(torch.square(ta).sum()) \
-            / torch.sqrt(torch.square(tb).sum())
-
     inputs = torch.rand(2, 3, 224, 224).cuda()
+    model = model.cuda()
     with torch.no_grad():
-        model = model.cuda()
-    targets = model(inputs)
+        targets = model(inputs)
+    targets = (targets == targets.max(dim=1, keepdim=True)[0]).to(dtype=torch.float32)
+
     test_bitwidth_list = [2, 4, 8, 16]
 
     quantized_model = prepare_by_platform(model, BackendType.Tensorrt)
     layer_parameters_dict = model_size_analysis(model)
     model_size = sum(list(layer_parameters_dict.values())) * 32 / 8 / 1024 / 1024
     logger.info("FP model size: {:.2f} MB".format(model_size))
-    # naive_sensetive_dict  = mixprecision_profiling(model, quantized_model, test_bitwidth_list,
-    #                                                data=(inputs, targets), criterion=cos_loss, algo='naive')
-    maxeigen_sensetive_dict = mixprecision_profiling(model, quantized_model, test_bitwidth_list,
-                                                     data=(inputs, targets), criterion=torch.nn.CrossEntropyLoss(), algo='hawq_eigen')
+    naive_sensetive_dict = mixprecision_profiling(model, quantized_model, test_bitwidth_list,
+                                                  data=(inputs, targets), criterion=torch.nn.CrossEntropyLoss(), algo='naive')
+    # maxeigen_sensetive_dict = mixprecision_profiling(model, quantized_model, test_bitwidth_list,
+    #                                                  data=(inputs, targets), criterion=torch.nn.CrossEntropyLoss(), algo='hawq_eigen')
     # trace_sensetive_dict = mixprecision_profiling(model, quantized_model, test_bitwidth_list,
     #                                               data=(inputs, targets), criterion=torch.nn.CrossEntropyLoss(), algo='hawq_trace')
 
-    mixprecision_bit_selection(test_bitwidth_list, maxeigen_sensetive_dict, layer_parameters_dict,
+    mixprecision_bit_selection(test_bitwidth_list, 
+                               naive_sensetive_dict,
+                               # maxeigen_sensetive_dict,
+                               # trace_sensetive_dict,
+                               layer_parameters_dict,
                                model_size_constraints=3, latency_constraints=None)
