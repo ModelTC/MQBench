@@ -84,11 +84,11 @@ class Tengine_process(LinearQuantizer_process):
                     # by fusing conv+relu, conv+relu6
                     # ref: https://github.com/OAID/Tengine/blob/cdb4ccf77c04a0a771ec6a43631b9d25acd2bae1/tools/convert_tool/utils/graph_optimizer/graph_opt.cpp#L941
                     pre_node = out2node.get(tensor_name, None)
-                    if pre_node and pre_node.op_type in {"Clip", "ReLU"}:
+                    if pre_node and pre_node.op_type in {"Clip", "Relu"}:
                         # suppose onnx version be 11
                         # for relu6
                         if pre_node.op_type == "Clip" and \
-                            not (self.get_constant(out2node[pre_node.input[1]]) == 0 and 
+                            not (self.get_constant(out2node[pre_node.input[1]]) == 0 and
                                  self.get_constant(out2node[pre_node.input[2]]) == 6):
                             continue
 

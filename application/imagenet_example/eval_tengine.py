@@ -39,7 +39,14 @@ def infer(engine, inputs: np.ndarray) -> np.ndarray:
         output_tensor = engine.getOutputTensor(0, 0)
         outputs.append(np.array(output_tensor.buf).reshape(1, -1))
 
-    return np.concatenate(outputs)
+    output = np.concatenate(outputs)
+    output_quant_param = engine.getOutputTensor(0, 0).getQuantParam(1)
+    scale, zp = output_quant_param[0][0], output_quant_param[1][0]
+    # de-quantize output
+    if scale != 0:
+        output = (output.astype(np.float32) - zp) * scale
+
+    return output
 
 def validation():
     args = parser.parse_args()
