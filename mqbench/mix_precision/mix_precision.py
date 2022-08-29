@@ -144,7 +144,7 @@ def prec_degradation_by_layer(model: Module, quantized_model: Module, bitwidth_l
                 with torch.no_grad():
                     output_data = quantized_model(input_data)
                 loss = creterion(output_data, label_data)
-                sensetive_dict[name].append(loss)
+                sensetive_dict[name].append(loss - fp_loss)
                 logger.info("Layer {} under bit {} with sensetive {}".format(name, bits, loss - fp_loss))
             mod.weight_fake_quant.disable_observer()
             mod.weight_fake_quant.disable_fake_quant()
@@ -246,16 +246,16 @@ if __name__ == '__main__':
     layer_parameters_dict = model_size_analysis(model)
     model_size = sum(list(layer_parameters_dict.values())) * 32 / 8 / 1024 / 1024
     logger.info("FP model size: {:.2f} MB".format(model_size))
-    naive_sensetive_dict = mixprecision_profiling(model, quantized_model, test_bitwidth_list,
-                                                  data=(inputs, targets), criterion=torch.nn.CrossEntropyLoss(), algo='naive')
+    # naive_sensetive_dict = mixprecision_profiling(model, quantized_model, test_bitwidth_list,
+    #                                               data=(inputs, targets), criterion=torch.nn.CrossEntropyLoss(), algo='naive')
     # maxeigen_sensetive_dict = mixprecision_profiling(model, quantized_model, test_bitwidth_list,
     #                                                  data=(inputs, targets), criterion=torch.nn.CrossEntropyLoss(), algo='hawq_eigen')
-    # trace_sensetive_dict = mixprecision_profiling(model, quantized_model, test_bitwidth_list,
-    #                                               data=(inputs, targets), criterion=torch.nn.CrossEntropyLoss(), algo='hawq_trace')
+    trace_sensetive_dict = mixprecision_profiling(model, quantized_model, test_bitwidth_list,
+                                                  data=(inputs, targets), criterion=torch.nn.CrossEntropyLoss(), algo='hawq_trace')
 
     mixprecision_bit_selection(test_bitwidth_list, 
-                               naive_sensetive_dict,
+                               # naive_sensetive_dict,
                                # maxeigen_sensetive_dict,
-                               # trace_sensetive_dict,
+                               trace_sensetive_dict,
                                layer_parameters_dict,
                                model_size_constraints=3, latency_constraints=None)

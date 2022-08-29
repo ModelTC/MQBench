@@ -2,7 +2,7 @@ from typing import Dict
 
 import torch
 import numpy as np
-from pyhessian import hessian, hessian_vector_product, group_product, orthnormal, normalization
+from pyhessian import hessian, hessian_vector_product, group_product, normalization
 
 
 class hessian_per_layer(hessian):
@@ -15,7 +15,7 @@ class hessian_per_layer(hessian):
 
     def layer_eigenvalues(self, maxIter=100, tol=1e-3) -> Dict:
         """
-        compute the top_n eigenvalues in one model by layer.
+        compute the max eigenvalues in one model by layer.
         """
         device = self.device
         max_eigenvalues_dict = {}
@@ -23,21 +23,16 @@ class hessian_per_layer(hessian):
         for name, mod in self.model.named_modules():
             if isinstance(mod, (torch.nn.Conv2d, torch.nn.Linear)):
                 weight = mod.weight
-                eigenvectors = []
                 eigenvalue = None
                 v = [torch.randn(weight.size()).to(device)]
                 v = normalization(v)
                 first_order_grad = self.first_order_grad_dict[name]
 
                 for i in range(maxIter):
-                    v = orthnormal(v, eigenvectors)
                     self.model.zero_grad()
 
-                    if self.full_dataset:
-                        tmp_eigenvalue, Hv = self.dataloader_hv_product(v)
-                    else:
-                        Hv = hessian_vector_product(first_order_grad, weight, v)
-                        tmp_eigenvalue = group_product(Hv, v).cpu().item()
+                    Hv = hessian_vector_product(first_order_grad, weight, v)
+                    tmp_eigenvalue = group_product(Hv, v).cpu().item()
 
                     v = normalization(Hv)
 
@@ -73,7 +68,7 @@ class hessian_per_layer(hessian):
 
                     Hv = hessian_vector_product(first_order_grad, weight, v)
                     trace_vhv.append(group_product(Hv, v).cpu().item())
-                    if abs(np.mean(trace_vhv) - trace) / (trace + 1e-6) < tol:
+                    if abs(np.mean(trace_vhv) - trace) / (abs(trace) + 1e-6) < tol:
                         break
                     else:
                         trace = np.mean(trace_vhv)
