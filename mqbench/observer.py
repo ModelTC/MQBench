@@ -410,7 +410,7 @@ class LSQObserver(ObserverBase):
             y = x.permute(new_axis_list)
             y = torch.flatten(y, start_dim=1)
             self.tensor_norm = y.abs().mean(1)
-            self.min_val, self.max_val = torch._aminmax(y)
+            self.min_val, self.max_val = torch._aminmax(y, 1)
 
         return x
 
@@ -422,8 +422,7 @@ class LSQObserver(ObserverBase):
         if self.pot_scale:
             scale = pot_quantization(scale)
         if not is_symmetric_quant(self.qscheme):
-            if self.min_val >= 0.:
-                zero_point = self.quant_min - torch.round(self.min_val / scale)
+            zero_point = self.quant_min - torch.round(self.min_val / scale)
         return scale, zero_point
 
 
