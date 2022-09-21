@@ -1,5 +1,6 @@
 import torch
 from torch.fx import GraphModule
+import operator
 
 from mqbench.utils.registry import register_model_quantizer
 from mqbench.utils import getitem2node
@@ -72,6 +73,8 @@ class TengineQuantizer(ModelQuantizer):
             elif node.op == "output":
                 for _arg in node.args:
                     if isinstance(_arg, torch.fx.node.Node):
+                        if _arg.target == operator.getitem:
+                            continue
                         if _arg.op == 'placeholder':
                             continue
                         node_need_to_quantize_output.append(_arg)
