@@ -1,3 +1,4 @@
+import json
 import os.path as osp
 
 import torch
@@ -32,15 +33,17 @@ __all__ = ['convert_deploy']
 @register_deploy_function(BackendType.NNIE)
 @register_deploy_function(BackendType.Vitis)
 @register_deploy_function(BackendType.OPENVINO)
+@register_deploy_function(BackendType.Sophgo_TPU)
 def convert_merge_bn(model: GraphModule, **kwargs):
+    print('wlog before convert_merge_bn, model.named_modules:', dict(model.named_modules())[''])
     logger.info("Merge BN for deploy.")
     nodes = list(model.graph.nodes)
     modules = dict(model.named_modules())
     for node in nodes:
         if node.op == 'call_module':
-            if type(modules[node.target]) in FUSED_MODULE_CONVERT_FUNCTION:
+            if node.target in modules and type(modules[node.target]) in FUSED_MODULE_CONVERT_FUNCTION:
                 FUSED_MODULE_CONVERT_FUNCTION[type(modules[node.target])](model, node)
-
+    print('wlog after convert_merge_bn, model.named_modules:', dict(model.named_modules())[''])
 
 @register_deploy_function(BackendType.Academic_NLP)
 @register_deploy_function(BackendType.Tensorrt_NLP)
@@ -54,8 +57,10 @@ def convert_merge_bn(model: GraphModule, **kwargs):
 @register_deploy_function(BackendType.NNIE)
 @register_deploy_function(BackendType.Vitis)
 @register_deploy_function(BackendType.OPENVINO)
+@register_deploy_function(BackendType.Sophgo_TPU)
 def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_path, **kwargs):
     logger.info("Export to onnx.")
+    model = model.cpu()
     output_names = kwargs.get('output_names', [])
     dynamic_axes = kwargs.get('dynamic_axes', {})
     input_names = kwargs.get('input_names', [])
@@ -112,6 +117,23 @@ def deploy_qparams_openvino(model: GraphModule, onnx_model_path, model_name, **k
 def deploy_qparams_tensorrt(model: GraphModule, onnx_model_path, model_name, **kwargs):
     logger.info("Extract qparams for TensorRT.")
     remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='tensorrt')
+@register_deploy_function(BackendType.Sophgo_TPU)
+def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, **kwargs):
+    logger.info("Extract qparams for sophgo_tpu.")
+    remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='sophgo_tpu')
+    output_path = osp.dirname(onnx_model_path)
+    context_filename = osp.join(output_path, '{}_clip_ranges.json'.format(model_name))
+    file_h = open(context_filename, "r")
+    blob_range = json.loads(file_h.read())["sophgo_tpu"]
+    file_h.close()
+    cali_table = osp.join(output_path, '{}_cali_table_from_mqbench_sophgo_tpu'.format(model_name))
+    with open(cali_table, 'w') as f:
+        f.write("# op_name    threshold    min    max\n")
+        ori_layer_names = ''
+        for name,value in blob_range.items():
+            f.write("{} {:.7f} {:.7f} {:.7f}\n".format(name, value['threshold'], value['min'], value['max']))
+            ori_layer_names += '{},'.format(value['ori_name'])
+        f.write("#{}\n".format(ori_layer_names[0:-1]))
 
 
 @register_deploy_function(BackendType.Vitis)

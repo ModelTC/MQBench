@@ -53,6 +53,7 @@ class BackendType(Enum):
     Tengine_u8 = "Tengine_u8"
     Tensorrt_NLP = "Tensorrt_NLP"
     Academic_NLP = "Academic_NLP"
+    Sophgo_TPU = "Sophgo_TPU"
 
 
 ParamsTable = {
@@ -121,6 +122,14 @@ ParamsTable = {
                                  default_act_quantize=LearnableFakeQuantize,
                                  default_weight_observer=MinMaxObserver,
                                  default_act_observer=EMAMinMaxObserver),
+    BackendType.Sophgo_TPU:   dict(qtype='affine',     # noqa: E241
+                                 w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8),
+                                 a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
+                                #  b_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
+                                 default_weight_quantize=LearnableFakeQuantize,
+                                 default_act_quantize=LearnableFakeQuantize,
+                                 default_weight_observer=MinMaxObserver,
+                                 default_act_observer=EMAMinMaxObserver)
 }
 ParamsTable[BackendType.Tensorrt_NLP] = ParamsTable[BackendType.Tensorrt]
 ParamsTable[BackendType.Academic_NLP] = ParamsTable[BackendType.Academic]
@@ -174,6 +183,12 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
             'a_qscheme': {
                 same with w_qscheme.
             }
+            "object_type": [
+                (torch.add, qconfig)
+            ],
+            "module_name": [
+                ("conv1", qconfig)
+            ]
         }
     """
     w_observer = extra_qparams.get('w_observer', None)
@@ -210,7 +225,14 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
                                                                        **w_qscheme.to_observer_params())
         a_config = backend_params['default_act_quantize'].with_args(observer=a_observer,
                                                                     **a_qscheme.to_observer_params())
-        return QConfig(activation=a_config, weight=w_config)
+        qconfig = {'': QConfig(activation=a_config, weight=w_config)}
+        object_type = extra_qparams.get('object_type', None)
+        if object_type is not None:
+            qconfig["object_type"] = object_type
+        module_name = extra_qparams.get('module_name', None)
+        if module_name is not None:
+            qconfig["module_name"] = module_name
+        return qconfig
 
     # Academic setting should specific quant scheme in config.
     if deploy_backend in [BackendType.Academic, BackendType.Academic_NLP]:
@@ -261,8 +283,62 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
     if backend_params['qtype'] == 'vitis':
         logger.info('Bias Qconfig:\n    TqtFakeQuantize with MinMaxObserver')
 
-    return QConfig(activation=a_qconfig, weight=w_qconfig)
+    qconfig = {'': QConfig(activation=a_qconfig, weight=w_qconfig)}
+    if deploy_backend == BackendType.Sophgo_TPU:
+        qconfig["object_type"] = {torch.nn.Linear:createQConfig(deploy_backend)}
+    object_type = extra_qparams.get('object_type', None)
+    if object_type is not None:
+        if "object_type" in qconfig:
+            qconfig["object_type"].update(object_type)
+        else:
+            qconfig["object_type"] = object_type
+            
+    module_name = extra_qparams.get('module_name', None)
+    if module_name is not None:
+        qconfig["module_name"] = module_name
+    return qconfig
 
+#LearnableFakeQuantize, LearnableFakeQuantize, MinMaxObserver, EMAMinMaxObserver
+# 'w_qscheme': {
+#     'bit': bitwidth,
+#     'symmetry': whether quantize scheme is symmetric,
+#     'per_channel': whether quantize scheme is perchannel,
+#     'pot_scale': whether scale is power of two.
+# }
+# 'a_qscheme': {
+#     'bit': bitwidth,
+#     'symmetry': whether quantize scheme is symmetric,
+#     'per_channel': whether quantize scheme is perchannel,
+#     'pot_scale': whether scale is power of two.
+# }
+
+def createQConfig(deploy_backend, onlyCreate_WQconfig = True, w_fakequantize = 'LearnableFakeQuantize', a_fakequantize = 'LearnableFakeQuantize', 
+                w_observer = 'MinMaxObserver', a_observer = 'EMAMinMaxObserver', w_qscheme = {}, a_qscheme = {},
+                w_fakeq_params = {}, a_fakeq_params = {}, w_observer_extra_args = {}, a_observer_extra_args = {}):
+    w_observer = ObserverDict[w_observer]
+    w_fakequantize = FakeQuantizeDict[w_fakequantize]
+    if w_qscheme is not None:
+        w_qscheme = QuantizeScheme(**w_qscheme)
+    else:
+        w_qscheme = QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8)
+        if deploy_backend == BackendType.Sophgo_TPU:
+            w_qscheme = QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8)
+
+    w_qscheme.kwargs.update(w_observer_extra_args)
+    w_qconfig = w_fakequantize.with_args(observer=w_observer, **w_fakeq_params, **w_qscheme.to_observer_params())
+
+    if not onlyCreate_WQconfig:
+        a_observer = ObserverDict[a_observer]
+        a_fakequantize = FakeQuantizeDict[a_fakequantize]
+        if a_qscheme is not None:
+            a_qscheme = QuantizeScheme(**a_qscheme)
+        else:
+            a_qscheme = QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8)
+        a_qscheme.kwargs.update(a_observer_extra_args)
+        a_qconfig = a_fakequantize.with_args(observer=a_observer, **a_fakeq_params, **a_qscheme.to_observer_params())
+    else:
+        a_qconfig = torch.nn.Identity
+    return QConfig(activation=a_qconfig, weight=w_qconfig)
 
 class CustomedTracer(Tracer):
     """
@@ -379,8 +455,10 @@ def prepare_by_platform(
     if custom_tracer is not None:
         tracer = custom_tracer
     graph = tracer.trace(model, concrete_args)
+    # print('trace graph:',graph)
     name = model.__class__.__name__ if isinstance(model, torch.nn.Module) else model.__name__
     modules = dict(model.named_modules())
+    # print('named_modules:',modules)
     graph, duplicated_modules = duplicate_reused_nodes(graph, modules)
     constant_nodes = prepare_constant_dict(graph, model)
     modules.update(duplicated_modules)

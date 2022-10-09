@@ -4,6 +4,8 @@ import random
 import shutil
 import time
 import warnings
+import numpy as np
+import copy
 
 import torch
 import torch.nn as nn
@@ -17,13 +19,14 @@ import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
-from mqbench.convert_deploy import convert_deploy
+from mqbench.convert_deploy import convert_deploy, convert_onnx
 from mqbench.prepare_by_platform import prepare_by_platform, BackendType
 from mqbench.utils.state import enable_calibration, enable_quantization, disable_all
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name]))
+cali_batch_size = 10
 
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--train_data', metavar='DIR',
@@ -80,22 +83,33 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'multi node data parallel training')
 
 parser.add_argument('--model_path', type=str, default=None)
-parser.add_argument('--backend', type=str, choices=['tengine_u8', 'tensorrt', 'nnie', 'ppl', 'snpe'], default='tensorrt')
+parser.add_argument('--output_path', type=str, default=None)
+parser.add_argument('--backend', type=str, choices=['tengine_u8', 'tensorrt', 'nnie', 'ppl', 'snpe', 'sophgo_tpu', 'openvino', 'tensorrt_nlp'], default='sophgo_tpu')
 parser.add_argument('--optim', type=str, default='sgd')
 parser.add_argument('--not-quant', action='store_true')
 parser.add_argument('--deploy', action='store_true')
+parser.add_argument('--fast_test', action='store_true')
+parser.add_argument('--cpu', action='store_true')
+parser.add_argument('--pre_eval_and_export', action='store_true')
 
 BackendMap = {'tensorrt': BackendType.Tensorrt,
                'nnie': BackendType.NNIE,
+               'tensorrt_nlp': BackendType.Tensorrt_NLP,
                'ppl': BackendType.PPLW8A16,
+               'openvino': BackendType.OPENVINO,
                'snpe': BackendType.SNPE,
                'vitis': BackendType.Vitis,
+               'sophgo_tpu': BackendType.Sophgo_TPU,
                'tengine_u8': BackendType.Tengine_u8}
 
 best_acc1 = 0
 
 def main():
     args = parser.parse_args()
+    if args.output_path is None:
+        args.output_path = './'
+    args.output_path=os.path.join(args.output_path, args.arch) 
+    os.system('mkdir -p {}'.format(args.output_path))
     args.quant = not args.not_quant
     args.backend = BackendMap[args.backend]
 
@@ -130,6 +144,18 @@ def main():
         # Simply call main_worker function
         main_worker(args.gpu, ngpus_per_node, args)
 
+layer_names = []
+features_out_hook = {}
+i = 0
+def hook(module, fea_in, fea_out):
+    global i
+    if i >= len(layer_names):
+        return None
+    name = layer_names[i]
+    i += 1
+    global features_out_hook
+    features_out_hook[name] = fea_out.cpu().numpy()
+    return None
 
 def main_worker(gpu, ngpus_per_node, args):
     global best_acc1
@@ -155,14 +181,38 @@ def main_worker(gpu, ngpus_per_node, args):
     else:
         print("=> creating model '{}'".format(args.arch))
         model = models.__dict__[args.arch]()
+    print('ori module:', model)
     # for internal cluster
     if args.model_path:
         state_dict = torch.load(args.model_path)
         print(f'load pretrained checkpoint from: {args.model_path}')
         model.load_state_dict(state_dict)
+    train_loader, train_sampler, val_loader, cali_loader = prepare_dataloader(args)
+    criterion = nn.CrossEntropyLoss().cuda(args.gpu)
+    if args.gpu is not None:
+        model = model.cuda(args.gpu)    
+    else:
+        model = model.cpu() 
+    if args.pre_eval_and_export:
+        validate(val_loader, model.eval(), criterion, args)
+        kwargs = {
+            'input_shape_dict': {'data': [cali_batch_size, 3, 224, 224]},
+            'output_path': args.output_path,
+            'model_name':  args.arch,
+            'dummy_input': None, 
+            'onnx_model_path':  os.path.join(args.output_path, '{}_ori.onnx'.format(args.arch)),
+        }
+        module_tmp = copy.deepcopy(model)
+        module_tmp = module_tmp.cpu()
+        convert_onnx(module_tmp.eval(), **kwargs)
+        del module_tmp
+        model = model.train()
     # quantize model
     if args.quant:
-        model = prepare_by_platform(model, args.backend)
+        prepare_custom_config_dict= {
+        }
+        model = prepare_by_platform(model, args.backend, prepare_custom_config_dict)
+        print('prepared module:', model)
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')
     elif args.distributed:
@@ -192,10 +242,12 @@ def main_worker(gpu, ngpus_per_node, args):
             model.features = torch.nn.DataParallel(model.features)
             model.cuda()
         else:
-            model = torch.nn.DataParallel(model).cuda()
+            if args.cpu:
+                model = model.cpu()
+            else:
+                model = model.cuda()
 
     # define loss function (criterion) and optimizer
-    criterion = nn.CrossEntropyLoss().cuda(args.gpu)
     if args.optim == 'sgd':
         optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                     momentum=args.momentum,
@@ -206,8 +258,12 @@ def main_worker(gpu, ngpus_per_node, args):
                                      weight_decay=args.weight_decay,
                                      amsgrad=False)
 
-    # prepare dataset
-    train_loader, train_sampler, val_loader, cali_loader = prepare_dataloader(args)
+    if args.quant and not args.cpu:
+        enable_calibration(model)
+        calibrate(cali_loader, model, args)
+    cudnn.benchmark = True
+    if args.quant:
+        enable_quantization(model)
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -218,6 +274,8 @@ def main_worker(gpu, ngpus_per_node, args):
             else:
                 # Map model to be loaded to specified single gpu.
                 loc = 'cuda:{}'.format(args.gpu)
+                if args.cpu:
+                    loc = 'cpu'
                 checkpoint = torch.load(args.resume, map_location=loc)
             args.start_epoch = checkpoint['epoch']
             best_acc1 = checkpoint['best_acc1']
@@ -237,26 +295,23 @@ def main_worker(gpu, ngpus_per_node, args):
                   .format(args.resume, checkpoint['epoch'], best_acc1))
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
-    elif args.quant:
-        enable_calibration(model)
-        calibrate(cali_loader, model, args)
 
-    cudnn.benchmark = True
 
-    if args.quant:
-        enable_quantization(model)
 
-    if args.quant and args.deploy:
-        convert_deploy(model.eval(), args.backend, input_shape_dict={'data': [10, 3, 224, 224]})
-        return
+            exit(1)
 
-    if args.evaluate:
-        if args.quant:
+        if args.evaluate:
             from mqbench.convert_deploy import convert_merge_bn
-            convert_merge_bn(model.eval())
-        validate(val_loader, model, criterion, args)
-        return
+            module_tmp2 = copy.deepcopy(model)
+            convert_merge_bn(module_tmp2.eval())
+            validate(val_loader, module_tmp2, criterion, args)
+            del module_tmp2
+            gen_test_ref_data(cali_loader, model, args)
+            convert_deploy(model.eval(), args.backend, input_shape_dict={'data': [cali_batch_size, 3, 224, 224]}, 
+                model_name='{}_mqmoble'.format(args.arch), output_path=args.output_path)
+        exit(0)
 
+    filename= os.path.join(args.output_path, 'checkpoint.pth.tar')
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
@@ -280,7 +335,10 @@ def main_worker(gpu, ngpus_per_node, args):
                 'state_dict': model.state_dict(),
                 'best_acc1': best_acc1,
                 'optimizer' : optimizer.state_dict(),
-            }, is_best)
+            }, is_best, filename=filename)
+    gen_test_ref_data(cali_loader, model, args)
+    convert_deploy(model.eval(), args.backend, input_shape_dict={'data': [cali_batch_size, 3, 224, 224]}, 
+        model_name='{}_mqmoble'.format(args.arch), output_path=args.output_path)
 
 def prepare_dataloader(args):
     traindir = os.path.join(args.train_data, 'train')
@@ -306,7 +364,6 @@ def prepare_dataloader(args):
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
-    cali_batch_size = 10
     cali_batch = 10
     cali_dataset = torch.utils.data.Subset(train_dataset, indices=torch.arange(cali_batch_size * cali_batch))
     cali_loader = torch.utils.data.DataLoader(cali_dataset, batch_size=cali_batch_size, shuffle=False,
@@ -324,6 +381,12 @@ def prepare_dataloader(args):
 
     return train_loader, train_sampler, val_loader, cali_loader
 
+def get_node_name_by_module_name(qname, model):
+    nodes = list(model.graph.nodes)
+    modules = dict(model.named_modules())
+    for node in nodes:
+        if node.target in modules and qname == node.target:
+            return node.name
 def calibrate(cali_loader, model, args):
     model.eval()
     print("Start calibration ...")
@@ -335,6 +398,41 @@ def calibrate(cali_loader, model, args):
             output = model(images)
             print("Calibration ==> ", i+1)
     print("End calibration.")
+    return
+def gen_test_ref_data(cali_loader, model, args):
+    model.eval()
+    global layer_names
+    hook_handles = []
+    input_data = {}
+    exclude_module = ['mqbench', 'torch.fx', 'batchnorm', 'torch.nn.modules.module.Module']
+    nodes = list(model.graph.nodes)
+    for name, child in model.named_modules():
+        if not any([i in str(type(child)) for i in exclude_module]):
+            print("add hook on", str(type(child)), name)
+            node_name = get_node_name_by_module_name(name, model)
+            layer_names.append(node_name)
+            hd = child.register_forward_hook(hook=hook)
+            hook_handles.append(hd)
+    print('layer_names:', layer_names)
+    if args.cpu:
+        model = model.cpu()
+    with torch.no_grad():
+        for i, (images, target) in enumerate(cali_loader):
+            if args.gpu is not None:
+                images = images.cuda(args.gpu, non_blocking=True)
+            else:
+                images = images.cpu()
+            output = model(images)
+            print("gen_test_ref_data ==> ", i+1)
+            if i == 0:
+                input_data['data'] = images.cpu().numpy()
+                np.savez(os.path.join(args.output_path, 'input_data.npz'), **input_data)
+                global features_out_hook
+                np.savez(os.path.join(args.output_path, 'layer_outputs.npz'), **features_out_hook)
+                for hd in hook_handles:
+                    hd.remove()
+                break
+    print("End gen_test_ref_data.")
     return
 
 def train(train_loader, model, criterion, optimizer, epoch, args):
@@ -383,6 +481,14 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         if i % args.print_freq == 0:
             progress.display(i)
 
+        # for param in model.named_parameters():
+        #     sum = torch.isnan(param[1]).sum()
+        #     if sum > 0:
+        #         print(param[0], 'has Nan', param[1].shape, 'sum:', sum)
+
+        if args.fast_test:
+            if i % 100 == 0:
+                break
 
 def validate(val_loader, model, criterion, args):
     batch_time = AverageMeter('Time', ':6.3f')
@@ -396,14 +502,21 @@ def validate(val_loader, model, criterion, args):
 
     # switch to evaluate mode
     model.eval()
+    if args.cpu:
+        model = model.cpu()
+
 
     with torch.no_grad():
         end = time.time()
         for i, (images, target) in enumerate(val_loader):
-            if args.gpu is not None:
-                images = images.cuda(args.gpu, non_blocking=True)
-            if torch.cuda.is_available():
-                target = target.cuda(args.gpu, non_blocking=True)
+            if not args.cpu:
+                if args.gpu is not None:
+                    images = images.cuda(args.gpu, non_blocking=True)
+                if torch.cuda.is_available():
+                    target = target.cuda(args.gpu, non_blocking=True)
+            else:
+                images = images.cpu()
+                target = target.cpu()
 
             # compute output
             output = model(images)
@@ -421,6 +534,11 @@ def validate(val_loader, model, criterion, args):
 
             if i % args.print_freq == 0:
                 progress.display(i)
+
+            if args.fast_test:
+                if i % 100 == 0:
+                    break
+
         # TODO: this should also be done with the ProgressMeter
         print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
             .format(top1=top1, top5=top5))
@@ -431,7 +549,7 @@ def validate(val_loader, model, criterion, args):
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, 'model_best.pth.tar')
+        shutil.copyfile(filename, filename+'_best')
 
 
 class AverageMeter(object):
