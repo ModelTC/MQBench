@@ -36,6 +36,7 @@ __all__ = ['convert_deploy']
 @register_deploy_function(BackendType.Sophgo_TPU)
 def convert_merge_bn(model: GraphModule, **kwargs):
     print('wlog before convert_merge_bn, model.named_modules:', dict(model.named_modules())[''])
+    print('wlog before convert_merge_bn, model.graph:', model.graph)
     logger.info("Merge BN for deploy.")
     nodes = list(model.graph.nodes)
     modules = dict(model.named_modules())
@@ -44,6 +45,7 @@ def convert_merge_bn(model: GraphModule, **kwargs):
             if node.target in modules and type(modules[node.target]) in FUSED_MODULE_CONVERT_FUNCTION:
                 FUSED_MODULE_CONVERT_FUNCTION[type(modules[node.target])](model, node)
     print('wlog after convert_merge_bn, model.named_modules:', dict(model.named_modules())[''])
+    print('wlog after convert_merge_bn, model.graph:', model.graph)
 
 @register_deploy_function(BackendType.Academic_NLP)
 @register_deploy_function(BackendType.Tensorrt_NLP)
@@ -59,7 +61,7 @@ def convert_merge_bn(model: GraphModule, **kwargs):
 @register_deploy_function(BackendType.OPENVINO)
 @register_deploy_function(BackendType.Sophgo_TPU)
 def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_path, **kwargs):
-    logger.info("Export to onnx.")
+    logger.info("Export to onnx, onnx_model_path:{}".format(onnx_model_path))
     model = model.cpu()
     output_names = kwargs.get('output_names', [])
     dynamic_axes = kwargs.get('dynamic_axes', {})
@@ -128,11 +130,16 @@ def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, *
     file_h.close()
     cali_table = osp.join(output_path, '{}_cali_table_from_mqbench_sophgo_tpu'.format(model_name))
     with open(cali_table, 'w') as f:
+        f.write("# work_mode:QAT_all_int8 //Automatically generated, do not modify, work_mode choice:[QAT_all_int8, QAT_mix_prec]\n")
         f.write("# op_name    threshold    min    max\n")
         ori_layer_names = ''
         for name,value in blob_range.items():
-            f.write("{} {:.7f} {:.7f} {:.7f}\n".format(name, value['threshold'], value['min'], value['max']))
-            ori_layer_names += '{},'.format(value['ori_name'])
+            if 'threshold' in value:
+                f.write("{} {:.7f} {:.7f} {:.7f}\n".format(name, value['threshold'], value['min'], value['max']))
+                ori_layer_names += '{},'.format(value['ori_name'])
+            else:
+                f.write("{} {} {} {} {}\n".format(name, len(value['step']), ' '.join([str(i) for i in value['step']]), 
+                    len(value['zero_point']), ' '.join([str(i) for i in value['zero_point']])))
         f.write("#{}\n".format(ori_layer_names[0:-1]))
 
 

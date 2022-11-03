@@ -35,6 +35,7 @@ from mqbench.utils.logger import logger
 from mqbench.utils.registry import register_model_quantizer
 from mqbench.prepare_by_platform import BackendType
 import mqbench.nn.intrinsic.qat as qnniqat
+import mqbench.nn.qat as qnnqat
 
 @register_model_quantizer(BackendType.Tensorrt)
 @register_model_quantizer(BackendType.NNIE)
@@ -100,6 +101,8 @@ class ModelQuantizer(object):
                     _tmp[_i] = inserted_node
                     modules_has_bias = (qnniqat.ConvBnReLU2d_sophgo, 
                                         qnniqat.ConvBn2d_sophgo, 
+                                        qnniqat.ConvReLU2d_sophgo, 
+                                        qnnqat.Conv2d_sophgo,
                                         qnniqat.LinearReLU_sophgo,
                                         qnniqat.Linear_sophgo)
                     modules = dict(model.named_modules())
@@ -241,7 +244,7 @@ class ModelQuantizer(object):
             if (node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_input)) or \
                 ((node.op == 'call_function' or node.op == 'call_method') and
                     node.target in self.function_type_to_quant_input) or node.name in self.additional_node_name:
-                input_node_list = self._flatten_args(node.args)
+                input_node_list = self._flatten_args(node.all_input_nodes) #wxc
                 # Means this is not Tensor + Tensor.
                 if not all([isinstance(_node, torch.fx.node.Node) for _node in input_node_list]):
                     continue

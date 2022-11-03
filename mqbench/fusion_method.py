@@ -24,6 +24,24 @@ def convert_qnniqat_linear(model, fused_node):
     linear.weight_fake_quant = fused_module.weight_fake_quant
     linear_parent_name, linear_name = _parent_name(fused_node.target)
     setattr(modules[linear_parent_name], linear_name, linear)
+@register_convert_function(qnnqat.Conv2d_sophgo)
+def convert_qnniqat_conv2d(model, fused_node):
+    modules = dict(model.named_modules())
+    fused_module = modules[fused_node.target]
+    # Create a Conv2d from FusedModule.
+    conv = torch.nn.Conv2d(fused_module.in_channels, fused_module.out_channels, fused_module.kernel_size, 
+                           fused_module.stride, fused_module.padding, fused_module.dilation,
+                           fused_module.groups, fused_module.bias is not None, fused_module.padding_mode)
+    conv.weight = fused_module.weight
+    if fused_module.bias is not None:
+        conv.bias = fused_module.bias
+    # We need nn.qat.conv here to export weight quantize node.
+    conv.qconfig = fused_module.qconfig
+    conv = torch.nn.qat.Conv2d.from_float(conv)
+    # Attach weight fake quantize params.
+    conv.weight_fake_quant = fused_module.weight_fake_quant
+    conv_parent_name, conv_name = _parent_name(fused_node.target)
+    setattr(modules[conv_parent_name], conv_name, conv)
 @register_convert_function(qnniqat.LinearReLU_sophgo)
 def linearert_qnniqat_linearrelu(model, fused_node):
     convert_qnniqat_linear(model, fused_node)

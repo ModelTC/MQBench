@@ -439,7 +439,7 @@ class ConvReLU2d_sophgo(qnnqat.Conv2d_sophgo, _FusedModule):
 
     def forward(self, input):
         # print('xxx3')
-        return self.forward(input)
+        return F.relu(qnnqat.Conv2d_sophgo.forward(self, input))
 
     @classmethod
     def from_float(cls, mod):

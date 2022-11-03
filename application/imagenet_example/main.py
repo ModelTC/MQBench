@@ -194,6 +194,7 @@ def main_worker(gpu, ngpus_per_node, args):
     else:
         model = model.cpu() 
     if args.pre_eval_and_export:
+        print('原始onnx模型精度')
         validate(val_loader, model.eval(), criterion, args)
         kwargs = {
             'input_shape_dict': {'data': [cali_batch_size, 3, 224, 224]},
@@ -301,6 +302,7 @@ def main_worker(gpu, ngpus_per_node, args):
             exit(1)
 
         if args.evaluate:
+            print('resume模型精度')
             from mqbench.convert_deploy import convert_merge_bn
             module_tmp2 = copy.deepcopy(model)
             convert_merge_bn(module_tmp2.eval())

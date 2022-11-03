@@ -1,3 +1,4 @@
+import operator
 import torch
 from torch.fx import GraphModule
 import torch.nn.intrinsic as nni
@@ -6,6 +7,7 @@ from mqbench.utils.registry import register_model_quantizer
 from mqbench.prepare_by_platform import BackendType
 from mqbench.custom_quantizer import ModelQuantizer
 import torch.nn as nn
+import mqbench.nn.qat as qnnqat
 
 
 @register_model_quantizer(BackendType.Sophgo_TPU)
@@ -23,7 +25,8 @@ class SophgoTpuQuantizer(ModelQuantizer):
             # Intrinsic modules:
             nni.ConvBn2d: qnniqat.ConvBn2d_sophgo,
             nni.ConvBnReLU2d: qnniqat.ConvBnReLU2d_sophgo,
-            # nni.ConvReLU2d: qnniqat.ConvReLU2d_sophgo,
+            nn.Conv2d: qnnqat.Conv2d_sophgo,
+            nni.ConvReLU2d: qnniqat.ConvReLU2d_sophgo,
             nni.LinearReLU: qnniqat.LinearReLU_sophgo,
             nn.Linear: qnniqat.Linear_sophgo
         }
@@ -32,10 +35,18 @@ class SophgoTpuQuantizer(ModelQuantizer):
     def module_type_to_quant_input(self) -> tuple:
         return super().module_type_to_quant_input + (
             qnniqat.ConvBnReLU2d_sophgo, 
+            qnniqat.ConvReLU2d_sophgo,
             qnniqat.ConvBn2d_sophgo,
+            qnnqat.Conv2d_sophgo,
             qnniqat.LinearReLU_sophgo,
-            qnniqat.Linear_sophgo
+            qnniqat.Linear_sophgo,
         )
+
+    @property
+    def function_type_to_quant_input(self) -> tuple:
+        return super().function_type_to_quant_input + [
+            torch.cat
+        ]
 
     @property
     def _passed_func_type(self):
