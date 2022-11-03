@@ -79,8 +79,6 @@ class LinearBn1d_sophgo(Linear, _FusedModule):
         scale = scale_w*in_scale
         if torch.nonzero(scale).size()[0] != scale.numel():
             print('Linear error! scale has 0, scale:', scale)
-            scale[torch.abs(scale) < 1e-10] = 1e-10
-            print('new scale:', scale)
 
         bias_q = bias/scale
         bias = (bias_q.round()-bias_q).detach() + bias_q
@@ -199,20 +197,21 @@ class Linear_sophgo(nn.Linear):
         self.weight_fake_quant = qconfig.weight(factory_kwargs=factory_kwargs)
 
     def bias_fake_quant(self, bias, scale_w, in_scale):
-        scale = scale_w*in_scale
-        if torch.nonzero(scale).size()[0] != scale.numel():
-            print('Linear error! scale has 0, scale:', scale)
-            scale[torch.abs(scale) < 1e-10] = 1e-10
-            print('new scale:', scale)
+        if bias is not None:
+            scale = scale_w*in_scale
+            if torch.nonzero(scale).size()[0] != scale.numel():
+                print('Linear error! scale has 0, scale:', scale)
+                scale[torch.abs(scale) < 1e-10] = 1e-10
+                print('new scale:', scale)
 
-        bias_q = bias/scale
-        bias = (bias_q.round()-bias_q).detach() + bias_q
-        bias = bias*scale
+            bias_q = bias/scale
+            bias = (bias_q.round()-bias_q).detach() + bias_q
+            bias = bias*scale
         return bias
 
     def _forward(self, input):
-        # print('xxx1')
-        in_scale = self.input_fake_quantizer.scale #����һ��activation_fake_quant�ڵ��ȡscale
+        assert hasattr(self, 'input_fake_quantizer')
+        in_scale = self.input_fake_quantizer.scale
         conv = F.linear(input, self.weight_fake_quant(self.weight), 
             self.bias_fake_quant(self.bias, self.weight_fake_quant.scale, in_scale))
         return conv

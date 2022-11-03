@@ -129,15 +129,12 @@ class _ConvBnNd(nn.modules.conv._ConvNd, _FusedModule):
         scale = scale_w*in_scale
         if torch.nonzero(scale).size()[0] != scale.numel():
             print('error! scale has 0, scale:', scale)
-            scale[torch.abs(scale) < 1e-10] = 1e-10
-            print('new scale:', scale)
         bias_q = bias/scale
         bias = (bias_q.round()-bias_q).detach() + bias_q
         bias = bias*scale
         return bias
 
     def _forward(self, input):
-        # print('xxx2')
         assert self.bn.running_var is not None
         running_std = torch.sqrt(self.bn.running_var + self.bn.eps)
         scale_factor = self.bn.weight / running_std
@@ -438,7 +435,6 @@ class ConvReLU2d_sophgo(qnnqat.Conv2d_sophgo, _FusedModule):
                                          qconfig=qconfig)
 
     def forward(self, input):
-        # print('xxx3')
         return F.relu(qnnqat.Conv2d_sophgo.forward(self, input))
 
     @classmethod

@@ -24,8 +24,9 @@ def convert_qnniqat_linear(model, fused_node):
     linear.weight_fake_quant = fused_module.weight_fake_quant
     linear_parent_name, linear_name = _parent_name(fused_node.target)
     setattr(modules[linear_parent_name], linear_name, linear)
+
 @register_convert_function(qnnqat.Conv2d_sophgo)
-def convert_qnniqat_conv2d(model, fused_node):
+def convert_qnnqat_conv2d(model, fused_node):
     modules = dict(model.named_modules())
     fused_module = modules[fused_node.target]
     # Create a Conv2d from FusedModule.
@@ -42,6 +43,29 @@ def convert_qnniqat_conv2d(model, fused_node):
     conv.weight_fake_quant = fused_module.weight_fake_quant
     conv_parent_name, conv_name = _parent_name(fused_node.target)
     setattr(modules[conv_parent_name], conv_name, conv)
+
+@register_convert_function(qnnqat.ConvTranspose2d_sophgo)
+def convert_qnnqat_deconv2d(model, fused_node):
+    modules = dict(model.named_modules())
+    fused_module = modules[fused_node.target]
+    # Create a ConvTranspose2d from FusedModule.
+    deconv = torch.nn.ConvTranspose2d(fused_module.in_channels, fused_module.out_channels, fused_module.kernel_size, 
+                                      stride=fused_module.stride, padding=fused_module.padding, output_padding=fused_module.output_padding,
+                                      groups=fused_module.groups, bias=fused_module.bias is not None, 
+                                      dilation=fused_module.dilation,
+                                      padding_mode=fused_module.padding_mode) 
+    deconv.weight = fused_module.weight
+    if fused_module.bias is not None:
+        deconv.bias = fused_module.bias
+    fused_deconv = fuse_deconv_bn_eval(deconv.eval(), fused_module.bn)
+    # We need nn.qat.conv here to export weight quantize node.
+    fused_deconv.qconfig = fused_module.qconfig
+    fused_deconv = qnnqat.ConvTranspose2d.from_float(fused_deconv)
+    # Attach weight fake quantize params.
+    fused_deconv.weight_fake_quant = fused_module.weight_fake_quant
+    deconv_parent_name, deconv_name = _parent_name(fused_node.target)
+    setattr(modules[deconv_parent_name], deconv_name, fused_deconv)
+
 @register_convert_function(qnniqat.LinearReLU_sophgo)
 def linearert_qnniqat_linearrelu(model, fused_node):
     convert_qnniqat_linear(model, fused_node)
@@ -67,6 +91,7 @@ def linearert_qnniqat_linearrelu(model, fused_node):
                     _node.args = tuple(_tmp)
     model.recompile()
     model.graph.lint()
+
 @register_convert_function(qnni.LinearBn1d)
 def convert_qnni_linearbn(model, fused_node):
     modules = dict(model.named_modules())
@@ -89,10 +114,10 @@ def convert_qnniqat_linearbn(model, fused_node):
     # Merge Linear + BN
     fused_linear = fuse_linear_bn_eval(linear.eval(), fused_module.bn)
     # We need nn.qat.linear here to export weight quantize node.
-    linear.qconfig = fused_module.qconfig
-    linear = torch.nn.qat.Linear.from_float(linear)
+    fused_linear.qconfig = fused_module.qconfig
+    fused_linear = torch.nn.qat.Linear.from_float(fused_linear)
     # Attach weight fake quantize params.
-    linear.weight_fake_quant = fused_module.weight_fake_quant
+    fused_linear.weight_fake_quant = fused_module.weight_fake_quant
     linear_parent_name, linear_name = _parent_name(fused_node.target)
     setattr(modules[linear_parent_name], linear_name, fused_linear)
 
@@ -195,6 +220,7 @@ def convert_qnni_deconvbn(model, fused_node):
 
 @register_convert_function(qnniqat.ConvTransposeFreezebn2d)
 @register_convert_function(qnniqat.ConvTransposeBn2d)
+@register_convert_function(qnniqat.ConvTransposeBn2d_sophgo)
 def convert_qnniqat_deconvbn(model, fused_node):
     modules = dict(model.named_modules())
     fused_module = modules[fused_node.target]
@@ -219,6 +245,7 @@ def convert_qnniqat_deconvbn(model, fused_node):
 
 @register_convert_function(qnni.ConvTransposeFreezebnReLU2d)
 @register_convert_function(qnni.ConvTransposeBnReLU2d)
+@register_convert_function(qnniqat.ConvTransposeBnReLU2d_sophgo)
 def convert_qnni_deconvbnrelu(model, fused_node):
     convert_qnni_deconvbn(model, fused_node)
     modules = dict(model.named_modules())
@@ -247,6 +274,7 @@ def convert_qnni_deconvbnrelu(model, fused_node):
 
 @register_convert_function(qnniqat.ConvTransposeFreezebnReLU2d)
 @register_convert_function(qnniqat.ConvTransposeBnReLU2d)
+@register_convert_function(qnniqat.ConvTransposeBnReLU2d_sophgo)
 def convert_qnniqat_deconvbnrelu(model, fused_node):
     convert_qnniqat_deconvbn(model, fused_node)
     modules = dict(model.named_modules())

@@ -86,36 +86,25 @@ class ModelQuantizer(object):
             with graph.inserting_after(node):
                 inserted_node = graph.create_node("call_module", quantizer_name, (node,), {})
                 for _node in nodes:
-                    _node.args = self._fix_succ_recursivly(model, _node, fake_quantizer, _node.args, node, inserted_node)
+                    _node.args = self._fix_succ_recursivly(_node.args, node, inserted_node)
 
         model.recompile()
         model.graph.lint()
         return model
 
-    def _fix_succ_recursivly(self, model, node, fake_quantizer, args, target_node, inserted_node):
+    def _fix_succ_recursivly(self, args, target_node, inserted_node):
         # List / Tuple
         if isinstance(args, (list, tuple)):
             _tmp = list(args)
             for _i, _arg in enumerate(args):
                 if _arg == target_node:
                     _tmp[_i] = inserted_node
-                    modules_has_bias = (qnniqat.ConvBnReLU2d_sophgo, 
-                                        qnniqat.ConvBn2d_sophgo, 
-                                        qnniqat.ConvReLU2d_sophgo, 
-                                        qnnqat.Conv2d_sophgo,
-                                        qnniqat.LinearReLU_sophgo,
-                                        qnniqat.Linear_sophgo)
-                    modules = dict(model.named_modules())
-                    if (node.op == "call_module" and isinstance(modules[node.target], modules_has_bias)):
-                        setattr(modules[node.target], "input_fake_quantizer", fake_quantizer)
-                        print('wlog:', node.target,'\'type is:', type(modules[node.target]), "add its new attr:input_fake_quantizer", ',its old pre op is:', 
-                            target_node.name, target_node.type, ',its new insert pre op is:', inserted_node.name)
                 elif isinstance(_arg, tuple):
-                    _tmp[_i] = self._fix_succ_recursivly(model, node, fake_quantizer, _arg, target_node, inserted_node)
+                    _tmp[_i] = self._fix_succ_recursivly(_arg, target_node, inserted_node)
                 elif isinstance(_arg, list):
-                    _tmp[_i] = list(self._fix_succ_recursivly(model, node, fake_quantizer, _arg, target_node, inserted_node))
+                    _tmp[_i] = list(self._fix_succ_recursivly(_arg, target_node, inserted_node))
                 elif isinstance(_arg, dict):
-                    _tmp[_i] = self._fix_succ_recursivly(model, node, fake_quantizer, _arg, target_node, inserted_node)
+                    _tmp[_i] = self._fix_succ_recursivly(_arg, target_node, inserted_node)
             return tuple(_tmp)
         # Dict
         elif isinstance(args, dict):
@@ -124,7 +113,7 @@ class ModelQuantizer(object):
                 if v == target_node:
                     _tmp[k] = inserted_node
                 elif not isinstance(v, torch.fx.node.Node):
-                    _tmp[k] = self._fix_succ_recursivly(model, node, fake_quantizer, v, target_node, inserted_node)
+                    _tmp[k] = self._fix_succ_recursivly(v, target_node, inserted_node)
                 else:
                     _tmp[k] = v
             return _tmp

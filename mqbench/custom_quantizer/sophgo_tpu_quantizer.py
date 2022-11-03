@@ -3,6 +3,7 @@ import torch
 from torch.fx import GraphModule
 import torch.nn.intrinsic as nni
 import mqbench.nn.intrinsic.qat as qnniqat
+import mqbench.nn.intrinsic as qnni
 from mqbench.utils.registry import register_model_quantizer
 from mqbench.prepare_by_platform import BackendType
 from mqbench.custom_quantizer import ModelQuantizer
@@ -28,19 +29,16 @@ class SophgoTpuQuantizer(ModelQuantizer):
             nn.Conv2d: qnnqat.Conv2d_sophgo,
             nni.ConvReLU2d: qnniqat.ConvReLU2d_sophgo,
             nni.LinearReLU: qnniqat.LinearReLU_sophgo,
-            nn.Linear: qnniqat.Linear_sophgo
+            nn.Linear: qnniqat.Linear_sophgo,
+            qnni.LinearBn1d: qnniqat.LinearBn1d_sophgo,
+            qnni.ConvTransposeBnReLU2d:qnniqat.ConvTransposeBnReLU2d_sophgo,
+            qnni.ConvTransposeReLU2d:qnniqat.ConvTransposeReLU2d_sophgo,
+            qnni.ConvTransposeBn2d:qnniqat.ConvTransposeBn2d_sophgo,
         }
 
     @property
     def module_type_to_quant_input(self) -> tuple:
-        return super().module_type_to_quant_input + (
-            qnniqat.ConvBnReLU2d_sophgo, 
-            qnniqat.ConvReLU2d_sophgo,
-            qnniqat.ConvBn2d_sophgo,
-            qnnqat.Conv2d_sophgo,
-            qnniqat.LinearReLU_sophgo,
-            qnniqat.Linear_sophgo,
-        )
+        return super().module_type_to_quant_input + self._layers_need_scale_form_input_fake_quantizer
 
     @property
     def function_type_to_quant_input(self) -> tuple:
@@ -63,6 +61,22 @@ class SophgoTpuQuantizer(ModelQuantizer):
             torch.nn.ReLU6
         )
 
+    @property
+    def _layers_need_scale_form_input_fake_quantizer(self):
+        return (
+            qnniqat.ConvBnReLU2d_sophgo, #todo:add transposeConv support
+            qnniqat.ConvBn2d_sophgo, 
+            qnniqat.ConvReLU2d_sophgo, 
+            qnnqat.Conv2d_sophgo,
+            qnniqat.LinearReLU_sophgo,
+            qnniqat.Linear_sophgo,
+        )
+
+    def prepare(self, model: GraphModule, qconfig):
+        model = super().prepare(model, qconfig)
+        model = self._set_fake_quantizer_to_next_weight_layer(model)
+        return model
+
     def _find_act_quants(self, model: GraphModule) -> list:
         nodes = list(model.graph.nodes)
         modules = dict(model.named_modules())
@@ -83,3 +97,14 @@ class SophgoTpuQuantizer(ModelQuantizer):
                     else:
                         node_need_to_quantize_output.append(next_node)
         return node_need_to_quantize_output
+
+    def _set_fake_quantizer_to_next_weight_layer(self, model: GraphModule):
+        nodes = list(model.graph.nodes)
+        modules = dict(model.named_modules())
+        for node in nodes:
+            if node.target in modules and "_post_act_fake_quantizer" in node.target:
+                fake_quantizer = getattr(model, node.target)
+                for user in node.users:
+                    if (user.op == "call_module" and isinstance(modules[user.target], self._layers_need_scale_form_input_fake_quantizer)):
+                        setattr(modules[user.target], "input_fake_quantizer", fake_quantizer)
+                        print('wlog:', user.target,'\'type is:', type(modules[user.target]), "add input_fake_quantizer")
