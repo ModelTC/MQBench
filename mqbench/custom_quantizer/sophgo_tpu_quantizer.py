@@ -108,3 +108,4 @@ class SophgoTpuQuantizer(ModelQuantizer):
                     if (user.op == "call_module" and isinstance(modules[user.target], self._layers_need_scale_form_input_fake_quantizer)):
                         setattr(modules[user.target], "input_fake_quantizer", fake_quantizer)
                         print('wlog:', user.target,'\'type is:', type(modules[user.target]), "add input_fake_quantizer")
+        return model

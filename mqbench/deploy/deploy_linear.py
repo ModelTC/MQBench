@@ -122,33 +122,6 @@ class LinearQuantizer_process(object):
             tensor_name = '{}_{}'.format(input_0, out2node[input_0].op_type if input_0 in out2node else '')
             if tensor_name[-1] == '_':
                 tensor_name = tensor_name[:-1]
-            if tensor_name in clip_ranges:
-                return tensor_name
-            elif node.op_type in ['Flatten', 'Resize'] and node.output[0] in inp2node:
-                return find_the_closest_clip_range(inp2node[node.output[0]][0][0])
-            else:
-                return None
-
-        for node in graph.node:
-            if node.op_type in ['Flatten', 'Resize']:
-                tensor_name = find_the_closest_clip_range(node)
-                if tensor_name:
-                    old = clip_ranges[tensor_name]
-                    new_name = node.input[0]
-                    new_name = '{}_{}'.format(new_name, out2node[new_name].op_type if new_name in out2node else '')
-                    if new_name[-1] == '_':
-                        new_name = tensor_name[:-1]    
-                    clip_ranges[new_name] = copy.deepcopy(old)
-                    clip_ranges[new_name]['ori_name'] =  new_name
-                    logger.info(f'Pass <{tensor_name}> clip range to <{node.name}> input <{node.input[0]}>.')
-        return clip_ranges
-
-    def post_process_clip_ranges2(self, clip_ranges, graph, inp2node, out2node):
-        def find_the_closest_clip_range(node):
-            input_0 = node.input[0]
-            tensor_name = '{}_{}'.format(input_0, out2node[input_0].op_type if input_0 in out2node else '')
-            if tensor_name[-1] == '_':
-                tensor_name = tensor_name[:-1]
 
             if tensor_name in clip_ranges:
                 return tensor_name
@@ -211,16 +184,14 @@ class LinearQuantizer_process(object):
                     logger.info("Vitis-DPU does not support per-channel quatization.")
                     raise NotImplementedError("Vitis-DPU does not support per-channel quatization.")
                 elif backend == 'sophgo_tpu':
-
-                    if len(next_nodes) == 1 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:#?????????1???,??1??????conv??
-                        next_node_output = next_nodes[0][0].output[0] #???????1???????1???tensor
-                        if next_node_output in inp2node:
-                            print(next_node_output, 'not in inp2node')
-                        if len(inp2node[next_node_output]) == 0:
-                            print(next_node_output, ',users not exsit')
-                        if inp2node[next_node_output][0][0].op_type == 'Relu':##???????1???conv????1??????Relu(fake->conv->relu)
+                    #卷积权重per-channel量化参数，bias的per-chan量化参数没有去调优
+                    if len(next_nodes) == 1 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:#当前伪量化节点只有1个后继，且第1个后继节点为conv类型
+                        next_node_output = next_nodes[0][0].output[0]
+                        if inp2node[next_node_output][0][0].op_type == 'Relu':##伪量化节点的第1个后继conv节点的第1个后继节点为Relu(fake->conv->relu)
+                            #若是fake->conv->relu,因为relu会融合到前面conv，故用relu的输出tensor名+Relu作为量化参数保存tensor名
                             tensor_name = '{}_{}'.format(inp2node[next_node_output][0][0].output[0], 'Relu')
                         else:
+                            #若是fake->conv->not_relu_type,直接用conv的输出tensor名+conv作为量化参数保存tensor名
                             tensor_name = '{}_{}'.format(next_node_output, next_nodes[0][0].op_type)
                         tensor_name += '_{}'.format('weight' if next_nodes[0][1] == 1 else 'bias'  )
                         clip_ranges[tensor_name] = {'step': [float(x) for x in scale],
@@ -236,10 +207,10 @@ class LinearQuantizer_process(object):
                     if backend == 'sophgo_tpu':
                         assert next_nodes[0][0].op_type == 'Gemm'
                         tensor_name += '{}_{}_weight'.format(inp2node[node.output[0]][0][0].output[0], inp2node[node.output[0]][0][0].op_type)
-                        clip_ranges[tensor_name] = {'threshold':float(scale * max(-qmin, qmax)), #???????????
+                        clip_ranges[tensor_name] = {'threshold':float(scale * max(-qmin, qmax)), #对称量化时这个参数生效
                                                     'min': float(scale * (qmin - zero_point)),
                                                     'max': float(scale * (qmax - zero_point)),
-                                                    'ori_name':pre_layer_name}                    
+                                                    'ori_name': 'none'}                    
                 elif len(next_nodes) == 1 and next_nodes[0][1] == 2 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:
                     # fake quantize for bias 
                     assert backend == 'vitis'
@@ -251,14 +222,6 @@ class LinearQuantizer_process(object):
                     # fake quantize for activations
                     self.deal_with_activation_fakequant(node, inp2node)
                     tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
-                    scale_name = node.input[1]
-                    pre_layer_name = 'none'
-                    post_str = '_post_act_fake_quantizer.scale'
-                    if scale_name.endswith(post_str):
-                        pre_layer_name = scale_name[:len(scale_name)-len(post_str)]
-                    else:
-                        print('not _post_act_fake_quantizer')
-                    input_0 = node.input[0]
                     for out in graph.output:
                         if out.name == node.output[0]:
                             out.name = tensor_name
@@ -272,14 +235,14 @@ class LinearQuantizer_process(object):
                              'max': float(scale * (qmax - zero_point))}
                         ]
                     elif backend == 'sophgo_tpu':
-                        input_0 = node.input[0]
-                        tensor_name += '_{}'.format(out2node[input_0].op_type if input_0 in out2node else '')
-                        if tensor_name[-1] == '_':
-                            tensor_name = tensor_name[:-1]
-                        clip_ranges[tensor_name] = {'threshold':float(scale * max(-qmin, qmax)), #�Գ�����ʱ���������Ч
+                        scale_name = node.input[1]
+                        post_str = '_post_act_fake_quantizer.scale'
+                        if tensor_name in out2node:
+                            tensor_name += '_{}'.format(out2node[tensor_name].op_type)
+                        clip_ranges[tensor_name] = {'threshold':float(scale * max(-qmin, qmax)), #对称量化时这个参数生效
                                                     'min': float(scale * (qmin - zero_point)),
                                                     'max': float(scale * (qmax - zero_point)),
-                                                    'ori_name':pre_layer_name}
+                                                    'ori_name': scale_name[:len(scale_name)-len(post_str)] if scale_name.endswith(post_str) else 'none'}
                 if backend == 'ppl':
                     clip_ranges[tensor_name] = {'step': float(scale),
                                                 'zero_point': int(zero_point),
@@ -302,7 +265,7 @@ class LinearQuantizer_process(object):
             if name in (out2node.keys() | inp2node.keys()):
                 continue
             graph.initializer.remove(initial_data)
-
+        
         clip_ranges = self.post_process_clip_ranges(clip_ranges, graph, inp2node, out2node)
         if backend == 'tensorrt':
             context = {"tensorrt": {"blob_range": clip_ranges}}
@@ -315,7 +278,7 @@ class LinearQuantizer_process(object):
         elif backend == 'ppl-cuda':
             context = {'ppl-cuda': clip_ranges}
         elif backend == 'sophgo_tpu':
-            clip_ranges = self.post_process_clip_ranges2(clip_ranges, graph, inp2node, out2node)
+            #clip_ranges = self.post_process_clip_ranges(clip_ranges, graph, inp2node, out2node)
             context = {'sophgo_tpu': clip_ranges}
             context['w_qscheme'] = ''
             context['a_qscheme'] = ''

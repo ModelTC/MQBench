@@ -211,7 +211,7 @@ class Linear_sophgo(nn.Linear):
 
     def _forward(self, input):
         assert hasattr(self, 'input_fake_quantizer')
-        in_scale = self.input_fake_quantizer.scale
+        in_scale = self.input_fake_quantizer.scale #����һ��activation_fake_quant�ڵ��ȡscale
         conv = F.linear(input, self.weight_fake_quant(self.weight), 
             self.bias_fake_quant(self.bias, self.weight_fake_quant.scale, in_scale))
         return conv

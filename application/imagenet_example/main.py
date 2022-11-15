@@ -26,8 +26,8 @@ from mqbench.utils.state import enable_calibration, enable_quantization, disable
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name]))
-cali_batch_size = 10
 
+cali_batch_size = 16
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--train_data', metavar='DIR',
                     help='path to dataset', required=True)
@@ -181,7 +181,11 @@ def main_worker(gpu, ngpus_per_node, args):
     else:
         print("=> creating model '{}'".format(args.arch))
         model = models.__dict__[args.arch]()
-    print('ori module:', model)
+    # print('ori module:', model)
+
+    # model = models._utils.IntermediateLayerGetter(model,{'layer1': 'feat1', 'layer3': 'feat2'})
+    # print(model(out_put))
+
     # for internal cluster
     if args.model_path:
         state_dict = torch.load(args.model_path)
@@ -194,8 +198,9 @@ def main_worker(gpu, ngpus_per_node, args):
     else:
         model = model.cpu() 
     if args.pre_eval_and_export:
-        print('原始onnx模型精度')
-        validate(val_loader, model.eval(), criterion, args)
+        print('??onnx????')
+        validate(val_loader, model.eval(), criterion, args)  #?????model.cuda(),???
+
         kwargs = {
             'input_shape_dict': {'data': [cali_batch_size, 3, 224, 224]},
             'output_path': args.output_path,
@@ -207,13 +212,15 @@ def main_worker(gpu, ngpus_per_node, args):
         module_tmp = module_tmp.cpu()
         convert_onnx(module_tmp.eval(), **kwargs)
         del module_tmp
-        model = model.train()
+        model = model.train() #prepare?????train??!!
+
     # quantize model
     if args.quant:
         prepare_custom_config_dict= {
+            # 'extra_qconfig_dict':{'w_fakequantize':'PACTFakeQuantize'}
         }
         model = prepare_by_platform(model, args.backend, prepare_custom_config_dict)
-        print('prepared module:', model)
+        # print('prepared module:', model)
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')
     elif args.distributed:
@@ -246,6 +253,7 @@ def main_worker(gpu, ngpus_per_node, args):
             if args.cpu:
                 model = model.cpu()
             else:
+                # model = torch.nn.DataParallel(model).cuda() #???gpu?????????resume??cpu??
                 model = model.cuda()
 
     # define loss function (criterion) and optimizer
@@ -262,7 +270,10 @@ def main_worker(gpu, ngpus_per_node, args):
     if args.quant and not args.cpu:
         enable_calibration(model)
         calibrate(cali_loader, model, args)
+
     cudnn.benchmark = True
+    # cudnn.deterministic = True #????????
+
     if args.quant:
         enable_quantization(model)
 
@@ -285,6 +296,8 @@ def main_worker(gpu, ngpus_per_node, args):
                 best_acc1 = best_acc1.to(args.gpu)
 
             state_dict = checkpoint['state_dict']
+            # if args.cpu:
+            #     model = torch.nn.DataParallel(model).cpu()
             model_dict = model.state_dict()
             if 'module.' in list(state_dict.keys())[0] and 'module.' not in list(model_dict.keys())[0]:
                 for k in list(state_dict.keys()):
@@ -302,7 +315,7 @@ def main_worker(gpu, ngpus_per_node, args):
             exit(1)
 
         if args.evaluate:
-            print('resume模型精度')
+            print('resume????')
             from mqbench.convert_deploy import convert_merge_bn
             module_tmp2 = copy.deepcopy(model)
             convert_merge_bn(module_tmp2.eval())
@@ -338,9 +351,26 @@ def main_worker(gpu, ngpus_per_node, args):
                 'best_acc1': best_acc1,
                 'optimizer' : optimizer.state_dict(),
             }, is_best, filename=filename)
+    
+    print('disable_all?????:')
+    disable_all(model)
+    validate(val_loader, model, criterion, args)
+
+    enable_quantization(model)
     gen_test_ref_data(cali_loader, model, args)
     convert_deploy(model.eval(), args.backend, input_shape_dict={'data': [cali_batch_size, 3, 224, 224]}, 
         model_name='{}_mqmoble'.format(args.arch), output_path=args.output_path)
+
+    model_path = os.path.join(args.output_path, '{}.pt'.format('{}_mqmoble'.format(args.arch)))
+    model_pt = torch.load(model_path)
+    if args.gpu is not None:
+        model_pt = model_pt.cuda(args.gpu)    
+    else:
+        model_pt = model_pt.cpu() 
+    print('load fused bn pt?????:')
+    validate(val_loader, model_pt, criterion, args)
+
+    validate_onnx(criterion, args)
 
 def prepare_dataloader(args):
     traindir = os.path.join(args.train_data, 'train')
@@ -383,6 +413,23 @@ def prepare_dataloader(args):
 
     return train_loader, train_sampler, val_loader, cali_loader
 
+def prepare_dataloader_batch(args, batch_size):
+    valdir = os.path.join(args.val_data, 'val')
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225])
+
+    val_loader = torch.utils.data.DataLoader(
+        datasets.ImageFolder(valdir, transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            normalize,
+        ])),
+        batch_size=batch_size, shuffle=False,
+        num_workers=args.workers, pin_memory=True)
+
+    return val_loader
+
 def get_node_name_by_module_name(qname, model):
     nodes = list(model.graph.nodes)
     modules = dict(model.named_modules())
@@ -402,6 +449,7 @@ def calibrate(cali_loader, model, args):
     print("End calibration.")
     return
 def gen_test_ref_data(cali_loader, model, args):
+    return
     model.eval()
     global layer_names
     hook_handles = []
@@ -411,6 +459,9 @@ def gen_test_ref_data(cali_loader, model, args):
     for name, child in model.named_modules():
         if not any([i in str(type(child)) for i in exclude_module]):
             print("add hook on", str(type(child)), name)
+            # if '_dup' in name:
+            #     name = name[:-5]
+            # layer_names.append(name.replace('.','_'))
             node_name = get_node_name_by_module_name(name, model)
             layer_names.append(node_name)
             hd = child.register_forward_hook(hook=hook)
@@ -483,13 +534,14 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         if i % args.print_freq == 0:
             progress.display(i)
 
+        # # ????????????            
         # for param in model.named_parameters():
         #     sum = torch.isnan(param[1]).sum()
         #     if sum > 0:
         #         print(param[0], 'has Nan', param[1].shape, 'sum:', sum)
 
         if args.fast_test:
-            if i % 100 == 0:
+            if i % 64 == 0:
                 break
 
 def validate(val_loader, model, criterion, args):
@@ -540,6 +592,65 @@ def validate(val_loader, model, criterion, args):
             if args.fast_test:
                 if i % 100 == 0:
                     break
+
+        # TODO: this should also be done with the ProgressMeter
+        print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
+            .format(top1=top1, top5=top5))
+
+    return top1.avg
+
+
+def validate_onnx(criterion, args):
+    import onnxruntime as rt
+    val_loader = prepare_dataloader_batch(args, cali_batch_size)
+    model_path = os.path.join(args.output_path, '{}_deploy_model.onnx'.format('{}_mqmoble'.format(args.arch)))
+    sess = rt.InferenceSession(model_path, providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'])
+    input_name = sess.get_inputs()[0].name
+
+    batch_time = AverageMeter('Time', ':6.3f')
+    losses = AverageMeter('Loss', ':.4e')
+    top1 = AverageMeter('Acc@1', ':6.2f')
+    top5 = AverageMeter('Acc@5', ':6.2f')
+    progress = ProgressMeter(
+        len(val_loader),
+        [batch_time, losses, top1, top5],
+        prefix='Test: ')
+
+
+    with torch.no_grad():
+        end = time.time()
+        for i, (images, target) in enumerate(val_loader):
+            if not args.cpu:
+                if args.gpu is not None:
+                    images = images.cuda(args.gpu, non_blocking=True)
+                if torch.cuda.is_available():
+                    target = target.cuda(args.gpu, non_blocking=True)
+            else:
+                images = images.cpu()
+                target = target.cpu()
+
+            # compute output
+            # output = model(images)
+            output = sess.run(None, {input_name:images.clone().detach().cpu().numpy()})
+            output = torch.from_numpy(output[0]).cuda(args.gpu, non_blocking=True)
+            loss = criterion(output, target)
+
+            # measure accuracy and record loss
+            acc1, acc5 = accuracy(output, target, topk=(1, 5))
+            losses.update(loss.item(), images.size(0))
+            top1.update(acc1[0], images.size(0))
+            top5.update(acc5[0], images.size(0))
+
+            # measure elapsed time
+            batch_time.update(time.time() - end)
+            end = time.time()
+
+            if i % args.print_freq == 0:
+                progress.display(i)
+
+            # if args.fast_test:
+            #     if i % 100 == 0:
+            #         break
 
         # TODO: this should also be done with the ProgressMeter
         print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'

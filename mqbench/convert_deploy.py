@@ -35,8 +35,8 @@ __all__ = ['convert_deploy']
 @register_deploy_function(BackendType.OPENVINO)
 @register_deploy_function(BackendType.Sophgo_TPU)
 def convert_merge_bn(model: GraphModule, **kwargs):
-    print('wlog before convert_merge_bn, model.named_modules:', dict(model.named_modules())[''])
-    print('wlog before convert_merge_bn, model.graph:', model.graph)
+    # print('wlog before convert_merge_bn, model.named_modules:', dict(model.named_modules())[''])
+    # print('wlog before convert_merge_bn, model.graph:', model.graph)
     logger.info("Merge BN for deploy.")
     nodes = list(model.graph.nodes)
     modules = dict(model.named_modules())
@@ -44,8 +44,8 @@ def convert_merge_bn(model: GraphModule, **kwargs):
         if node.op == 'call_module':
             if node.target in modules and type(modules[node.target]) in FUSED_MODULE_CONVERT_FUNCTION:
                 FUSED_MODULE_CONVERT_FUNCTION[type(modules[node.target])](model, node)
-    print('wlog after convert_merge_bn, model.named_modules:', dict(model.named_modules())[''])
-    print('wlog after convert_merge_bn, model.graph:', model.graph)
+    # print('wlog after convert_merge_bn, model.named_modules:', dict(model.named_modules())[''])
+    # print('wlog after convert_merge_bn, model.graph:', model.graph)
 
 @register_deploy_function(BackendType.Academic_NLP)
 @register_deploy_function(BackendType.Tensorrt_NLP)
@@ -61,6 +61,9 @@ def convert_merge_bn(model: GraphModule, **kwargs):
 @register_deploy_function(BackendType.OPENVINO)
 @register_deploy_function(BackendType.Sophgo_TPU)
 def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_path, **kwargs):
+    pt_file_name = onnx_model_path.split('.')
+    pt_file_name[-1] = 'pt'
+    torch.save(model, '.'.join(pt_file_name))
     logger.info("Export to onnx, onnx_model_path:{}".format(onnx_model_path))
     model = model.cpu()
     output_names = kwargs.get('output_names', [])
@@ -95,7 +98,6 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
                               custom_opsets={'' : opset_version},
                               enable_onnx_checker=False)
 
-
 @register_deploy_function(BackendType.Tensorrt)
 def convert_onnx_qlinear(model: GraphModule, onnx_model_path, model_name, **kwargs):
     if kwargs.get('deploy_to_qlinear', False):
@@ -119,6 +121,7 @@ def deploy_qparams_openvino(model: GraphModule, onnx_model_path, model_name, **k
 def deploy_qparams_tensorrt(model: GraphModule, onnx_model_path, model_name, **kwargs):
     logger.info("Extract qparams for TensorRT.")
     remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='tensorrt')
+
 @register_deploy_function(BackendType.Sophgo_TPU)
 def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, **kwargs):
     logger.info("Extract qparams for sophgo_tpu.")
