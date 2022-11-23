@@ -168,7 +168,6 @@ class LinearQuantizer_process(object):
                     logger.info("Vitis-DPU does not support per-channel quatization.")
                     raise NotImplementedError("Vitis-DPU does not support per-channel quatization.")
 
-
             elif node.op_type in PERTENSOR_FAKEQUANTIZER:
                 if node.output[0] not in inp2node:
                     assert node.output[0] in [l.name for l in graph.output]
@@ -237,6 +236,7 @@ class LinearQuantizer_process(object):
             context = {'vitis': clip_ranges}
         elif backend == 'ppl-cuda':
             context = {'ppl-cuda': clip_ranges}
+
         output_path = os.path.dirname(onnx_path)
         context_filename = os.path.join(output_path, '{}_clip_ranges.json'.format(model_name))
         with open(context_filename, 'w') as f:

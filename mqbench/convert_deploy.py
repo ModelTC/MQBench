@@ -18,11 +18,13 @@ from mqbench.deploy import (
     remove_fakequantize_and_collect_params,
     replace_fakequantize_and_collect_params_openvino,
     remove_fakequantize_and_collect_params_tengine,
+    remove_fakequantize_and_collect_params_stpu,
     ONNXQLinearPass, ONNXQNNPass
 )
 
 __all__ = ['convert_deploy']
 
+@register_deploy_function(BackendType.STPU)
 @register_deploy_function(BackendType.Tengine_u8)
 @register_deploy_function(BackendType.PPLCUDA)
 @register_deploy_function(BackendType.ONNX_QNN)
@@ -42,6 +44,7 @@ def convert_merge_bn(model: GraphModule, **kwargs):
                 FUSED_MODULE_CONVERT_FUNCTION[type(modules[node.target])](model, node)
 
 
+@register_deploy_function(BackendType.STPU)
 @register_deploy_function(BackendType.Academic_NLP)
 @register_deploy_function(BackendType.Tensorrt_NLP)
 @register_deploy_function(BackendType.Tengine_u8)
@@ -143,10 +146,17 @@ def deploy_qparams_ppl_cuda(model: GraphModule, onnx_model_path, model_name, **k
     logger.info("Extract qparams for PPL-CUDA.")
     remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='ppl-cuda')
 
+
 @register_deploy_function(BackendType.Tengine_u8)
 def deploy_qparams_tengine(model: GraphModule, onnx_model_path, model_name, **kwargs):
     logger.info("Extract qparams for Tengine.")
     remove_fakequantize_and_collect_params_tengine(onnx_model_path, model_name)
+
+
+@register_deploy_function(BackendType.STPU)
+def deploy_qparams_stpu(model: GraphModule, onnx_model_path, model_name, **kwargs):
+    logger.info("Extract qparams for STPU.")
+    remove_fakequantize_and_collect_params_stpu(onnx_model_path, model_name)
 
 
 def convert_deploy(model: GraphModule, backend_type: BackendType,
