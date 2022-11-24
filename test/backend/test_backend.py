@@ -184,3 +184,16 @@ class TestQuantizeBackend(unittest.TestCase):
         loss.backward()
         model_prepared.eval()
         convert_deploy(model_prepared, BackendType.Tengine_u8, {'x': [1, 3, 224, 224]}, model_name='resnet18')
+
+    def test_quantize_stpu(self):
+        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
+        dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
+        model_to_quantize.train()
+        model_prepared = prepare_by_platform(model_to_quantize, BackendType.STPU)
+        enable_calibration(model_prepared)
+        model_prepared(dummy_input)
+        enable_quantization(model_prepared)
+        loss = model_prepared(dummy_input).sum()
+        loss.backward()
+        model_prepared.eval()
+        convert_deploy(model_prepared, BackendType.STPU, {'x': [1, 3, 224, 224]}, model_name='resnet18')

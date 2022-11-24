@@ -6,6 +6,7 @@ from mqbench.prepare_by_platform import BackendType
 from mqbench.custom_quantizer import ModelQuantizer
 
 
+@register_model_quantizer(BackendType.STPU)
 @register_model_quantizer(BackendType.PPLCUDA)
 @register_model_quantizer(BackendType.SNPE)
 @register_model_quantizer(BackendType.PPLW8A16)
