@@ -78,6 +78,7 @@ class STPU_process(LinearQuantizer_process):
                     "max": 1
                 }
         quant_params = self.post_process_clip_ranges(quant_params, graph, inp2node)
+        self.merge_relu_layer(graph, quant_params, out2node)
         for node in graph.node:
             self.update_emin(node, quant_params, named_initializer)
         # Delete node and init.
@@ -97,6 +98,13 @@ class STPU_process(LinearQuantizer_process):
         onnx.save(model, onnx_filename)
 
         logger.info("Finish deploy process.")
+
+    def merge_relu_layer(self, graph, quant_params, out2node):
+        for node in graph.node:
+            if node.op_type == 'Relu' and node.output[0] in quant_params:
+                prev_nodes = out2node[node.input[0]]
+                quant_params[prev_nodes.output[0]] = quant_params[node.output[0]].copy()
+                logger.info("Merge conv + relu range pass {} to {}".format(node.output[0], prev_nodes.output[0]))
 
     def update_emin(self, node, quant_params, named_initializer):
         '''EMIN is some kind of magic number for STPU.
