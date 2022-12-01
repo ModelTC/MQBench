@@ -91,15 +91,16 @@ parser.add_argument('--deploy', action='store_true')
 parser.add_argument('--fast_test', action='store_true')
 parser.add_argument('--cpu', action='store_true')
 parser.add_argument('--pre_eval_and_export', action='store_true')
+parser.add_argument('--deploy_batch_size', default=1, type=int, help='deploy_batch_size.')
 
 BackendMap = {'tensorrt': BackendType.Tensorrt,
+               'sophgo_tpu': BackendType.Sophgo_TPU,
                'nnie': BackendType.NNIE,
                'tensorrt_nlp': BackendType.Tensorrt_NLP,
                'ppl': BackendType.PPLW8A16,
                'openvino': BackendType.OPENVINO,
                'snpe': BackendType.SNPE,
                'vitis': BackendType.Vitis,
-               'sophgo_tpu': BackendType.Sophgo_TPU,
                'tengine_u8': BackendType.Tengine_u8}
 
 best_acc1 = 0
@@ -198,11 +199,11 @@ def main_worker(gpu, ngpus_per_node, args):
     else:
         model = model.cpu() 
     if args.pre_eval_and_export:
-        print('??onnx????')
+        print('原始onnx模型精度')
         validate(val_loader, model.eval(), criterion, args)  #?????model.cuda(),???
 
         kwargs = {
-            'input_shape_dict': {'data': [cali_batch_size, 3, 224, 224]},
+            'input_shape_dict': {'data': [args.deploy_batch_size, 3, 224, 224]},
             'output_path': args.output_path,
             'model_name':  args.arch,
             'dummy_input': None, 
@@ -271,11 +272,11 @@ def main_worker(gpu, ngpus_per_node, args):
         enable_calibration(model)
         calibrate(cali_loader, model, args)
 
-    cudnn.benchmark = True
-    # cudnn.deterministic = True #????????
-
     if args.quant:
         enable_quantization(model)
+
+    cudnn.benchmark = True
+    # cudnn.deterministic = True #避免计算结果波动
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -315,18 +316,17 @@ def main_worker(gpu, ngpus_per_node, args):
             exit(1)
 
         if args.evaluate:
-            print('resume????')
+            print('resume模型精度')
             from mqbench.convert_deploy import convert_merge_bn
             module_tmp2 = copy.deepcopy(model)
             convert_merge_bn(module_tmp2.eval())
             validate(val_loader, module_tmp2, criterion, args)
             del module_tmp2
             gen_test_ref_data(cali_loader, model, args)
-            convert_deploy(model.eval(), args.backend, input_shape_dict={'data': [cali_batch_size, 3, 224, 224]}, 
+            convert_deploy(model.eval(), args.backend, input_shape_dict={'data': [args.deploy_batch_size, 3, 224, 224]}, 
                 model_name='{}_mqmoble'.format(args.arch), output_path=args.output_path)
         exit(0)
-
-    filename= os.path.join(args.output_path, 'checkpoint.pth.tar')
+     
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
@@ -336,6 +336,10 @@ def main_worker(gpu, ngpus_per_node, args):
         train(train_loader, model, criterion, optimizer, epoch, args)
 
         # evaluate on validation set
+        if epoch == args.epochs - 1:
+            print('qat训练后的带量化节点的eval精度:')
+        else:
+            print(f'epoch{epoch}训练后eval精度:')
         acc1 = validate(val_loader, model, criterion, args)
 
         # remember best acc@1 and save checkpoint
@@ -350,15 +354,16 @@ def main_worker(gpu, ngpus_per_node, args):
                 'state_dict': model.state_dict(),
                 'best_acc1': best_acc1,
                 'optimizer' : optimizer.state_dict(),
-            }, is_best, filename=filename)
+             }, is_best, filename=os.path.join(args.output_path, 'checkpoint.pth.tar'))
     
-    print('disable_all?????:')
+    print('disable_all后测试精度:')
     disable_all(model)
     validate(val_loader, model, criterion, args)
 
     enable_quantization(model)
     gen_test_ref_data(cali_loader, model, args)
-    convert_deploy(model.eval(), args.backend, input_shape_dict={'data': [cali_batch_size, 3, 224, 224]}, 
+    convert_deploy(model.eval(), args.backend, input_shape_dict=
+        {'data': [args.deploy_batch_size, 3, 224, 224]}, 
         model_name='{}_mqmoble'.format(args.arch), output_path=args.output_path)
 
     model_path = os.path.join(args.output_path, '{}.pt'.format('{}_mqmoble'.format(args.arch)))
@@ -367,7 +372,7 @@ def main_worker(gpu, ngpus_per_node, args):
         model_pt = model_pt.cuda(args.gpu)    
     else:
         model_pt = model_pt.cpu() 
-    print('load fused bn pt?????:')
+    print('load fused bn pt后测试精度:')
     validate(val_loader, model_pt, criterion, args)
 
     validate_onnx(criterion, args)
@@ -534,7 +539,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         if i % args.print_freq == 0:
             progress.display(i)
 
-        # # ????????????            
+        # # 检查训练过程参数是否异常            
         # for param in model.named_parameters():
         #     sum = torch.isnan(param[1]).sum()
         #     if sum > 0:
@@ -602,7 +607,7 @@ def validate(val_loader, model, criterion, args):
 
 def validate_onnx(criterion, args):
     import onnxruntime as rt
-    val_loader = prepare_dataloader_batch(args, cali_batch_size)
+    val_loader = prepare_dataloader_batch(args, args.deploy_batch_size)
     model_path = os.path.join(args.output_path, '{}_deploy_model.onnx'.format('{}_mqmoble'.format(args.arch)))
     sess = rt.InferenceSession(model_path, providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'])
     input_name = sess.get_inputs()[0].name
@@ -653,6 +658,7 @@ def validate_onnx(criterion, args):
             #         break
 
         # TODO: this should also be done with the ProgressMeter
+        print('deploy_model.onnx完成所有处理后的onnxruntime测试精度:')
         print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
             .format(top1=top1, top5=top5))
 

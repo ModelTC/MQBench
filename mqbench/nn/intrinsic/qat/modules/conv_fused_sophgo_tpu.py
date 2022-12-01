@@ -142,12 +142,6 @@ class _ConvBnNd(nn.modules.conv._ConvNd, _FusedModule):
         weight_shape[0] = -1
         bias_shape = [1] * len(self.weight.shape)
         bias_shape[1] = -1
-        if torch.isnan(self.weight).any():
-            print('weight have nan')
-        if self.input_fake_quantizer is not None and torch.isnan(self.input_fake_quantizer.scale).any():
-            print('input_fake_quantizer.scale have nan')
-        if self.bias is not None and torch.isnan(self.bias).any():
-            print('weight have nan')
         scaled_weight = self.weight_fake_quant(self.weight * scale_factor.reshape(weight_shape))
         #bias伪量化
         if self.weight_fake_quant.fake_quant_enabled[0] == 1:

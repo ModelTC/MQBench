@@ -115,13 +115,16 @@ class LinearQuantizer_process(object):
             logger.info(f'Clip weights <{tensor_name}> to range [{clip_range_min}, {clip_range_max}].')
         new_data = numpy_helper.from_array(new_data)
         named_initializer[tensor_name].raw_data = new_data.raw_data
+    def get_correct_sophgo_tpu_input_tensor_name(self, node, out2node):
+        input_0 = node.input[0]
+        tensor_name = '{}_{}'.format(input_0, out2node[input_0].op_type if input_0 in out2node else '')
+        if tensor_name[-1] == '_':
+            tensor_name = tensor_name[:-1]
+        return tensor_name
 
     def post_process_clip_ranges(self, clip_ranges, graph, inp2node, out2node):
         def find_the_closest_clip_range(node):
-            input_0 = node.input[0]
-            tensor_name = '{}_{}'.format(input_0, out2node[input_0].op_type if input_0 in out2node else '')
-            if tensor_name[-1] == '_':
-                tensor_name = tensor_name[:-1]
+            tensor_name = self.get_correct_sophgo_tpu_input_tensor_name(node, out2node)
 
             if tensor_name in clip_ranges:
                 return tensor_name
@@ -134,14 +137,49 @@ class LinearQuantizer_process(object):
             if node.op_type in ['Flatten', 'Resize']:
                 tensor_name = find_the_closest_clip_range(node)
                 if tensor_name:
-                    old = clip_ranges[tensor_name]
-                    new_name = node.input[0]
-                    new_name = '{}_{}'.format(new_name, out2node[new_name].op_type if new_name in out2node else '')
-                    if new_name[-1] == '_':
-                        new_name = tensor_name[:-1]    
-                    clip_ranges[new_name] = copy.deepcopy(old)
+                    new_name = self.get_correct_sophgo_tpu_input_tensor_name(node, out2node)
+                    clip_ranges[new_name] = copy.deepcopy(clip_ranges[tensor_name])
                     clip_ranges[new_name]['ori_name'] =  new_name
                     logger.info(f'Pass <{tensor_name}> clip range to <{node.name}> input <{node.input[0]}>.')
+        return clip_ranges
+    def post_process_clip_ranges2(self, clip_ranges, graph, inp2node, out2node):
+        op_type_inAndOutShouldSameClipRange = ['Flatten', 'Resize', 'Reshape', 'Transpose']
+        for node in graph.node:
+            tensor_name = f'{node.output[0]}_{node.op_type}'
+            if tensor_name not in clip_ranges:  
+                pre_op = node
+                finded = False
+                while pre_op.op_type in op_type_inAndOutShouldSameClipRange:
+                    tensor_name2 = self.get_correct_sophgo_tpu_input_tensor_name(pre_op, out2node)
+                    if tensor_name2 in clip_ranges:
+                        finded = True
+                        clip_ranges[tensor_name] = clip_ranges[tensor_name2]
+                        print(f'pre_op finded, transfer {tensor_name2} to {tensor_name}')
+                        break
+                    if pre_op.input[0] in out2node:
+                        pre_op = out2node[pre_op.input[0]]
+                    else:
+                        print(f'{pre_op.name}\'s pre_node not exist')
+                        break
+                if not finded:
+                    if node.output[0] in inp2node:
+                        next_op = inp2node[node.output[0]][0][0]
+                        while next_op.op_type in op_type_inAndOutShouldSameClipRange:
+                            tensor_name2 = f'{next_op.output[0]}_{next_op.op_type}'
+                            if tensor_name2 in clip_ranges:
+                                finded = True
+                                clip_ranges[tensor_name] = clip_ranges[tensor_name2]
+                                print(f'next_op finded, transfer {tensor_name2} to {tensor_name}')
+                                break
+                            if next_op.output[0] in inp2node:
+                                next_op = inp2node[next_op.output[0]][0][0]
+                            else:
+                                print(f'{next_op.name}\'s next_op not exist')
+                                break
+                    else:
+                        print(f'{node.name}\'s next_op not exist')
+                if not finded:
+                    print(f'Waring:{node.name}\'s clip_ranges not exist, maybe have some error')
         return clip_ranges
 
     def remove_fakequantize_and_collect_params(self, onnx_path, model_name, backend):
@@ -278,7 +316,7 @@ class LinearQuantizer_process(object):
         elif backend == 'ppl-cuda':
             context = {'ppl-cuda': clip_ranges}
         elif backend == 'sophgo_tpu':
-            #clip_ranges = self.post_process_clip_ranges(clip_ranges, graph, inp2node, out2node)
+            clip_ranges = self.post_process_clip_ranges2(clip_ranges, graph, inp2node, out2node)
             context = {'sophgo_tpu': clip_ranges}
             context['w_qscheme'] = ''
             context['a_qscheme'] = ''

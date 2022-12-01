@@ -14,12 +14,12 @@ model_list_all=[
   "--arch=resnet18 --batch-size=128",
   "--arch=vgg11_bn --batch-size=32",
   "--arch=resnet50 --batch-size=32",
-  #"--arch=squeezenet1_1 --batch-size=128",
+  "--arch=squeezenet1_1 --batch-size=128",
 
   #"--arch=mobilenet_v3_small  --batch-size=128"
 ]
 
-cmd_str = "--epochs=10 --lr=1e-4 --gpu=0 --pretrained --evaluate --backend=sophgo_tpu --optim=sgd --pre_eval_and_export --train_data=/data/imagenet/for_train_val/ --val_data=/data/imagenet/for_train_val/ --output_path=/workspace/tmp_path_1024"#  --fast_test"
+cmd_str = "--epochs=1 --deploy_batch_size=10 --lr=1e-4 --gpu=0 --pretrained --evaluate --backend=sophgo_tpu --optim=sgd --pre_eval_and_export --train_data=/data/imagenet/for_train_val/ --val_data=/data/imagenet/for_train_val/ --output_path=/workspace/tmp_path_1119"#  --fast_test"
 
 def worker(cmd_line):
     os.system(cmd_line)

@@ -70,6 +70,10 @@ class SophgoTpuQuantizer(ModelQuantizer):
             qnnqat.Conv2d_sophgo,
             qnniqat.LinearReLU_sophgo,
             qnniqat.Linear_sophgo,
+            qnniqat.LinearBn1d_sophgo,
+            qnniqat.ConvTransposeBnReLU2d_sophgo,
+            qnniqat.ConvTransposeReLU2d_sophgo,
+            qnniqat.ConvTransposeBn2d_sophgo,			
         )
 
     def prepare(self, model: GraphModule, qconfig):

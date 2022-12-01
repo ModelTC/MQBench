@@ -76,13 +76,14 @@ class LinearBn1d_sophgo(Linear, _FusedModule):
         return self 
 
     def bias_fake_quant(self, bias, scale_w, in_scale):
-        scale = scale_w*in_scale
-        if torch.nonzero(scale).size()[0] != scale.numel():
-            print('Linear error! scale has 0, scale:', scale)
+        if bias is not None:
+            scale = scale_w*in_scale
+            if torch.nonzero(scale).size()[0] != scale.numel():
+                print('Linear error! scale has 0, scale:', scale)
 
-        bias_q = bias/scale
-        bias = (bias_q.round()-bias_q).detach() + bias_q
-        bias = bias*scale
+            bias_q = bias/scale
+            bias = (bias_q.round()-bias_q).detach() + bias_q
+            bias = bias*scale
         return bias
 
     def _forward(self, input):
