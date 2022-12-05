@@ -178,8 +178,8 @@ class LinearQuantizer_process(object):
                                 break
                     else:
                         print(f'{node.name}\'s next_op not exist')
-                if not finded:
-                    print(f'Waring:{node.name}\'s clip_ranges not exist, maybe have some error')
+                # if not finded:
+                #     print(f'Waring:{node.name}\'s clip_ranges not exist, maybe have some error')
         return clip_ranges
 
     def remove_fakequantize_and_collect_params(self, onnx_path, model_name, backend):

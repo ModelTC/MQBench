@@ -133,16 +133,24 @@ def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, *
     file_h.close()
     cali_table = osp.join(output_path, '{}_cali_table_from_mqbench_sophgo_tpu'.format(model_name))
     with open(cali_table, 'w') as f:
-        f.write("# work_mode:QAT_all_int8 //Automatically generated, do not modify, work_mode choice:[QAT_all_int8, QAT_mix_prec]\n")
+        f.write("# work_mode:QAT_all_int8 #Automatically generated, do not modify, work_mode choice:[QAT_all_int8]\n")
         f.write("# op_name    threshold    min    max\n")
         ori_layer_names = ''
+        weight_scale = []
         for name,value in blob_range.items():
             if 'threshold' in value:
                 f.write("{} {:.7f} {:.7f} {:.7f}\n".format(name, value['threshold'], value['min'], value['max']))
                 ori_layer_names += '{},'.format(value['ori_name'])
             else:
-                f.write("{} {} {} {} {}\n".format(name, len(value['step']), ' '.join([str(i) for i in value['step']]), 
-                    len(value['zero_point']), ' '.join([str(i) for i in value['zero_point']])))
+                tmpstr = "{} {} {} {} {}\n".format(name, len(value['step']), ' '.join([str(i) for i in value['step']]), 
+                        len(value['zero_point']), ' '.join([str(i) for i in value['zero_point']]))
+                if name.endswith('_weight') or name.endswith('_bias'):
+                    weight_scale.append(tmpstr)
+                else:
+                    f.write(tmpstr)
+        f.write('#weight_scale\n')
+        for i in weight_scale:
+            f.write(i)
         f.write("#{}\n".format(ori_layer_names[0:-1]))
 
 

@@ -124,8 +124,7 @@ ParamsTable = {
                                  default_act_observer=EMAMinMaxObserver),
     BackendType.Sophgo_TPU:   dict(qtype='affine',     # noqa: E241
                                  w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8),
-                                 a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
-                                #  b_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
+                                 a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
                                  default_weight_quantize=LearnableFakeQuantize,
                                  default_act_quantize=LearnableFakeQuantize,
                                  default_weight_observer=MinMaxObserver,
