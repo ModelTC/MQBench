@@ -163,7 +163,7 @@ def hawq(model: Module, data: Tuple, criterion, type='trace'):
     elif type == 'trace':
         return hessian_comp.layer_trace()
     else:
-        raise(NotImplementedError, "{} is not supported, only trace and eigenvalues.".format(type))
+        raise NotImplementedError("{} is not supported, only trace and eigenvalues.".format(type))
 
 
 def mixprecision_bit_selection(bitwidth_list, sensetive_dict, layer_parameters_dict, model_size_constraints, latency_constraints):

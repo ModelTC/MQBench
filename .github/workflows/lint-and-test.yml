@@ -4,7 +4,7 @@ on: [push]
 
 jobs:
   Lint-and-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
     strategy:
       max-parallel: 5
 
@@ -13,28 +13,21 @@ jobs:
     - name: Set up Python 3.6
       uses: actions/setup-python@v2
       with:
-        python-version: 3.6
-    - name: Add conda to system path
-      run: |
-        # $CONDA is an environment variable pointing to the root of the miniconda directory
-        echo $CONDA/bin >> $GITHUB_PATH
+        python-version: 3.7
     - name: Lint with flake8
       run: |
-        conda install flake8
+        pip install flake8
         flake8 .
-    - name: Install onnxruntime and onnxsim
-      run:
-        pip install onnxruntime onnx-simplifier
-    - name: Install prettytable
-      run:
-        pip install prettytable
     - name: Install Protobuf
       run:
-        conda install protobuf=3.20.1
+        pip install protobuf==3.19.0
+    - name: Install onnx onnxruntime and onnxsim
+      run:
+        pip install onnx==1.7.0 onnxruntime onnx-simplifier
     - name: Install MQBench
       run: |
         python setup.py develop
     - name: Test with pytest
       run: |
-        conda install pytest
+        pip install pytest
         pytest test --junitxml=report.xml

@@ -47,7 +47,7 @@ def fuse_linear_bn(linear, bn):
         >>> b1 = nn.BatchNorm1d(20)
         >>> m2 = fuse_linear_bn(m1, b1)
     """
-    assert(linear.training == bn.training),\
+    assert linear.training == bn.training, \
         "Linear and BN both must be in the same mode (train or eval)."
 
     if linear.training:
@@ -59,7 +59,7 @@ def fuse_linear_bn(linear, bn):
 
 
 def fuse_deconv_bn(deconv, bn):
-    assert(deconv.training == bn.training),\
+    assert deconv.training == bn.training, \
         'DeConv and BN must be in the same mode (train or eval)'
 
     if deconv.training:
@@ -72,7 +72,7 @@ def fuse_deconv_bn(deconv, bn):
 
 
 def fuse_deconv_bn_relu(deconv, bn, relu):
-    assert(deconv.training == bn.training == relu.training),\
+    assert deconv.training == bn.training == relu.training, \
         "DeConv and BN both must be in the same mode (train or eval)."
 
     if deconv.training:
@@ -85,7 +85,7 @@ def fuse_deconv_bn_relu(deconv, bn, relu):
 
 
 def fuse_conv_freezebn(conv, bn):
-    assert(bn.training is False), "Freezebn must be eval."
+    assert bn.training is False, "Freezebn must be eval."
 
     fused_module_class_map = {
         nn.Conv2d: qnni.ConvFreezebn2d,
@@ -102,7 +102,7 @@ def fuse_conv_freezebn(conv, bn):
 
 
 def fuse_conv_freezebn_relu(conv, bn, relu):
-    assert(conv.training == relu.training and bn.training is False), "Conv and relu both must be in the same mode (train or eval) and bn must be eval."
+    assert conv.training == relu.training and bn.training is False, "Conv and relu both must be in the same mode (train or eval) and bn must be eval."
     fused_module : Optional[Type[nn.Sequential]] = None
     if conv.training:
         map_to_fused_module_train = {
@@ -123,7 +123,7 @@ def fuse_conv_freezebn_relu(conv, bn, relu):
 
 
 def fuse_deconv_freezebn(deconv, bn):
-    assert(bn.training is False), "Freezebn must be eval."
+    assert bn.training is False, "Freezebn must be eval."
 
     if deconv.training:
         assert bn.num_features == deconv.out_channels, 'Output channel of ConvTranspose2d must match num_features of BatchNorm2d'
@@ -135,7 +135,7 @@ def fuse_deconv_freezebn(deconv, bn):
 
 
 def fuse_deconv_freezebn_relu(deconv, bn, relu):
-    assert(deconv.training == relu.training and bn.training is False), "Conv and relu both must be in the same mode (train or eval) and bn must be eval."
+    assert deconv.training == relu.training and bn.training is False, "Conv and relu both must be in the same mode (train or eval) and bn must be eval."
 
     if deconv.training:
         assert bn.num_features == deconv.out_channels, 'Output channel of ConvTranspose2d must match num_features of BatchNorm2d'

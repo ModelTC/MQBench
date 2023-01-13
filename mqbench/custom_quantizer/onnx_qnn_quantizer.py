@@ -56,9 +56,9 @@ class ONNXQNNQuantizer(ModelQuantizer):
         all_mappings = get_combined_dict(
             get_default_qat_module_mappings(), additional_qat_module_mapping)
         # There is no QLinearFC in ONNX for now.
-        del(all_mappings[torch.nn.modules.linear.Linear])
-        del(all_mappings[torch.nn.intrinsic.modules.fused.LinearReLU])
-        del(all_mappings[qnni.modules.fused.LinearBn1d])
+        del all_mappings[torch.nn.modules.linear.Linear]
+        del all_mappings[torch.nn.intrinsic.modules.fused.LinearReLU]
+        del all_mappings[qnni.modules.fused.LinearBn1d]
         root = self._convert(root, all_mappings, inplace=True)
         return root
 
