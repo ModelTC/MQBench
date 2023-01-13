@@ -3,7 +3,6 @@ import os
 from collections import OrderedDict
 
 import onnx
-from onnx import numpy_helper
 
 from mqbench.deploy.common import (get_constant_inputs, prepare_data,
                                    prepare_initializer,
@@ -14,10 +13,6 @@ from mqbench.utils.logger import logger
 
 
 class STPU_process(LinearQuantizer_process):
-
-    @staticmethod
-    def get_constant(node: onnx.NodeProto):
-        return numpy_helper.to_array(node.attribute[0].t).tolist()
 
     def remove_fakequantize_and_collect_params(self, onnx_path, model_name):
         model = onnx.load(onnx_path)
