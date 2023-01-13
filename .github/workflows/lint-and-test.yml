@@ -4,7 +4,7 @@ on: [push]
 
 jobs:
   Lint-and-test:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-18.04
     strategy:
       max-parallel: 5
 
@@ -21,7 +21,7 @@ jobs:
     - name: Install Protobuf
       run:
         pip install protobuf==3.19.0
-    - name: Install onnxruntime and onnxsim
+    - name: Install onnx==1.7.0 onnxruntime and onnxsim
       run:
         pip install onnxruntime onnx-simplifier
     - name: Install MQBench
