@@ -20,7 +20,7 @@ jobs:
         flake8 .
     - name: Install Protobuf
       run:
-        pip install protobuf==3.20.1
+        pip install protobuf==3.19.0
     - name: Install onnxruntime and onnxsim
       run:
         pip install onnxruntime onnx-simplifier
