@@ -21,9 +21,9 @@ jobs:
     - name: Install Protobuf
       run:
         pip install protobuf==3.19.0
-    - name: Install onnx==1.7.0 onnxruntime and onnxsim
+    - name: Install onnx onnxruntime and onnxsim
       run:
-        pip install onnxruntime onnx-simplifier
+        pip install onnx==1.7.0 onnxruntime onnx-simplifier
     - name: Install MQBench
       run: |
         python setup.py develop
