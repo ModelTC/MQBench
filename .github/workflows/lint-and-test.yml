@@ -20,13 +20,10 @@ jobs:
         flake8 .
     - name: Install Protobuf
       run:
-        pip install protobuf=3.20.1
+        pip install protobuf==3.20.1
     - name: Install onnxruntime and onnxsim
       run:
         pip install onnxruntime onnx-simplifier
-    - name: Install prettytable
-      run:
-        pip install prettytable
     - name: Install MQBench
       run: |
         python setup.py develop
