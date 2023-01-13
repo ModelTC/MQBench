@@ -26,7 +26,7 @@ jobs:
         pip install prettytable
     - name: Install Protobuf
       run:
-        [i[]] install protobuf=3.20.1
+        pip install protobuf=3.20.1
     - name: Install MQBench
       run: |
         python setup.py develop
