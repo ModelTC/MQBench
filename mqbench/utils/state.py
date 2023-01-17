@@ -38,13 +38,32 @@ def enable_calibration_quantization(model, quantizer_type='fake_quant'):
             submodule.enable_fake_quant()
 
 
-def enable_quantization(model):
+def enable_quantization(model, weight_cali_on=False, act_cali_on=False):
+    '''
+    We enable all quantization for quantization aware training.
+    But we sometimes remain weight calibration on for update minmax all along.
+    For some hardware, there is no weight quant param to be set, which mean it will calculate
+    min / max for weight.
+    Assume weight scale * 127 > abs(weight).max() after some training. Training scale and deploy
+    scale can be various, so we have to update range every iter.
+    '''
     logger.info('Disable observer and Enable quantize.')
+    if weight_cali_on:
+        logger.info('Enable observer for weight.')
+    if act_cali_on:
+        logger.info('Enable observer for activation.')
     for name, submodule in model.named_modules():
         if isinstance(submodule, torch.quantization.FakeQuantizeBase):
-            logger.debug('Disable observer and Enable quant: {}'.format(name))
-            submodule.disable_observer()
             submodule.enable_fake_quant()
+            if weight_cali_on and 'weight_fake_quant' in name:
+                logger.debug('Enable observer and Enable quant: {}'.format(name))
+                submodule.enable_observer()
+            elif act_cali_on and 'act_fake_quant' in name:
+                logger.debug('Enable observer and Enable quant: {}'.format(name))
+                submodule.enable_observer()
+            else:
+                logger.debug('Disable observer and Enable quant: {}'.format(name))
+                submodule.disable_observer()
 
 
 def disable_all(model):
