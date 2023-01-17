@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "../../opt/conda/lib/python3.7/site-packages/MQBench-0.0.6-py3.7.egg/mqbench"
+		},
+		{
+			"path": "."
+		}
+	],
+	"settings": {}
+}
