@@ -25,22 +25,17 @@ def enable_calibration_woquantization(model, quantizer_type='fake_quant'):
             submodule.disable_fake_quant()
 
 
-def enable_quantization_wocalibration(model, quantizer_type_suffix='_act_fake_quantizer'):
-
-    logger.info('Enable observer and Enable quantize for {}'.format(quantizer_type_suffix))
-    logger.info('Disable observer and Enable quantize for the rest.')
+def enable_calibration_quantization(model, quantizer_type='fake_quant'):
+    logger.info('Enable observer and Enable quantize for {}'.format(quantizer_type))
     for name, submodule in model.named_modules():
         if isinstance(submodule, torch.quantization.FakeQuantizeBase):
-            if quantizer_type_suffix in name:
-                # Mean act fake quant.
-                logger.info('Disable observer and Enable quant: {}'.format(name))
+            if quantizer_type not in name: 
                 submodule.disable_observer()
-                submodule.enable_fake_quant()
-            else:
-                # Means weight fake quant
-                logger.info('Enable observer and Enable quant: {}'.format(name))
-                submodule.enable_observer()
-                submodule.enable_fake_quant()
+                submodule.disable_fake_quant()
+                continue
+            logger.debug('Enable observer and Enable quant: {}'.format(name))
+            submodule.enable_observer()
+            submodule.enable_fake_quant()
 
 
 def enable_quantization(model, weight_cali_on=False, act_cali_on=False):
