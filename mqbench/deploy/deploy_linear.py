@@ -75,7 +75,6 @@ class LinearQuantizer_process(object):
         next_nodes = inp2node[node.output[0]]
         for next_node, idx in next_nodes:
             next_node.input[idx] = node.input[0]
-        return
 
     def parse_qparams(self, node, name2data):
         tensor_name, scale, zero_point = node.input[:3]
@@ -119,13 +118,13 @@ class LinearQuantizer_process(object):
         def find_the_closest_clip_range(node):
             if node.input[0] in clip_ranges:
                 return node.input[0]
-            elif node.op_type in ['Flatten', 'Resize'] and node.output[0] in inp2node:
+            elif node.op_type in ['Flatten', 'Resize', 'Reshape'] and node.output[0] in inp2node:
                 return find_the_closest_clip_range(inp2node[node.output[0]][0][0])
             else:
                 return None
 
         for node in graph.node:
-            if node.op_type in ['Flatten', 'Resize']:
+            if node.op_type in ['Flatten', 'Resize', 'Reshape']:
                 tensor_name = find_the_closest_clip_range(node)
                 if tensor_name:
                     clip_ranges[node.input[0]] = clip_ranges[tensor_name]

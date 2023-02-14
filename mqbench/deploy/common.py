@@ -225,6 +225,13 @@ def prepare_initializer(graph):
     return named_initializer
 
 
+def insert_initializer(graph, new_init):
+    for init in graph.initializer:
+        if init.name == new_init.name:
+            graph.initializer.remove(init)
+    graph.initializer.append(new_init)
+
+
 def parse_attrs(node_attrs):
     attrs = {}
     for attr in node_attrs:

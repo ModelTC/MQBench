@@ -32,6 +32,7 @@ class TotalINTQuantizer(ModelQuantizer):
     @property
     def _passed_module_type(self):
         return (
+            torch.nn.Dropout2d,
             torch.nn.ReLU,
             torch.nn.ReLU6
         )
@@ -50,9 +51,11 @@ class TotalINTQuantizer(ModelQuantizer):
                 ((node.op == 'call_function' or node.op == 'call_method') and
                     node.target in self.function_type_to_quant_input):
                 for next_node in node.users:
-                    if not ((next_node.op == 'call_function' and next_node.target in self._passed_func_type) or
+                    if ((next_node.op == 'call_function' and next_node.target in self._passed_func_type) or
                             (next_node.op == 'call_module' and isinstance(modules[next_node.target], self._passed_module_type))):
-                        node_need_to_quantize_output.append(node)
-                    else:
                         node_need_to_quantize_output.append(next_node)
+                    elif self._is_implicit_merge(modules, (next_node, node)):
+                        continue
+                    else:
+                        node_need_to_quantize_output.append(node)
         return node_need_to_quantize_output

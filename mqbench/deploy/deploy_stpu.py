@@ -3,9 +3,10 @@ import os
 from collections import OrderedDict
 
 import onnx
+from onnx import numpy_helper
 
 from mqbench.deploy.common import (get_constant_inputs, prepare_data,
-                                   prepare_initializer,
+                                   prepare_initializer, insert_initializer,
                                    update_inp2node_out2node)
 from mqbench.deploy.deploy_linear import (PERTENSOR_FAKEQUANTIZER,
                                           LinearQuantizer_process)
@@ -17,10 +18,8 @@ class STPU_process(LinearQuantizer_process):
     def remove_fakequantize_and_collect_params(self, onnx_path, model_name):
         model = onnx.load(onnx_path)
         graph = model.graph
-        out2node, inp2node = update_inp2node_out2node(graph)
         name2data = prepare_data(graph)
         named_initializer = prepare_initializer(graph)
-
         out2node, inp2node = update_inp2node_out2node(graph)
 
         quant_params = OrderedDict()
@@ -57,6 +56,35 @@ class STPU_process(LinearQuantizer_process):
                         "min": -127 * scale,
                         "max": 127 * scale
                     }
+        # Merge Conv + mul
+        for conv_node in graph.node:
+            # Newwork output.
+            if conv_node.output[0] not in inp2node or len(inp2node[conv_node.output[0]]) < 1:
+                continue
+            mul_node = inp2node[conv_node.output[0]][0][0]
+            if conv_node.op_type == 'Conv' and mul_node.op_type == 'Mul':
+                mul_scale = numpy_helper.to_array(out2node[mul_node.input[1]].attribute[0].t)
+                weight_name = named_initializer[conv_node.input[1]].name
+                bias_name = named_initializer[conv_node.input[2]].name
+                weight = numpy_helper.to_array(named_initializer[conv_node.input[1]])
+                bias = numpy_helper.to_array(named_initializer[conv_node.input[2]])
+                new_weight = numpy_helper.from_array(weight * mul_scale)
+                new_bias = numpy_helper.from_array(bias * mul_scale)
+                new_weight.name = weight_name
+                new_bias.name = bias_name
+                insert_initializer(graph, new_weight)
+                insert_initializer(graph, new_bias)
+                quant_params[conv_node.name + '_weights']['min'] *= mul_scale
+                quant_params[conv_node.name + '_weights']['max'] *= mul_scale
+                # Delete mul node.
+                nodes_to_be_removed.append(mul_node)
+                conv_node.output[0] = mul_node.output[0]
+        # Pass concat
+        for node in graph.node:
+            if node.op_type == 'Concat' and node.output[0] in quant_params:
+                for node_input in node.input:
+                    quant_params[node_input] = quant_params[node.output[0]]
+                    logger.info(f'Pass {node.output[0]} range to {node.name} input {node_input}.')
         # Update bias scale = input scale * weight scale
         for node in graph.node:
             if node.op_type in ['Gemm', 'Conv'] and len(node.input) == 3:
@@ -74,6 +102,7 @@ class STPU_process(LinearQuantizer_process):
                 }
         quant_params = self.post_process_clip_ranges(quant_params, graph, inp2node)
         self.merge_relu_layer(graph, quant_params, out2node)
+        # Update emin.
         for node in graph.node:
             self.update_emin(node, quant_params, named_initializer)
         # Delete node and init.
@@ -131,7 +160,7 @@ class STPU_process(LinearQuantizer_process):
 
         if node.op_type in ['Upsample', 'DynamicUpsample']:
             emin = find_interp_emin(quant_params[node.output[0]]['max'], 2)
-            quant_params[node.output[0]]['emin'] = emin          
+            quant_params[node.output[0]]['emin'] = emin
         if node.op_type in ['Conv', 'ConvTranspose']:
             weight_shape = named_initializer[node.input[1]].dims
             n = weight_shape[1] * weight_shape[2] * weight_shape[3]
