@@ -145,10 +145,10 @@ class ModelQuantizer(object):
         if (node.op == "call_module" and type(modules[node.target]) == cur_pattern) or \
                 ((node.op == 'call_function' or node.op == 'call_method') and
                     node.target == cur_pattern):
-            # Means compairing pair.
+            # Means comparing pair.
             if len(pattern) > p_pos and len(pair) > v_pos:
                 return self._on_merge_chain(modules, pattern, pair, p_pos + 1, v_pos + 1)
-            # Means compairing extra node.
+            # Means comparing extra node.
             matched = False
             flatten_args = self._flatten_args(node.args)
             for _arg in flatten_args:
