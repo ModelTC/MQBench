@@ -233,9 +233,7 @@ class ModelQuantizer(object):
                 ((node.op == 'call_function' or node.op == 'call_method') and
                     node.target in self.function_type_to_quant_input) or node.name in self.additional_node_name:
                 input_node_list = self._flatten_args(node.args)
-                # Means this is not Tensor + Tensor.
-                if not all([isinstance(_node, torch.fx.node.Node) for _node in input_node_list]):
-                    continue
+                input_node_list = [_node for _node in input_node_list if isinstance(_node, torch.fx.node.Node)]
                 for _node in input_node_list:
                     if self._is_implicit_merge(modules, (node, _node)):
                         logger.info("Implicit merge: {} + {}".format(_node.name, node.name))

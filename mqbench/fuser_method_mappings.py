@@ -1,5 +1,3 @@
-from typing import Optional, Type
-
 import torch
 import torch.nn as nn
 from torch.quantization.fx.fusion_patterns import ConvBNReLUFusion, ModuleReLUFusion
@@ -13,7 +11,7 @@ from mqbench.utils.fusion import fuse_deconv_bn_eval
 from mqbench.nn.modules import FrozenBatchNorm2d
 
 
-class ConvFreezebnReLUFusion(ConvBNReLUFusion):
+class ConvExtendBnReLUFusion(ConvBNReLUFusion):
     def __init__(self, quantizer: QuantizerCls, node: Node):
         super(ConvBNReLUFusion, self).__init__(quantizer, node)
         self.relu_node = None
@@ -87,39 +85,27 @@ def fuse_deconv_bn_relu(deconv, bn, relu):
 def fuse_conv_freezebn(conv, bn):
     assert bn.training is False, "Freezebn must be eval."
 
-    fused_module_class_map = {
-        nn.Conv2d: qnni.ConvFreezebn2d,
-    }
-
     if conv.training:
         assert bn.num_features == conv.out_channels, 'Output channel of Conv2d must match num_features of BatchNorm2d'
         assert bn.affine, 'Only support fusing BatchNorm2d with affine set to True'
         assert bn.track_running_stats, 'Only support fusing BatchNorm2d with tracking_running_stats set to True'
-        fused_module_class = fused_module_class_map.get((type(conv)), None)
-        return fused_module_class(conv, bn)
+        return qnni.ConvFreezebn2d(conv, bn)
     else:
         return nn.utils.fuse_conv_bn_eval(conv, bn)
 
 
 def fuse_conv_freezebn_relu(conv, bn, relu):
-    assert conv.training == relu.training and bn.training is False, "Conv and relu both must be in the same mode (train or eval) and bn must be eval."
-    fused_module : Optional[Type[nn.Sequential]] = None
+    assert conv.training == relu.training and bn.training is False, \
+        "Conv and relu both must be in the same mode (train or eval) and bn must be eval."
+
     if conv.training:
-        map_to_fused_module_train = {
-            nn.Conv2d: qnni.ConvFreezebnReLU2d,
-        }
         assert bn.num_features == conv.out_channels, 'Output channel of Conv must match num_features of BatchNorm'
         assert bn.affine, 'Only support fusing BatchNorm with affine set to True'
         assert bn.track_running_stats, 'Only support fusing BatchNorm with tracking_running_stats set to True'
-        fused_module = map_to_fused_module_train.get(type(conv), None)
-        return fused_module(conv, bn, relu)
+        return qnni.ConvFreezebnReLU2d(conv, bn, relu)
     else:
-        map_to_fused_module_eval = {
-            nn.Conv2d: nn.intrinsic.ConvReLU2d,
-        }
-        fused_module = map_to_fused_module_eval.get(type(conv), None)
-        fused_conv = nn.utils.fusion.fuse_conv_bn_eval(conv, bn)
-        return fused_module(fused_conv, relu)
+        fused_conv = nn.utils.fuse_conv_bn_eval(conv, bn)
+        return nn.intrinsic.ConvReLU2d(fused_conv, relu)
 
 
 def fuse_deconv_freezebn(deconv, bn):
@@ -135,7 +121,8 @@ def fuse_deconv_freezebn(deconv, bn):
 
 
 def fuse_deconv_freezebn_relu(deconv, bn, relu):
-    assert deconv.training == relu.training and bn.training is False, "Conv and relu both must be in the same mode (train or eval) and bn must be eval."
+    assert deconv.training == relu.training and bn.training is False, \
+        "Conv and relu both must be in the same mode (train or eval) and bn must be eval."
 
     if deconv.training:
         assert bn.num_features == deconv.out_channels, 'Output channel of ConvTranspose2d must match num_features of BatchNorm2d'
@@ -171,13 +158,13 @@ fuse_custom_config_dict = {
         (torch.nn.functional.relu, (torch.nn.BatchNorm2d, torch.nn.ConvTranspose2d)):
         ConvBNReLUFusion,
         (torch.nn.ReLU, (FrozenBatchNorm2d, torch.nn.Conv2d)):
-        ConvFreezebnReLUFusion,
+        ConvExtendBnReLUFusion,
         (FrozenBatchNorm2d, torch.nn.Conv2d):
-        ConvFreezebnReLUFusion,
+        ConvExtendBnReLUFusion,
         (torch.nn.ReLU, (FrozenBatchNorm2d, torch.nn.ConvTranspose2d)):
-        ConvFreezebnReLUFusion,
+        ConvExtendBnReLUFusion,
         (FrozenBatchNorm2d, torch.nn.ConvTranspose2d):
-        ConvFreezebnReLUFusion,
+        ConvExtendBnReLUFusion,
     },
     "additional_qat_module_mappings": {
         nn.ConvTranspose2d: qnn.qat.ConvTranspose2d,
