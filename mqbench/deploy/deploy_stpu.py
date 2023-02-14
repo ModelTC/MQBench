@@ -59,7 +59,7 @@ class STPU_process(LinearQuantizer_process):
         # Merge Conv + mul
         for conv_node in graph.node:
             # Newwork output.
-            if conv_node.output[0] not in inp2node:
+            if conv_node.output[0] not in inp2node or len(inp2node[conv_node.output[0]]) < 1:
                 continue
             mul_node = inp2node[conv_node.output[0]][0][0]
             if conv_node.op_type == 'Conv' and mul_node.op_type == 'Mul':
@@ -160,7 +160,7 @@ class STPU_process(LinearQuantizer_process):
 
         if node.op_type in ['Upsample', 'DynamicUpsample']:
             emin = find_interp_emin(quant_params[node.output[0]]['max'], 2)
-            quant_params[node.output[0]]['emin'] = emin          
+            quant_params[node.output[0]]['emin'] = emin
         if node.op_type in ['Conv', 'ConvTranspose']:
             weight_shape = named_initializer[node.input[1]].dims
             n = weight_shape[1] * weight_shape[2] * weight_shape[3]
