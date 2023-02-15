@@ -67,8 +67,10 @@ ParamsTable = {
                                  default_weight_observer=MinMaxObserver,
                                  default_act_observer=EMAMinMaxObserver),
     BackendType.Tensorrt:   dict(qtype='affine',     # noqa: E241
-                                 w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8, symmetric_range=True),
-                                 a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8, symmetric_range=True),
+                                 w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8, symmetric_range=True,
+                                    factory_kwargs={'not_calc_quant_min_max': True}),
+                                 a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8, symmetric_range=True,
+                                    factory_kwargs={'not_calc_quant_min_max': True}),
                                  default_weight_quantize=LearnableFakeQuantize,
                                  default_act_quantize=LearnableFakeQuantize,
                                  default_weight_observer=MinMaxObserver,
