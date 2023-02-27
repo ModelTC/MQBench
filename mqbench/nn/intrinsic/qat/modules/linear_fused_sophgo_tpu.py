@@ -63,7 +63,7 @@ class LinearBn1d_sophgo(Linear, _FusedModule):
             init.uniform_(self.bias, -bound, bound)
 
     def reset_parameters(self):
-        super(LinearBn1d, self).reset_parameters()
+        super(LinearBn1d_sophgo, self).reset_parameters()
 
     def update_bn_stats(self):
         self.freeze_bn = False
