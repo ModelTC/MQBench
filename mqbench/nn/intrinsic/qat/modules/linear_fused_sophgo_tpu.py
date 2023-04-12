@@ -63,7 +63,7 @@ class LinearBn1d_sophgo(Linear, _FusedModule):
             init.uniform_(self.bias, -bound, bound)
 
     def reset_parameters(self):
-        super(LinearBn1d_sophgo, self).reset_parameters()
+        super(LinearBn1d, self).reset_parameters()
 
     def update_bn_stats(self):
         self.freeze_bn = False
@@ -86,11 +86,48 @@ class LinearBn1d_sophgo(Linear, _FusedModule):
             bias = bias*scale
         return bias
 
+    # def _forward(self, input):
+    #     in_scale = self.input_fake_quantizer.scale #����һ��activation_fake_quant�ڵ��ȡscale
+    #     conv = F.linear(input, self.weight_fake_quant(self.weight), 
+    #         self.bias_fake_quant(self.bias, self.weight_fake_quant.scale, in_scale))
+    #     return conv
+
     def _forward(self, input):
+        assert self.bn.running_var is not None
+        running_std = torch.sqrt(self.bn.running_var + self.bn.eps)
+        # input.shape = (batch_size, in_features, *)
+        # scale_factor.shape = (out_feature, )
+        # self.weight.shape = (out_feature, in_feature, *)
+        # self.bias.shape = (out_feature, *)
+        # output.shape = (batch_size, out_feature, *)
+        if self.bn.affine:
+            scale_factor = self.bn.weight / running_std
+        else:
+            scale_factor = 1. / running_std
+        weight_shape = [1] * len(self.weight.shape)
+        weight_shape[0] = -1
+        bias_shape = [1] * len(input.shape)
+        bias_shape[1] = -1
+        scaled_weight = self.weight_fake_quant(self.weight * scale_factor.reshape(weight_shape))
+        # using zero bias here since the bias for original Linear
+        # will be added later
+        # Linear layer takes permuted input since the format is (batch_size, *, in_features)
+        if self.bias is not None:
+            zero_bias = torch.zeros_like(self.bias)
+            fc_bias = self.bias 
+        else:
+            zero_bias = torch.zeros(self.out_channels, device=scaled_weight.device)
+            fc_bias = torch.zeros_like(zero_bias, device=scaled_weight.device)
+        if self.bn.affine:
+            full_bias = (fc_bias - self.bn.running_mean) / running_std * self.bn.weight + self.bn.bias 
+        else:
+            full_bias = (fc_bias - self.bn.running_mean) / running_std 
         in_scale = self.input_fake_quantizer.scale #����һ��activation_fake_quant�ڵ��ȡscale
-        conv = F.linear(input, self.weight_fake_quant(self.weight), 
-            self.bias_fake_quant(self.bias, self.weight_fake_quant.scale, in_scale))
-        return conv
+        fquant_bias = self.bias_fake_quant(full_bias, self.weight_fake_quant.scale, in_scale)
+        linear_out = F.linear(input, scaled_weight, fquant_bias)
+        linear_orig = (linear_out - full_bias) / scale_factor.reshape(bias_shape) + fc_bias.reshape(bias_shape)
+        linear_out = self.bn(linear_orig)
+        return linear_out
 
     def forward(self, input):
         # return F.linear(input, self.weight_fake_quant(self.weight), self.bias)

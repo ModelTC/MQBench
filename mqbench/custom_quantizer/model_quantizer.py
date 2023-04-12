@@ -64,7 +64,7 @@ class ModelQuantizer(object):
     def prepare(self, model: GraphModule, qconfig):
         model = _fuse_fx(model, self.extra_fuse_dict)
         model = self._weight_quant(model, qconfig)
-        model = self._insert_fake_quantize_for_act_quant(model, qconfig[''])
+        model = self._insert_fake_quantize_for_act_quant(model, qconfig)
         return model
 
     def _insert_fake_quantize_for_act_quant(
@@ -77,7 +77,7 @@ class ModelQuantizer(object):
         quantizer_prefix = "_post_act_fake_quantizer"
         node_to_quantize_output = self._find_act_quants(model)
         node_to_quantize_output = OrderedDict.fromkeys(node_to_quantize_output).keys()
-
+        qconfig = qconfig['']
         for node in node_to_quantize_output:
             fake_quantizer = qconfig.activation()
             quantizer_name = node.name + quantizer_prefix
@@ -122,7 +122,8 @@ class ModelQuantizer(object):
 
     def _weight_quant(self, model: GraphModule, qconfig):
         logger.info("Replace module to qat module.")
-        flattened_qconfig_dict = get_flattened_qconfig_dict(qconfig)#torch???
+        flattened_qconfig_dict = get_flattened_qconfig_dict(qconfig)#torch�ӿ�
+        print('flattened_qconfig_dict:', flattened_qconfig_dict)
         propagate_qconfig_(model, flattened_qconfig_dict)
         self._qat_swap_modules(model, self.additional_qat_module_mapping)
         return model
@@ -233,7 +234,7 @@ class ModelQuantizer(object):
             if (node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_input)) or \
                 ((node.op == 'call_function' or node.op == 'call_method') and
                     node.target in self.function_type_to_quant_input) or node.name in self.additional_node_name:
-                input_node_list = self._flatten_args(node.all_input_nodes) #wxc
+                input_node_list = self._flatten_args(node.all_input_nodes)
                 # Means this is not Tensor + Tensor.
                 if not all([isinstance(_node, torch.fx.node.Node) for _node in input_node_list]):
                     continue

@@ -36,8 +36,9 @@ class LearnableFakeQuantize(QuantizeBase):
                    self.zero_point if self.ch_axis == -1 else 'List')
 
     def forward(self, X):
+        x_ori = X
         # Learnable fake quantize have to zero_point.float() to make it learnable.
-        if self.observer_enabled[0] == 1:
+        if self.observer_enabled[0] == 1:# or self.only_enable_observer:
             self.activation_post_process(X.detach())
             _scale, _zero_point = self.activation_post_process.calculate_qparams()
             _scale = _scale.to(self.scale.device)
@@ -53,7 +54,10 @@ class LearnableFakeQuantize(QuantizeBase):
             self.scale.data.abs_()
             self.scale.data.clamp_(min=self.eps.item())
 
-        if self.fake_quant_enabled[0] == 1:
+        if self.fake_quant_enabled[0] == 1:# and (not self.only_enable_observer or self.run_fquant_time > 0):
+            # if self.run_fquant_time > 0:
+            #     print('wxc1 run_fquant_time')
+            #     self.run_fquant_time -= 1
             if is_symmetric_quant(self.qscheme):
                 self.zero_point.data.zero_()
             else:
@@ -72,15 +76,25 @@ class LearnableFakeQuantize(QuantizeBase):
                     X = _fake_quantize_learnable_per_channel_affine_training(
                         X, self.scale, self.zero_point, self.ch_axis,
                         self.quant_min, self.quant_max, grad_factor)
+                x_ori = X
             else:
                 if self.use_grad_scaling:
                     grad_factor = 1.0 / (X.numel() * self.quant_max) ** 0.5
                 else:
                     grad_factor = 1.0
+                scale, zero_point = self.scale, self.zero_point
+                # if self.only_enable_observer:
+                #     scale, zero_point = 1, 0
                 X = torch._fake_quantize_learnable_per_tensor_affine(
-                    X, self.scale, self.zero_point,
+                    x_ori, scale, zero_point,
                     self.quant_min, self.quant_max, grad_factor)
-        return X
+                diff = x_ori - X
+                if self.only_enable_observer:
+                    x_ori = X + diff.detach()
+                else:
+                    x_ori = X
+
+        return x_ori
 
 
 def _fake_quantize_learnable_per_channel_affine_training(x, scale, zero_point, ch_axis, quant_min, quant_max, grad_factor):

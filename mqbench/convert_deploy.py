@@ -1,9 +1,9 @@
 import json
 import os.path as osp
-
+import os
 import torch
 from torch.fx import GraphModule
-
+import onnx
 import mqbench.custom_symbolic_opset  # noqa: F401
 import mqbench.fusion_method          # noqa: F401
 from mqbench.prepare_by_platform import BackendType
@@ -19,6 +19,7 @@ from mqbench.deploy import (
     remove_fakequantize_and_collect_params,
     replace_fakequantize_and_collect_params_openvino,
     remove_fakequantize_and_collect_params_tengine,
+    remove_fakequantize_and_collect_params_sophgo,
     ONNXQLinearPass, ONNXQNNPass
 )
 
@@ -63,7 +64,7 @@ def convert_merge_bn(model: GraphModule, **kwargs):
 def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_path, **kwargs):
     pt_file_name = onnx_model_path.split('.')
     pt_file_name[-1] = 'pt'
-    torch.save(model, '.'.join(pt_file_name))
+    #torch.save(model, '.'.join(pt_file_name))
     logger.info("Export to onnx, onnx_model_path:{}".format(onnx_model_path))
     model = model.cpu()
     output_names = kwargs.get('output_names', [])
@@ -97,6 +98,10 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
                               do_constant_folding=True,
                               custom_opsets={'' : opset_version},
                               enable_onnx_checker=False)
+    model_onnx = onnx.load(onnx_model_path)
+    model_onnx = onnx.shape_inference.infer_shapes(model_onnx)
+    os.system(f"rm -f {onnx_model_path}")
+    onnx.save(model_onnx, onnx_model_path)
 
 @register_deploy_function(BackendType.Tensorrt)
 def convert_onnx_qlinear(model: GraphModule, onnx_model_path, model_name, **kwargs):
@@ -125,22 +130,31 @@ def deploy_qparams_tensorrt(model: GraphModule, onnx_model_path, model_name, **k
 @register_deploy_function(BackendType.Sophgo_TPU)
 def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, **kwargs):
     logger.info("Extract qparams for sophgo_tpu.")
-    remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='sophgo_tpu')
+    remove_fakequantize_and_collect_params_sophgo(onnx_model_path, model_name)
     output_path = osp.dirname(onnx_model_path)
     context_filename = osp.join(output_path, '{}_clip_ranges.json'.format(model_name))
     file_h = open(context_filename, "r")
     blob_range = json.loads(file_h.read())["sophgo_tpu"]
     file_h.close()
     cali_table = osp.join(output_path, '{}_cali_table_from_mqbench_sophgo_tpu'.format(model_name))
+    work_mode = kwargs.get('work_mode', 'QAT_all_int8')
+    if work_mode not in  ['QAT_all_int8', 'int4_and_int8_mix', 'int4_and_int8_mix_no_fc']:
+        print('QAT_all_int8 not in [QAT_all_int8, int4_and_int8_mix, int4_and_int8_mix_no_fc],set to QAT_all_int8')
+        work_mode = 'QAT_all_int8'
     with open(cali_table, 'w') as f:
-        f.write("# work_mode:QAT_all_int8 #Automatically generated, do not modify, work_mode choice:[QAT_all_int8]\n")
+        f.write(f"# work_mode:{work_mode} #Automatically generated, do not modify, work_mode choice:[QAT_all_int8, int4_and_int8_mix, int4_and_int8_mix_no_fc]\n")
         f.write("# op_name    threshold    min    max\n")
-        ori_layer_names = ''
         weight_scale = []
+        int4_th = []
         for name,value in blob_range.items():
             if 'threshold' in value:
-                f.write("{} {:.7f} {:.7f} {:.7f}\n".format(name, value['threshold'], value['min'], value['max']))
-                ori_layer_names += '{},'.format(value['ori_name'])
+                tmpstr = "{} {:.7f} {:.7f} {:.7f}\n".format(name[:-2], value['threshold'], value['min'], value['max'])
+                if name.endswith('_4'):
+                    int4_th.append(tmpstr)
+                elif name.endswith('_8'):
+                    f.write(tmpstr)
+                else:
+                    f.write("{} {:.7f} {:.7f} {:.7f}\n".format(name, value['threshold'], value['min'], value['max']))
             else:
                 tmpstr = "{} {} {} {} {}\n".format(name, len(value['step']), ' '.join([str(i) for i in value['step']]), 
                         len(value['zero_point']), ' '.join([str(i) for i in value['zero_point']]))
@@ -148,10 +162,12 @@ def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, *
                     weight_scale.append(tmpstr)
                 else:
                     f.write(tmpstr)
+        f.write('#int4_th\n')
+        for i in int4_th:
+            f.write(i)
         f.write('#weight_scale\n')
         for i in weight_scale:
             f.write(i)
-        f.write("#{}\n".format(ori_layer_names[0:-1]))
 
 
 @register_deploy_function(BackendType.Vitis)

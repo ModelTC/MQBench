@@ -9,7 +9,8 @@ from torch.fx import Tracer
 from torch.fx.graph_module import GraphModule
 from torch.quantization.quantize_fx import _swap_ff_with_fxff
 from torch.quantization import QConfig
-
+import torch.nn.intrinsic as nni
+import mqbench.nn.intrinsic as qnni
 
 from mqbench.fake_quantize import (
     LearnableFakeQuantize,
@@ -33,10 +34,12 @@ from mqbench.observer import (
     MSEObserver,
     EMAMSEObserver,
 )
+import mqbench
 from mqbench.fuser_method_mappings import fuse_custom_config_dict
 from mqbench.utils.logger import logger
 from mqbench.utils.registry import DEFAULT_MODEL_QUANTIZER
 from mqbench.scheme import QuantizeScheme
+import mqbench.nn.intrinsic.qat as qnniqat
 
 __all__ = ['prepare_by_platform']
 
@@ -158,7 +161,7 @@ FakeQuantizeDict = {
 }
 
 
-def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
+def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict, work_mode: str):
     """
 
     Args:
@@ -284,7 +287,49 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
 
     qconfig = {'': QConfig(activation=a_qconfig, weight=w_qconfig)}
     if deploy_backend == BackendType.Sophgo_TPU:
-        qconfig["object_type"] = {torch.nn.Linear:createQConfig(deploy_backend)}
+        qconfig["object_type"] = {torch.nn.Linear:createQConfigForSophgoLiner()} #int8 qat, Sophgo_TPU use sym per-layer
+        if work_mode == 'all_int4_qat':
+            qconfig["object_type"][torch.nn.Linear] = createQConfigForSophgoLiner(bit_num = 4)
+        if work_mode in ['int4_and_int8_mix', 'int4_and_int8_mix_no_fc']:
+            w_qscheme = {
+                'bit': 4,
+                'symmetry': True,
+                'per_channel': True,
+                'pot_scale': False
+            }
+            a_qscheme = {
+                'bit': 4,
+                'symmetry': True,
+                'per_channel': False,
+                'pot_scale': False
+            }
+            int4_qconfig = createQConfig(w_qscheme = w_qscheme, a_qscheme = a_qscheme)
+            qconfig["object_type"][torch.nn.Conv2d] = int4_qconfig
+            from mqbench.custom_quantizer.sophgo_tpu_quantizer import SophgoTpuQuantizer
+
+            import torch.nn as nn
+            additional_qat_module_mapping = [
+                nni.ConvBn2d,
+                nni.ConvBnReLU2d,
+                nn.Conv2d,
+                nni.ConvReLU2d,
+                qnni.ConvTransposeBnReLU2d,
+                qnni.ConvTransposeReLU2d,
+                qnni.ConvTransposeBn2d
+            ]
+            for i in additional_qat_module_mapping:
+                qconfig["object_type"][i] = int4_qconfig
+            if work_mode == 'int4_and_int8_mix_no_fc':
+                for i in SophgoTpuQuantizer({}, {})._layers_need_check_is_dw:
+                    qconfig["object_type"][i] = int4_qconfig
+            else:
+                for i in SophgoTpuQuantizer({}, {})._layers_need_scale_form_input_fake_quantizer:
+                    qconfig["object_type"][i] = int4_qconfig
+            if work_mode != 'int4_and_int8_mix_no_fc':
+                liner_qconfig = createQConfigForInt4SophgoLiner()
+                qconfig["object_type"][nni.LinearReLU] = liner_qconfig
+                qconfig["object_type"][qnni.LinearBn1d] = liner_qconfig
+                qconfig["object_type"][torch.nn.Linear] = liner_qconfig
     object_type = extra_qparams.get('object_type', None)
     if object_type is not None:
         if "object_type" in qconfig:
@@ -311,7 +356,15 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict):
 #     'pot_scale': whether scale is power of two.
 # }
 
-def createQConfig(deploy_backend, onlyCreate_WQconfig = True, w_fakequantize = 'LearnableFakeQuantize', a_fakequantize = 'LearnableFakeQuantize', 
+def createQConfigForSophgoLiner(bit_num = 8, w_fakequantize = 'LearnableFakeQuantize', w_observer = 'MinMaxObserver', w_fakeq_params = {}, w_observer_extra_args = {}):
+    w_observer = ObserverDict[w_observer]
+    w_fakequantize = FakeQuantizeDict[w_fakequantize]
+    w_qscheme = QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=bit_num) #Sophgo_TPU use sym per-layer
+    w_qscheme.kwargs.update(w_observer_extra_args)
+    w_qconfig = w_fakequantize.with_args(observer=w_observer, **w_fakeq_params, **w_qscheme.to_observer_params())
+    return QConfig(activation=torch.nn.Identity, weight=w_qconfig) #activation use global quant conifg
+
+def createQConfig(w_fakequantize = 'LearnableFakeQuantize', a_fakequantize = 'LearnableFakeQuantize', 
                 w_observer = 'MinMaxObserver', a_observer = 'EMAMinMaxObserver', w_qscheme = {}, a_qscheme = {},
                 w_fakeq_params = {}, a_fakeq_params = {}, w_observer_extra_args = {}, a_observer_extra_args = {}):
     w_observer = ObserverDict[w_observer]
@@ -320,23 +373,35 @@ def createQConfig(deploy_backend, onlyCreate_WQconfig = True, w_fakequantize = '
         w_qscheme = QuantizeScheme(**w_qscheme)
     else:
         w_qscheme = QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8)
-        if deploy_backend == BackendType.Sophgo_TPU:
-            w_qscheme = QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8)
 
     w_qscheme.kwargs.update(w_observer_extra_args)
     w_qconfig = w_fakequantize.with_args(observer=w_observer, **w_fakeq_params, **w_qscheme.to_observer_params())
 
-    if not onlyCreate_WQconfig:
-        a_observer = ObserverDict[a_observer]
-        a_fakequantize = FakeQuantizeDict[a_fakequantize]
-        if a_qscheme is not None:
-            a_qscheme = QuantizeScheme(**a_qscheme)
-        else:
-            a_qscheme = QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8)
-        a_qscheme.kwargs.update(a_observer_extra_args)
-        a_qconfig = a_fakequantize.with_args(observer=a_observer, **a_fakeq_params, **a_qscheme.to_observer_params())
+    a_observer = ObserverDict[a_observer]
+    a_fakequantize = FakeQuantizeDict[a_fakequantize]
+    if a_qscheme is not None:
+        a_qscheme = QuantizeScheme(**a_qscheme)
     else:
-        a_qconfig = torch.nn.Identity
+        a_qscheme = QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8)
+    a_qscheme.kwargs.update(a_observer_extra_args)
+    a_qconfig = a_fakequantize.with_args(observer=a_observer, **a_fakeq_params, **a_qscheme.to_observer_params())
+    return QConfig(activation=a_qconfig, weight=w_qconfig)
+
+def createQConfigForInt4SophgoLiner(w_fakequantize = 'LearnableFakeQuantize', a_fakequantize = 'LearnableFakeQuantize', 
+                w_observer = 'MinMaxObserver', a_observer = 'EMAMinMaxObserver', w_qscheme = {}, a_qscheme = {},
+                w_fakeq_params = {}, a_fakeq_params = {}, w_observer_extra_args = {}, a_observer_extra_args = {}):
+    w_observer = ObserverDict[w_observer]
+    w_fakequantize = FakeQuantizeDict[w_fakequantize]
+    w_qscheme = QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=4)
+
+    w_qscheme.kwargs.update(w_observer_extra_args)
+    w_qconfig = w_fakequantize.with_args(observer=w_observer, **w_fakeq_params, **w_qscheme.to_observer_params())
+
+    a_observer = ObserverDict[a_observer]
+    a_fakequantize = FakeQuantizeDict[a_fakequantize]
+    a_qscheme = QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=4)
+    a_qscheme.kwargs.update(a_observer_extra_args)
+    a_qconfig = a_fakequantize.with_args(observer=a_observer, **a_fakeq_params, **a_qscheme.to_observer_params())
     return QConfig(activation=a_qconfig, weight=w_qconfig)
 
 class CustomedTracer(Tracer):
@@ -433,7 +498,8 @@ def prepare_by_platform(
 
     # Get Qconfig
     extra_qconfig_dict = prepare_custom_config_dict.get('extra_qconfig_dict', {})
-    qconfig = get_qconfig_by_platform(deploy_backend, extra_qconfig_dict)
+    work_mode = prepare_custom_config_dict.get('work_mode', '')
+    qconfig = get_qconfig_by_platform(deploy_backend, extra_qconfig_dict, work_mode)
 
     _swap_ff_with_fxff(model)
     # Preserve attr.
@@ -454,10 +520,10 @@ def prepare_by_platform(
     if custom_tracer is not None:
         tracer = custom_tracer
     graph = tracer.trace(model, concrete_args)
-    # print('trace graph:',graph)
+    print('>>>>>trace graph:',graph)
     name = model.__class__.__name__ if isinstance(model, torch.nn.Module) else model.__name__
     modules = dict(model.named_modules())
-    # print('named_modules:',modules)
+    print('>>>>>named_modules:',modules[''])
     graph, duplicated_modules = duplicate_reused_nodes(graph, modules)
     constant_nodes = prepare_constant_dict(graph, model)
     modules.update(duplicated_modules)

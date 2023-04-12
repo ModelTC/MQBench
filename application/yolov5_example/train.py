@@ -300,6 +300,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     backend = BackendType.Sophgo_TPU
     if opt.quantize:
         prepare_custom_config_dict= {
+            # 'work_mode':'int4_and_int8_mix',
             # 'extra_qconfig_dict':{'w_fakequantize':'PACTFakeQuantize'}
             # 'concrete_args':{'augment':False, 'profile':False, 'visualize':False}
         }
@@ -438,28 +439,28 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
                 best_fitness = fi
             log_vals = list(mloss) + list(results) + lr
             callbacks.run('on_fit_epoch_end', log_vals, epoch, best_fitness, fi)
-
+        
             # Save model
-            if (not nosave) or (final_epoch and not evolve):  # if save
-                ckpt = {
-                    'epoch': epoch,
-                    'best_fitness': best_fitness,
-                    'model': deepcopy(de_parallel(model)).half(),
-                    'ema': deepcopy(ema.ema).half(),
-                    'updates': ema.updates,
-                    'optimizer': optimizer.state_dict(),
-                    'wandb_id': loggers.wandb.wandb_run.id if loggers.wandb else None,
-                    'opt': vars(opt),
-                    'date': datetime.now().isoformat()}
+            # if (not nosave) or (final_epoch and not evolve):  # if save
+            #     ckpt = {
+            #         'epoch': epoch,
+            #         'best_fitness': best_fitness,
+            #         'model': deepcopy(de_parallel(model)).half(),
+            #         'ema': deepcopy(ema.ema).half(),
+            #         'updates': ema.updates,
+            #         'optimizer': optimizer.state_dict(),
+            #         'wandb_id': loggers.wandb.wandb_run.id if loggers.wandb else None,
+            #         'opt': vars(opt),
+            #         'date': datetime.now().isoformat()}
     
-                # Save last, best and delete
-                torch.save(ckpt, last)
-                if best_fitness == fi:
-                    torch.save(ckpt, best)
-                if opt.save_period > 0 and epoch % opt.save_period == 0:
-                    torch.save(ckpt, w / f'epoch{epoch}.pt')
-                del ckpt
-                callbacks.run('on_model_save', last, epoch, final_epoch, best_fitness, fi)
+            #     # Save last, best and delete
+            #     torch.save(ckpt, last)   #wangxuechuan 23.04.12, Can't pickle local object 'add_module_to_qconfig_obs_ctr.<locals>.get_factory_kwargs_based_on_module_device'
+            #     if best_fitness == fi:
+            #         torch.save(ckpt, best)
+            #     if opt.save_period > 0 and epoch % opt.save_period == 0:
+            #         torch.save(ckpt, w / f'epoch{epoch}.pt')
+            #     del ckpt
+            #     callbacks.run('on_model_save', last, epoch, final_epoch, best_fitness, fi)
 
         # EarlyStopping
         if RANK != -1:  # if DDP training

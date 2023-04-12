@@ -35,6 +35,12 @@ class QuantizeBase(FakeQuantizeBase):
         bitrange = torch.tensor(self.quant_max - self.quant_min + 1).double()
         self.bitwidth = int(torch.log2(bitrange).item())
         self.is_symmetric_quant = is_symmetric_quant(self.qscheme)
+        self.only_enable_observer = False
+        self.run_fquant_time = 0
+    
+    def enable_only_observer(self, enable = True):
+        self.only_enable_observer = enable
+        self.run_fquant_time = 1
 
     @torch.jit.export
     def calculate_qparams(self):

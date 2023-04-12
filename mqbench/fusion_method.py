@@ -65,6 +65,7 @@ def convert_qnnqat_deconv2d(model, fused_node):
     fused_deconv.weight_fake_quant = fused_module.weight_fake_quant
     deconv_parent_name, deconv_name = _parent_name(fused_node.target)
     setattr(modules[deconv_parent_name], deconv_name, fused_deconv)
+
 @register_convert_function(qnniqat.LinearReLU_sophgo)
 def linearert_qnniqat_linearrelu(model, fused_node):
     convert_qnniqat_linear(model, fused_node)
@@ -198,6 +199,34 @@ def convert_nniqat_convbnrelu(model, fused_node):
     model.recompile()
     model.graph.lint()
 
+@register_convert_function(qnniqat.ConvReLU2d_sophgo)
+def convert_nniqat_convrelu(model, fused_node):    
+    convert_qnnqat_conv2d(model, fused_node)
+    modules = dict(model.named_modules())
+    fused_module = modules[fused_node.target]
+    # We need to Insert Relu after Merged conv.
+    conv_parent_name, conv_name = _parent_name(fused_node.target)
+    relu_name = 'relu'
+    # Maybe has another name, but we cannot know for now.
+    if not hasattr(modules[conv_parent_name], relu_name):
+        setattr(modules[conv_parent_name], relu_name, 
+                torch.nn.ReLU(inplace=True).train(fused_module.training))
+    # Update modules.
+    modules = dict(model.named_modules())
+    graph = model.graph
+    nodes = list(model.graph.nodes)
+    with graph.inserting_after(fused_node):
+        relu_node_name = relu_name if conv_parent_name == "" else "{}.{}".format(conv_parent_name, relu_name)
+        assert relu_node_name in modules and isinstance(modules[relu_node_name], torch.nn.ReLU)
+        inserted_node = graph.create_node("call_module", relu_node_name, (fused_node,), {})
+        for _node in nodes:
+            for i, _arg in enumerate(_node.args):
+                if _arg == fused_node:
+                    _tmp = list(_node.args)
+                    _tmp[i] = inserted_node
+                    _node.args = tuple(_tmp)
+    model.recompile()
+    model.graph.lint()
 
 @register_convert_function(qnni.ConvTransposeFreezebn2d)
 @register_convert_function(qnni.ConvTransposeBn2d)

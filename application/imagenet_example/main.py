@@ -1,3 +1,4 @@
+#-- coding: gb2312 --
 import argparse
 import os
 import random
@@ -27,7 +28,7 @@ model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name]))
 
-cali_batch_size = 16
+cali_batch_size = 10
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--train_data', metavar='DIR',
                     help='path to dataset', required=True)
@@ -93,6 +94,7 @@ parser.add_argument('--cpu', action='store_true')
 parser.add_argument('--pre_eval_and_export', action='store_true')
 parser.add_argument('--deploy_batch_size', default=1, type=int, help='deploy_batch_size.')
 
+
 BackendMap = {'tensorrt': BackendType.Tensorrt,
                'sophgo_tpu': BackendType.Sophgo_TPU,
                'nnie': BackendType.NNIE,
@@ -107,10 +109,12 @@ best_acc1 = 0
 
 def main():
     args = parser.parse_args()
+
     if args.output_path is None:
         args.output_path = './'
     args.output_path=os.path.join(args.output_path, args.arch) 
     os.system('mkdir -p {}'.format(args.output_path))
+
     args.quant = not args.not_quant
     args.backend = BackendMap[args.backend]
 
@@ -145,18 +149,6 @@ def main():
         # Simply call main_worker function
         main_worker(args.gpu, ngpus_per_node, args)
 
-layer_names = []
-features_out_hook = {}
-i = 0
-def hook(module, fea_in, fea_out):
-    global i
-    if i >= len(layer_names):
-        return None
-    name = layer_names[i]
-    i += 1
-    global features_out_hook
-    features_out_hook[name] = fea_out.cpu().numpy()
-    return None
 
 def main_worker(gpu, ngpus_per_node, args):
     global best_acc1
@@ -192,15 +184,17 @@ def main_worker(gpu, ngpus_per_node, args):
         state_dict = torch.load(args.model_path)
         print(f'load pretrained checkpoint from: {args.model_path}')
         model.load_state_dict(state_dict)
+
     train_loader, train_sampler, val_loader, cali_loader = prepare_dataloader(args)
     criterion = nn.CrossEntropyLoss().cuda(args.gpu)
     if args.gpu is not None:
         model = model.cuda(args.gpu)    
     else:
         model = model.cpu() 
+
     if args.pre_eval_and_export:
         print('原始onnx模型精度')
-        validate(val_loader, model.eval(), criterion, args)  #?????model.cuda(),???
+        validate(val_loader, model.eval(), criterion, args)  #这里未执行model.cuda()，会报错
 
         kwargs = {
             'input_shape_dict': {'data': [args.deploy_batch_size, 3, 224, 224]},
@@ -213,15 +207,40 @@ def main_worker(gpu, ngpus_per_node, args):
         module_tmp = module_tmp.cpu()
         convert_onnx(module_tmp.eval(), **kwargs)
         del module_tmp
-        model = model.train() #prepare?????train??!!
+        model = model.train() #prepare前一定要是train模式！！
 
     # quantize model
     if args.quant:
         prepare_custom_config_dict= {
-            # 'extra_qconfig_dict':{'w_fakequantize':'PACTFakeQuantize'}
+            # 'extra_qconfig_dict':{'w_fakequantize':'PACTFakeQuantize'},
+            # 'work_mode':'int4_and_int8_mix',
+
+            # 'work_mode':'all_int4_qat', #int4_and_int8_mix
+            # 'extra_qconfig_dict': {
+            #     'w_qscheme': {
+            #         'bit': 4,                                             # custom bitwidth for weight,
+            #         'symmetry': True,                                    # custom whether quant is symmetric for weight,
+            #         'per_channel': True,                                  # custom whether quant is per-channel or per-tensor for weight,
+            #         'pot_scale': False,                                   # custom whether scale is power of two for weight.
+            #     },
+            #     'a_qscheme': {
+            #         'bit': 4,                                             # custom bitwidth for activation,
+            #         'symmetry': True,                                    # custom whether quant is symmetric for activation,
+            #         'per_channel': False,                                  # custom whether quant is per-channel or per-tensor for activation,
+            #         'pot_scale': False,                                   # custom whether scale is power of two for activation.
+            #     }
+            # }
         }
         model = prepare_by_platform(model, args.backend, prepare_custom_config_dict)
-        # print('prepared module:', model)
+        print('>>>>>prepared module:', model)
+
+        if args.fast_test:
+            convert_deploy(model.eval(), args.backend, input_shape_dict=
+                {'data': [args.deploy_batch_size, 3, 224, 224]}, 
+                model_name='{}_mqmoble'.format(args.arch), 
+                # work_mode ='int4_and_int8_mix',
+                output_path=args.output_path)
+
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')
     elif args.distributed:
@@ -254,7 +273,7 @@ def main_worker(gpu, ngpus_per_node, args):
             if args.cpu:
                 model = model.cpu()
             else:
-                # model = torch.nn.DataParallel(model).cuda() #???gpu?????????resume??cpu??
+                # model = torch.nn.DataParallel(model).cuda() #会导致gpu训练保存的模型无法resume后用cpu推理
                 model = model.cuda()
 
     # define loss function (criterion) and optimizer
@@ -310,9 +329,6 @@ def main_worker(gpu, ngpus_per_node, args):
                   .format(args.resume, checkpoint['epoch'], best_acc1))
         else:
             print("=> no checkpoint found at '{}'".format(args.resume))
-
-
-
             exit(1)
 
         if args.evaluate:
@@ -327,6 +343,8 @@ def main_worker(gpu, ngpus_per_node, args):
                 model_name='{}_mqmoble'.format(args.arch), output_path=args.output_path)
         exit(0)
      
+    if args.fast_test:
+        args.epochs = 1
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
@@ -342,31 +360,33 @@ def main_worker(gpu, ngpus_per_node, args):
             print(f'epoch{epoch}训练后eval精度:')
         acc1 = validate(val_loader, model, criterion, args)
 
-        # remember best acc@1 and save checkpoint
-        is_best = acc1 > best_acc1
-        best_acc1 = max(acc1, best_acc1)
+        # # remember best acc@1 and save checkpoint
+        # is_best = acc1 > best_acc1
+        # best_acc1 = max(acc1, best_acc1)
 
-        if not args.multiprocessing_distributed or (args.multiprocessing_distributed
-                and args.rank % ngpus_per_node == 0):
-            save_checkpoint({
-                'epoch': epoch + 1,
-                'arch': args.arch,
-                'state_dict': model.state_dict(),
-                'best_acc1': best_acc1,
-                'optimizer' : optimizer.state_dict(),
-             }, is_best, filename=os.path.join(args.output_path, 'checkpoint.pth.tar'))
-    
+        # if not args.multiprocessing_distributed or (args.multiprocessing_distributed
+        #         and args.rank % ngpus_per_node == 0):
+        #     save_checkpoint({
+        #         'epoch': epoch + 1,
+        #         'arch': args.arch,
+        #         'state_dict': model.state_dict(),
+        #         'best_acc1': best_acc1,
+        #         'optimizer' : optimizer.state_dict(),
+        #     }, is_best, filename=os.path.join(args.output_path, 'checkpoint.pth.tar'))
+
     print('disable_all后测试精度:')
     disable_all(model)
     validate(val_loader, model, criterion, args)
-
     enable_quantization(model)
+
     gen_test_ref_data(cali_loader, model, args)
     convert_deploy(model.eval(), args.backend, input_shape_dict=
         {'data': [args.deploy_batch_size, 3, 224, 224]}, 
-        model_name='{}_mqmoble'.format(args.arch), output_path=args.output_path)
+        model_name='{}_mqmoble'.format(args.arch), 
+        # work_mode ='int4_and_int8_mix',
+        output_path=args.output_path)
 
-    model_path = os.path.join(args.output_path, '{}.pt'.format('{}_mqmoble'.format(args.arch)))
+    '''model_path = os.path.join(args.output_path, '{}.pt'.format('{}_mqmoble'.format(args.arch)))
     model_pt = torch.load(model_path)
     if args.gpu is not None:
         model_pt = model_pt.cuda(args.gpu)    
@@ -375,7 +395,7 @@ def main_worker(gpu, ngpus_per_node, args):
     print('load fused bn pt后测试精度:')
     validate(val_loader, model_pt, criterion, args)
 
-    validate_onnx(criterion, args)
+    validate_onnx(criterion, args)'''
 
 def prepare_dataloader(args):
     traindir = os.path.join(args.train_data, 'train')
@@ -401,7 +421,7 @@ def prepare_dataloader(args):
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
-    cali_batch = 10
+    cali_batch = 20
     cali_dataset = torch.utils.data.Subset(train_dataset, indices=torch.arange(cali_batch_size * cali_batch))
     cali_loader = torch.utils.data.DataLoader(cali_dataset, batch_size=cali_batch_size, shuffle=False,
                                                 num_workers=args.workers, pin_memory=True)
@@ -435,12 +455,7 @@ def prepare_dataloader_batch(args, batch_size):
 
     return val_loader
 
-def get_node_name_by_module_name(qname, model):
-    nodes = list(model.graph.nodes)
-    modules = dict(model.named_modules())
-    for node in nodes:
-        if node.target in modules and qname == node.target:
-            return node.name
+
 def calibrate(cali_loader, model, args):
     model.eval()
     print("Start calibration ...")
@@ -453,22 +468,72 @@ def calibrate(cali_loader, model, args):
             print("Calibration ==> ", i+1)
     print("End calibration.")
     return
+
+def get_node_name_by_module_name(qname, model):
+    nodes = list(model.graph.nodes)
+    modules = dict(model.named_modules())
+    for node in nodes:
+        if node.target in modules and qname == node.target:
+            return node.name
+
+def get_node_input_by_module_name(qname, model):
+    nodes = list(model.graph.nodes)
+    modules = dict(model.named_modules())
+    post_str = '_post_act_fake_quantizer'
+    input_str = '_input_act_fake_quantizer'
+    scale_name = None
+    for node in nodes:
+        if node.target in modules and qname == node.target:
+            print(f'{qname} input:', node.args[0].name)
+            if post_str in node.args[0].name:
+                scale_name = node.args[0].name
+                break
+            elif input_str in node.args[0].name:
+                node2 = node.args[0]
+                print(f'{node.args[0].name}.input:', node2.args[0].name)
+                if post_str in node2.args[0].name:
+                    scale_name = node2.args[0].name
+                    break
+                elif 'x' == node2.args[0].name:
+                    return 'data'
+            break
+    if scale_name is not None:
+        return scale_name[:len(scale_name)-len(post_str)]
+    else:
+        return ''
+
+layer_names = []
+features_out_hook = {}
+i = 0
+def hook(module, fea_in, fea_out):
+    global i
+    if i >= len(layer_names):
+        return None
+    name = layer_names[i]
+    i += 1
+    global features_out_hook
+    features_out_hook[name] = fea_out.cpu().numpy()
+    return None
+
 def gen_test_ref_data(cali_loader, model, args):
     return
     model.eval()
     global layer_names
     hook_handles = []
     input_data = {}
-    exclude_module = ['mqbench', 'torch.fx', 'batchnorm', 'torch.nn.modules.module.Module']
-    nodes = list(model.graph.nodes)
+    # exclude_module = ['fake_quantize', 'observer', 'torch.fx', 'batchnorm', 'torch.nn.modules.module.Module']
     for name, child in model.named_modules():
-        if not any([i in str(type(child)) for i in exclude_module]):
-            print("add hook on", str(type(child)), name)
+        # if not any([i in str(type(child)) for i in exclude_module]):
+        if name.endswith('_act_fake_quantizer'):
             # if '_dup' in name:
             #     name = name[:-5]
             # layer_names.append(name.replace('.','_'))
-            node_name = get_node_name_by_module_name(name, model)
-            layer_names.append(node_name)
+            # output = get_node_name_by_module_name(name, model)
+            # input = get_node_input_by_module_name(name, model)
+            # print(f'name:{name}, output:{output}, input:{input}')
+            # if input != '':
+            layer_names.append(name)
+            print(f"add hook on {name} for {str(type(child))}")
             hd = child.register_forward_hook(hook=hook)
             hook_handles.append(hd)
     print('layer_names:', layer_names)
@@ -486,6 +551,7 @@ def gen_test_ref_data(cali_loader, model, args):
                 input_data['data'] = images.cpu().numpy()
                 np.savez(os.path.join(args.output_path, 'input_data.npz'), **input_data)
                 global features_out_hook
+                features_out_hook['data'] = images.cpu().numpy()
                 np.savez(os.path.join(args.output_path, 'layer_outputs.npz'), **features_out_hook)
                 for hd in hook_handles:
                     hd.remove()

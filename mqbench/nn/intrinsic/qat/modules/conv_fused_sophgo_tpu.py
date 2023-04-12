@@ -134,6 +134,44 @@ class _ConvBnNd(nn.modules.conv._ConvNd, _FusedModule):
         bias = bias*scale
         return bias
 
+    # def _forward(self, input):
+    #     # print('xxx2')
+    #     assert self.bn.running_var is not None
+    #     running_std = torch.sqrt(self.bn.running_var + self.bn.eps)
+    #     scale_factor = self.bn.weight / running_std
+    #     weight_shape = [1] * len(self.weight.shape)
+    #     weight_shape[0] = -1
+    #     bias_shape = [1] * len(self.weight.shape)
+    #     bias_shape[1] = -1
+    #     if torch.isnan(self.weight).any():
+    #         print('weight have nan')
+    #     if self.input_fake_quantizer is not None and torch.isnan(self.input_fake_quantizer.scale).any():
+    #         print('input_fake_quantizer.scale have nan')
+    #     if self.bias is not None and torch.isnan(self.bias).any():
+    #         print('weight have nan')
+    #     scaled_weight = self.weight_fake_quant(self.weight * scale_factor.reshape(weight_shape))
+    #     #bias伪量化
+    #     if self.weight_fake_quant.fake_quant_enabled[0] == 1:
+    #         _, fused_bias = nn.utils.fuse_conv_bn_weights(self.weight, self.bias,
+    #                             self.bn.running_mean, self.bn.running_var, self.bn.eps, self.bn.weight, self.bn.bias)
+    #         in_scale = self.input_fake_quantizer.scale #从上一个activation_fake_quant节点获取scale
+    #         scale_fused_bias = self.bias_fake_quant_proc(fused_bias, self.weight_fake_quant.scale, in_scale)
+    #         diff_fused_bias = fused_bias - scale_fused_bias
+    #     # using zero bias here since the bias for original conv
+    #     # will be added later
+    #     if self.bias is not None:
+    #         zero_bias = torch.zeros_like(self.bias)
+    #     else:
+    #         zero_bias = torch.zeros(self.out_channels, device=scaled_weight.device)
+    #     conv = self._conv_forward(input, scaled_weight, zero_bias)
+    #     conv_orig = conv / scale_factor.reshape(bias_shape)
+    #     if self.bias is not None:
+    #         conv_orig = conv_orig + self.bias.reshape(bias_shape)
+    #     conv = self.bn(conv_orig)
+    #     if self.weight_fake_quant.fake_quant_enabled[0] == 1:
+    #         conv -= diff_fused_bias.reshape(bias_shape) #这里从推导看应该是减
+    #     return conv
+
     def _forward(self, input):
         assert self.bn.running_var is not None
         running_std = torch.sqrt(self.bn.running_var + self.bn.eps)
@@ -143,26 +181,23 @@ class _ConvBnNd(nn.modules.conv._ConvNd, _FusedModule):
         bias_shape = [1] * len(self.weight.shape)
         bias_shape[1] = -1
         scaled_weight = self.weight_fake_quant(self.weight * scale_factor.reshape(weight_shape))
-        #bias伪量化
-        if self.weight_fake_quant.fake_quant_enabled[0] == 1:
-            _, fused_bias = nn.utils.fuse_conv_bn_weights(self.weight, self.bias,
-                                self.bn.running_mean, self.bn.running_var, self.bn.eps, self.bn.weight, self.bn.bias)
-            in_scale = self.input_fake_quantizer.scale #从上一个activation_fake_quant节点获取scale
-            scale_fused_bias = self.bias_fake_quant_proc(fused_bias, self.weight_fake_quant.scale, in_scale)
-            diff_fused_bias = fused_bias - scale_fused_bias
         # using zero bias here since the bias for original conv
         # will be added later
         if self.bias is not None:
             zero_bias = torch.zeros_like(self.bias)
+            conv_bias = self.bias 
         else:
             zero_bias = torch.zeros(self.out_channels, device=scaled_weight.device)
-        conv = self._conv_forward(input, scaled_weight, zero_bias)
-        conv_orig = conv / scale_factor.reshape(bias_shape)
-        if self.bias is not None:
-            conv_orig = conv_orig + self.bias.reshape(bias_shape)
+            conv_bias = torch.zeros_like(zero_bias, device=scaled_weight.device)
+        if self.bn.affine:
+            full_bias = (conv_bias - self.bn.running_mean) / running_std * self.bn.weight + self.bn.bias 
+        else:
+            full_bias = (conv_bias - self.bn.running_mean) / running_std 
+        # quant_bias = self.bias_fake_quant(full_bias)
+        quant_bias = self.bias_fake_quant_proc(full_bias, self.weight_fake_quant.scale, self.input_fake_quantizer.scale)
+        conv_with_bias = self._conv_forward(input, scaled_weight, quant_bias)
+        conv_orig = (conv_with_bias - full_bias.reshape(bias_shape)) / scale_factor.reshape(bias_shape) + conv_bias.reshape(bias_shape)
         conv = self.bn(conv_orig)
-        if self.weight_fake_quant.fake_quant_enabled[0] == 1:
-            conv -= diff_fused_bias.reshape(bias_shape) #这里从推导看应该是减
         return conv
 
     def extra_repr(self):
