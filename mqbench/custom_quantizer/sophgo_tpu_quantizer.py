@@ -146,7 +146,7 @@ class SophgoTpuQuantizer(ModelQuantizer):
         print('int4_and_int8_mix:', int4_and_int8_mix)
         if int4_and_int8_mix:
             def all_next_layers_is_trivial(node):
-                if len(node.users):
+                if len(node.users) == 0:
                     return True
                 for user in node.users:
                     if not all_next_layers_is_trivial(user):
@@ -197,11 +197,12 @@ class SophgoTpuQuantizer(ModelQuantizer):
                         qconfig2 = None #深度卷积使用int8计算
             if qconfig2 is None:
                 qconfig2 = flattened_qconfig_dict.get('', None) #最后找全局qconfig，优先级最低
-            if node.target in modules and type(modules[node.target]) == torch.nn.ReLU6 and node.args[0].target in modules:
-                qconfig2 = flattened_qconfig_dict.get(type(modules[node.args[0].target]), None)
-                if isinstance(modules[node.args[0].target], self._layers_need_check_is_dw):
-                    if modules[node.args[0].target].groups > 1:
-                        qconfig2 = flattened_qconfig_dict.get('', None) ##深度卷积使用int8计算
+            if int4_and_int8_mix:
+                if node.target in modules and type(modules[node.target]) == torch.nn.ReLU6 and node.args[0].target in modules:
+                    qconfig2 = flattened_qconfig_dict.get(type(modules[node.args[0].target]), None)
+                    if isinstance(modules[node.args[0].target], self._layers_need_check_is_dw):
+                        if modules[node.args[0].target].groups > 1:
+                            qconfig2 = flattened_qconfig_dict.get('', None) ##深度卷积使用int8计算
             node_fake_quantizer = qconfig2.activation()
             # node_fake_quantizer.enable_only_observer()
             quantizer_name2 = node.name + "_post_act_fake_quantizer"
