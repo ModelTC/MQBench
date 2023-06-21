@@ -242,6 +242,9 @@ class ModelQuantizer(object):
                     if self._is_implicit_merge(modules, (node, _node)):
                         logger.info("Implicit merge: {} + {}".format(_node.name, node.name))
                         continue
+                    if _node.op == "placeholder" and 'tensor_meta' in node.meta:
+                        if len(_node.meta['tensor_meta'].shape) == 1:
+                            continue
                     if _node in node_need_to_quantize_output:
                         continue
                     if _node in g2node:

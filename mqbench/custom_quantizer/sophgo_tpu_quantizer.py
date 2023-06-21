@@ -52,22 +52,49 @@ class SophgoTpuQuantizer(ModelQuantizer):
             torch.nn.Hardswish,
             torch.nn.Sigmoid,
             torch.nn.SiLU,
+            torch.nn.Tanh,
+            torch.nn.SELU,
+            torch.nn.LogSigmoid,
+            torch.nn.GELU,
+            torch.nn.GLU,
+            torch.nn.Mish,
+            torch.nn.Hardsigmoid,
+            torch.nn.Softshrink,
+            torch.nn.Softplus,
+            torch.nn.ELU,
+            torch.nn.CELU,            
         ) + super().module_type_to_quant_input + self._layers_need_scale_form_input_fake_quantizer
 
     @property
     def function_type_to_quant_input(self) -> tuple:
         return super().function_type_to_quant_input + [
+            operator.sub,
+            operator.abs,
             torch.cat,
+            torch.sub,
+            torch.clamp,
             torch.nn.functional.hardswish,
             torch.nn.functional.sigmoid,
-            torch.nn.functional.silu
+            torch.nn.functional.silu,
+            torch.nn.functional.tanh,
+            torch.nn.functional.selu,
+            torch.nn.functional.logsigmoid,
+            torch.nn.functional.gelu,
+            torch.nn.functional.glu,
+            torch.nn.functional.mish,
+            torch.nn.functional.hardsigmoid,
+            torch.nn.functional.gumbel_softmax,
+            torch.nn.functional.softshrink,
+            torch.nn.functional.softplus,
+            torch.nn.functional.elu,
+            torch.nn.functional.celu,
         ]
 
     @property
     def _passed_func_type(self):
         return (
             torch.nn.functional.relu, 
-            torch.nn.functional.relu6,
+            # torch.nn.functional.relu6, 
             torch.flatten
         )
 
@@ -279,6 +306,15 @@ class SophgoTpuQuantizer(ModelQuantizer):
             if node.target in modules and type(modules[node.target]) in self.exclude_module_name:
                 print(f'{type(modules[node.target])} is excluded')
                 node_need_to_quantize_output.remove(node)
+            if node.op == "placeholder":
+                if 'tensor_meta' in node.meta:
+                    if len(node.meta['tensor_meta'].shape) > 1:
+                        print(f'add placeholder {node.target} to node_need_to_quantize_output by tensor_meta')
+                        node_need_to_quantize_output.append(node)
+                else:
+                    print(f'no tensor_meta, add placeholder {node.target} to node_need_to_quantize_output')
+                    node_need_to_quantize_output.append(node)
+
         return node_need_to_quantize_output
         
     def _set_fake_quantizer_to_next_weight_layer(self, model: GraphModule):

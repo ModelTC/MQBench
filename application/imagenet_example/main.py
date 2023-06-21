@@ -231,7 +231,7 @@ def main_worker(gpu, ngpus_per_node, args):
             #     }
             # }
         }
-        model = prepare_by_platform(model, args.backend, prepare_custom_config_dict)
+        model = prepare_by_platform(model, args.backend, input_shape_dict = {'data': [args.deploy_batch_size, 3, 224, 224]})
         print('>>>>>prepared module:', model)
 
         if args.fast_test:

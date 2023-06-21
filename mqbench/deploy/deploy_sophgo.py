@@ -120,15 +120,18 @@ class LinearQuantizer_process(object):
         new_data = numpy_helper.from_array(new_data)
         named_initializer[tensor_name].raw_data = new_data.raw_data
     
-    def get_correct_sophgo_tpu_input_tensor_name(self, node, out2node): #和tpu-mlir的命名风格一致
+    def get_correct_sophgo_tpu_input_tensor_name(self, node, out2node, have_int4=False): #和tpu-mlir的命名风格一致
         input_0 = node.input[0]
-        op_type = out2node[input_0].op_type
-        tensor_name = '{}_{}'.format(input_0, op_type if input_0 in out2node else '')
-        if tensor_name[-1] == '_':
-            tensor_name = tensor_name[:-1]        
-        tensor_name += '_8'
-        if op_type in ['Conv', "Gemm"]:
+        op_type = ''
+        if input_0 in out2node:
+            op_type = out2node[input_0].op_type
+            tensor_name = '{}_{}'.format(input_0, op_type)
+        else:
+            tensor_name = input_0
+        if have_int4 and op_type in ['Conv', "Gemm"]:
             tensor_name += '_4'
+        else:
+            tensor_name += '_8'
         return tensor_name
 
     def post_process_clip_ranges(self, clip_ranges, graph, inp2node, out2node):
@@ -150,16 +153,16 @@ class LinearQuantizer_process(object):
                     logger.info(f'Pass <{tensor_name}> clip range to <{node.name}> input <{node.input[0]}>.')
         return clip_ranges
 
-    def post_process_clip_ranges2(self, clip_ranges, graph, inp2node, out2node):
+    def post_process_clip_ranges2(self, clip_ranges, graph, inp2node, out2node, have_int4 = False):
         op_type_inAndOutShouldSameClipRange = ['Flatten', 'Resize', 'Reshape', 'Transpose']
         for node in graph.node:
             tensor_name = f'{node.output[0]}_{node.op_type}'
-            tensor_name += '_4' if node.op_type in ['Conv', "Gemm"] else '_8'
+            tensor_name += '_4' if have_int4 and node.op_type in ['Conv', "Gemm"] else '_8'
             if tensor_name not in clip_ranges:
                 pre_op = node
                 finded = False
                 while pre_op.op_type in op_type_inAndOutShouldSameClipRange:
-                    tensor_name2 = self.get_correct_sophgo_tpu_input_tensor_name(pre_op, out2node)
+                    tensor_name2 = self.get_correct_sophgo_tpu_input_tensor_name(pre_op, out2node, have_int4)
                     if tensor_name2 in clip_ranges:
                         finded = True
                         clip_ranges[tensor_name] = clip_ranges[tensor_name2]
@@ -175,7 +178,7 @@ class LinearQuantizer_process(object):
                         next_op = inp2node[node.output[0]][0][0]
                         while next_op.op_type in op_type_inAndOutShouldSameClipRange:
                             tensor_name2 = f'{next_op.output[0]}_{next_op.op_type}'
-                            tensor_name2 += '_4' if next_op.op_type in ['Conv', "Gemm"] else '_8'
+                            tensor_name2 += '_4' if have_int4 and next_op.op_type in ['Conv', "Gemm"] else '_8'
                             if tensor_name2 in clip_ranges:
                                 finded = True
                                 clip_ranges[tensor_name] = clip_ranges[tensor_name2]
@@ -241,6 +244,7 @@ class LinearQuantizer_process(object):
         output_path = os.path.dirname(onnx_path)
         file_name = os.path.join(output_path, 'layer_outputs.npz')
         layer_out_tensor = None
+        have_int4 = False
         layer_out_tensor2 = {}
         if os.path.exists(file_name):
             layer_out_tensor = np.load(file_name)
@@ -287,6 +291,8 @@ class LinearQuantizer_process(object):
                     self.deal_with_activation_fakequant(node, inp2node)
                     tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
                     bits = 4 if qmax == 7 else 8
+                    if bits == 4:
+                        have_int4 = True
                     for out in graph.output:
                         output_name = node.output[0]
                         # if inp2node[node.output[0]][0][0].op_type == 'Add':
@@ -333,7 +339,7 @@ class LinearQuantizer_process(object):
             graph.initializer.remove(initial_data)
         
         # clip_ranges = self.post_process_clip_ranges(clip_ranges, graph, inp2node, out2node)
-        clip_ranges = self.post_process_clip_ranges2(clip_ranges, graph, inp2node, out2node)
+        clip_ranges = self.post_process_clip_ranges2(clip_ranges, graph, inp2node, out2node, have_int4)
         context = {'sophgo_tpu': clip_ranges}
         context['w_qscheme'] = ''
         context['a_qscheme'] = ''

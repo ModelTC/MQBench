@@ -473,6 +473,7 @@ def prepare_constant_dict(graph: torch.fx.Graph, model: torch.nn.Module):
 def prepare_by_platform(
         model: torch.nn.Module,
         deploy_backend: BackendType,
+        input_shape_dict: list = None,
         prepare_custom_config_dict: Dict[str, Any] = {},
         custom_tracer: Tracer = None):
     """
@@ -529,6 +530,14 @@ def prepare_by_platform(
     modules.update(duplicated_modules)
     modules.update(constant_nodes)
     graph_module = GraphModule(modules, graph, name)
+    if input_shape_dict is not None:
+        try:
+            from torch.fx.passes import shape_prop
+            dev = next(model.parameters()).device
+            dummy_input = [torch.rand(shape).to(dev) for shape in input_shape_dict]
+            shape_prop.ShapeProp(graph_module).propagate(*dummy_input)
+        except:
+            print('waring, shape_prop fail')
     # Model fusion.
     extra_fuse_dict = prepare_custom_config_dict.get('extra_fuse_dict', {})
     extra_fuse_dict.update(fuse_custom_config_dict)
