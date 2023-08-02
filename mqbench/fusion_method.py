@@ -1,7 +1,14 @@
 import torch
 import torch.nn.intrinsic.qat as nniqat
 from torch.nn.utils.fusion import fuse_conv_bn_eval, fuse_linear_bn_eval
-from torch.quantization.fx.utils import _parent_name
+
+# turn foo.bar -> ['foo', 'bar']
+def _parent_name(target):
+    r = target.rsplit('.', 1)
+    if len(r) == 1:
+        return '', r[0]
+    else:
+        return r[0], r[1]
 
 import mqbench.nn.intrinsic as qnni
 import mqbench.nn.intrinsic.qat as qnniqat

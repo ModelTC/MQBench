@@ -3,8 +3,7 @@ import torch
 from mqbench.fake_quantize.quantize_base import QuantizeBase
 from mqbench.utils.hook import PerChannelLoadHook
 
-
-_version_under_1100 = int(torch.__version__.split('.')[1]) < 10
+from mqbench.fake_quantize.quantize_base import _version_under_1100
 
 class FixedFakeQuantize(QuantizeBase):
     """This is actually torch.quantization.FakeQuantize.

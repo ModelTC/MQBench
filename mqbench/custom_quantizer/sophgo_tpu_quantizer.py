@@ -16,9 +16,7 @@ from typing import (
     List, Dict, Any, Callable
 )
 
-from torch.quantization.fx.qconfig_utils import (
-    get_flattened_qconfig_dict
-)
+from mqbench.utils import get_flattened_qconfig_dict
 
 @register_model_quantizer(BackendType.Sophgo_TPU)
 class SophgoTpuQuantizer(ModelQuantizer):

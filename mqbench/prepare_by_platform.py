@@ -284,6 +284,9 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict, wo
                                                          a_observer.__name__, str(a_qscheme)))
     if backend_params['qtype'] == 'vitis':
         logger.info('Bias Qconfig:\n    TqtFakeQuantize with MinMaxObserver')
+    
+    if deploy_backend in [BackendType.Academic, BackendType.Academic_NLP]:
+        return QConfig(activation=a_qconfig, weight=w_qconfig)
 
     qconfig = {'': QConfig(activation=a_qconfig, weight=w_qconfig)}
     if deploy_backend == BackendType.Sophgo_TPU:
