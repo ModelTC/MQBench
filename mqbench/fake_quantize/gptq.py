@@ -28,9 +28,8 @@ class GPTQFakeQuantize(QuantizeBase):
         self.register_buffer('scale', torch.tensor([1.0], dtype=torch.float))
         self.register_buffer('zero_point', torch.tensor([0], dtype=torch.int))
         self.load_state_dict_hook = PerChannelLoadHook(self)
-        self.layer_input = None
+        self.is_gptq_valid = False
         self.layer_name = None
-        self.is_weight = None
         self.rows = None
         self.columns = None
         self.H = None
@@ -39,21 +38,27 @@ class GPTQFakeQuantize(QuantizeBase):
         self.dev = torch.device('cpu')
 
     def forward(self, X):
-        print('This FakeQuantizer is "', self.layer_name, '" and input is "', self.layer_input, '" and type is "', self.layer_type, '" is weight? ', self.is_weight)
+        # print('This FakeQuantizer is "', self.layer_name, '" and input is "', self.layer_input, '" and type is "', self.layer_type, '" is weight? ', self.is_weight)
         self.dev = X.device
-
         x_ori = X
-        # print(X)
-        # print(type(X.data))
-        # print(X.data)
-        # print(X.data.shape)
-        print("GPTQFakeQuantize - forward")
+        # print("GPTQFakeQuantize - forward")
         if self.observer_enabled[0] == 1:
+            if (self.is_gptq_valid):
+                W = X.data.clone()
+                if isinstance(self.layer_module, torch.nn.Conv2d):
+                    W = W.flatten(1)
+                if isinstance(self.layer_module, transformers.Conv1D):
+                    W = W.t()
+                self.rows = W.shape[0]
+                self.columns = W.shape[1]
+                self.H = torch.zeros((self.columns, self.columns), device=self.dev)
+
             self.activation_post_process(X.detach())
             # All is per layer
             _scale, _zero_point = self.activation_post_process.calculate_qparams()
             _scale = _scale.to(self.scale.device)
             _zero_point = _zero_point.to(self.zero_point.device)
+
             if self.scale.shape != _scale.shape:
                 self.scale.resize_(_scale.shape)
                 self.zero_point.resize_(_zero_point.shape)
@@ -62,27 +67,18 @@ class GPTQFakeQuantize(QuantizeBase):
             self.zero_point.data.copy_(_zero_point.float())
 
         if self.fake_quant_enabled[0] == 1:
-            if (self.is_weight):
-                self.input = global_var.get_value(self.layer_input)
-                W = X.data.clone()
-                if ('Conv2d' in self.layer_type):
-                    W = W.flatten(1)
-                if ('Conv1D' in self.layer_type):
-                    W = W.t()
-                self.rows = W.shape[0]
-                self.columns = W.shape[1]
-                self.H = torch.zeros((self.columns, self.columns), device=self.dev)
-                self.nsamples = 0
+            # Use GPTQ
+            if (self.is_gptq_valid):
+                self.input = global_var.get_value(self.layer_name+'.inp')
+                self.output = global_var.get_value(self.layer_name+'.out')
                 self.weight = X
                 self.add_batch()
-                self.fasterquant()
-                # use symmetric quant
-                self.zero_point.data.zero_()
-
-            scale, zero_point = self.scale, self.zero_point
-
-            # X = self.fasterquant(X)
-        global_var.set_value(self.layer_name, X)
+                X = self.fasterquant()
+            # Use FixedFakeQuantize per Tensor
+            else:
+                X = torch.fake_quantize_per_tensor_affine(
+                    X, self.scale.item(), int(self.zero_point.item()),
+                    self.quant_min, self.quant_max)
         return X
     
     @torch.jit.export
@@ -100,37 +96,23 @@ class GPTQFakeQuantize(QuantizeBase):
         if len(inp.shape) == 2:
             inp = inp.unsqueeze(0)
         tmp = inp.shape[0]
-        if ('Linear' in self.layer_type):
-            if len(inp.shape) == 3:
-                inp = inp.reshape((-1, inp.shape[-1]))
-            inp = inp.t()
-            linear = torch.nn.Linear(in_features=self.linear_in_features, out_features=self.linear_out_features)
-            linear.weight.data = self.weight.data
-            linear.bias.data = self.layer_bias.data
-            self.layer_module = linear
-            self.layer_out = linear(self.input)
 
-        if ('Conv1D' in self.layer_type):
+        if isinstance(self.layer_module, torch.nn.Linear) or isinstance(self.layer_module, transformers.Conv1D):
             if len(inp.shape) == 3:
                 inp = inp.reshape((-1, inp.shape[-1]))
             inp = inp.t()
-        
-        if ('Conv2d' in self.layer_type):
+        if isinstance(self.layer_module, torch.nn.Conv2d):
             unfold = torch.nn.Unfold(
-                self.conv2d_kernel_size,
-                dilation=self.conv2d_dilation,
-                padding=self.conv2d_padding,
-                stride=self.conv2d_stride
+                self.layer_module.kernel_size,
+                dilation=self.layer_module.dilation,
+                padding=self.layer_module.padding,
+                stride=self.layer_module.stride
             )
             inp = unfold(inp)
             inp = inp.permute([1, 0, 2])
             inp = inp.flatten(1)
-            conv2d = torch.nn.Conv2d(self.conv2d_in_channels, self.conv2d_out_channels, kernel_size=self.conv2d_kernel_size, stride=self.conv2d_stride, padding=self.conv2d_padding, dilation=self.conv2d_dilation, device=self.dev)
-            conv2d.weight.data = self.weight.data
-            conv2d.bias.data = self.layer_bias.data
-            self.layer_module = conv2d
-            self.layer_out = conv2d(self.input)
-        self.H *= self.nsamples / (self.nsamples + tmp)
+
+        self.H *= self.nsamples / (self.nsamples + tmp) # always zero ?
         self.nsamples += tmp
         # inp = inp.float()
         inp = math.sqrt(2 / self.nsamples) * inp.float()
@@ -140,19 +122,17 @@ class GPTQFakeQuantize(QuantizeBase):
         # inp_inpt.to(torch.device('cpu'))
         # torch.cuda.empty_cache()
         del inp_inpt
-        print(self.H.size())
+        # print(self.H.size())
 
     def fasterquant(self, blocksize=128, percdamp=.01, groupsize=-1, actorder=False):
         # W = self.layer.weight.data.clone()
         # if isinstance(self.layer,torch.nn.Conv2d):
         W = self.weight.data.clone()
 
-        if ('Conv2d' in self.layer_type):
+        if isinstance(self.layer_module, torch.nn.Conv2d):
             W = W.flatten(1)
-        # if isinstance(self.layer, transformers.Conv1D):
-        if ('Conv1d' in self.layer_type):
+        if isinstance(self.layer_module, transformers.Conv1D):
             W = W.t()
-
         W = W.float()
 
         tick = time.time()
@@ -162,7 +142,7 @@ class GPTQFakeQuantize(QuantizeBase):
         #     self.quantizer.find_params(W, weight=True)
 
         H = self.H
-        del self.H
+        # del self.H
 
         dead = torch.diag(H) == 0
         H[dead, dead] = 1
@@ -183,11 +163,6 @@ class GPTQFakeQuantize(QuantizeBase):
         H = torch.cholesky_inverse(H)
         H = torch.linalg.cholesky(H, upper=True)
         Hinv = H
-
-        g_idx = []
-        scale = []
-        zero = []
-        now_idx = 1
 
         for i1 in range(0, self.columns, blocksize): # 以步长 blocksize (128) 循环到 columns
             i2 = min(i1 + blocksize, self.columns)
@@ -230,10 +205,10 @@ class GPTQFakeQuantize(QuantizeBase):
                 print(torch.sum(Losses))
 
         torch.cuda.synchronize()
-        print('time %.2f' % (time.time() - tick))
-        print('error', torch.sum(Losses).item())
+        # print('time %.2f' % (time.time() - tick))
+        # print('error', torch.sum(Losses).item())
 
-        if ('Conv1D' in self.layer_type):
+        if isinstance(self.layer_module, transformers.Conv1D):
             Q = Q.t()
         self.weight.data = Q.reshape(self.weight.shape).to(self.weight.data.dtype)
         # if DEBUG:
@@ -243,7 +218,7 @@ class GPTQFakeQuantize(QuantizeBase):
         # if ('Conv2d' in self.layer_type):
             # print(torch.sum((self.layer_module(self.input) - self.layer_out) ** 2))
         # if ('Linear' in self.layer_type):
-        print(torch.sum((self.layer_module(self.input) - self.layer_out) ** 2))
-        del self.layer_module
+        # print(torch.sum((self.layer_module(self.input) - self.output) ** 2))
+        # del self.layer_module
         
-        return W
+        return self.weight
