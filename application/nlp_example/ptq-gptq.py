@@ -49,7 +49,6 @@ def set_logger(config_progress):
     transformers.utils.logging.enable_default_handler()
     transformers.utils.logging.enable_explicit_format()
 
-# def evaluate(trainer, eval_datasets, num_samples=-1):
 def evaluate(trainer, eval_datasets, num_samples=-1):
     logger.info("*** Evaluate ***")
     if isinstance(eval_datasets, tuple):
@@ -102,6 +101,7 @@ def quantize_model(model, config_quant):
     return model
 
 def insert_model_info(model, valid_layers=(torch.nn.Conv2d, torch.nn.Linear, transformers.Conv1D)):
+    print('>'*6, 'Start Insert Info')
     # for name, module in model.named_modules():
     #     setattr(module, 'layer_name', name)
         
@@ -160,7 +160,7 @@ def insert_model_info(model, valid_layers=(torch.nn.Conv2d, torch.nn.Linear, tra
             items = module._modules.items()
             assert(len(items))
         except:
-            print(name)
+            # print(name)
             if('.weight_fake_quant' in name):
                 layer_name = name.split('.weight_fake_quant')[0]
                 layer_names = layer_name.split('.')
@@ -169,7 +169,7 @@ def insert_model_info(model, valid_layers=(torch.nn.Conv2d, torch.nn.Linear, tra
                     upper_layer = getattr(upper_layer, l)
                 
                 if isinstance(upper_layer, valid_layers):
-                    print(layer_name, type(upper_layer))
+                    print('>'*8, 'Insert', layer_name, type(upper_layer))
                     def get_inp_out(layer_name):
                         def tmp(_, inp, out):
                             # print(inp[0].data, out)
@@ -185,6 +185,7 @@ def insert_model_info(model, valid_layers=(torch.nn.Conv2d, torch.nn.Linear, tra
                     setattr(upper_layer.weight_fake_quant, 'is_gptq_valid', True)
             else:
                 setattr(upper_layer.weight_fake_quant, 'is_gptq_valid', False)
+    print('>'*6, 'End Insert Info')
 
 def main(config_path):
     global_var._init()
@@ -307,18 +308,18 @@ def main(config_path):
         attention_mask = inputs['attention_mask'].to(device)
         # inp = (inputs['input_ids'], inputs['token_type_ids'], inputs['attention_mask'])
         enable_calibration(trainer.model)
-        # evaluate(trainer, calibrate_datasets)
-        trainer.model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
+        evaluate(trainer, calibrate_datasets)
+        # trainer.model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
         enable_quantization(trainer.model)
-        # evaluate(trainer, calibrate_datasets)
-        trainer.model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
-        print("GPTQ End.")
         evaluate(trainer, calibrate_datasets.select(range(2)))
+        # trainer.model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
+        print("GPTQ End.")
+        # evaluate(trainer, calibrate_datasets.select(range(2)))
 
     if training_args.do_eval:
         if hasattr(config, 'quant'):
             enable_quantization(trainer.model)
-        evaluate(trainer, eval_datasets)
+        evaluate(trainer, eval_datasets.select(range(1)))
     
     model_kind, model_onnx_config = FeaturesManager.check_supported_model_or_raise(model, feature='default')
     onnx_config = model_onnx_config(model.config)
@@ -328,6 +329,10 @@ def main(config_path):
     export_inputs['attention_mask'] = torch.tensor(eval_datasets[0]['attention_mask']).unsqueeze(0).to(torch.device('cpu'))
 
     model = model.to(torch.device('cpu'))
+    for tensor in model.state_dict(): 
+        if (model.state_dict()[tensor].device != torch.device('cpu')): 
+            print(tensor)
+
     convert_deploy(model,
                 backends[config.quant.backend],
                 dummy_input=(export_inputs,),
@@ -336,6 +341,7 @@ def main(config_path):
                 output_names=list(onnx_config.outputs.keys()),
                 dynamic_axes={name: axes for name, axes in chain(onnx_config.inputs.items(), onnx_config.outputs.items())}
     )
+    print("Done.")
 
 
 
