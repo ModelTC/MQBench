@@ -13,7 +13,7 @@ quant:
         per_channel: False
     calibrate: 64
     pot_scale: False
-#     backend: academic
+    backend: academic
 
 # quant:
 #     a_qconfig:
