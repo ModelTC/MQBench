@@ -27,15 +27,16 @@ class GPTQFakeQuantize(QuantizeBase):
         super(GPTQFakeQuantize, self).__init__(observer, **observer_kwargs)
         self.register_buffer('scale', torch.tensor([1.0], dtype=torch.float))
         self.register_buffer('zero_point', torch.tensor([0], dtype=torch.int))
-        self.load_state_dict_hook = PerChannelLoadHook(self)
         self.is_gptq_valid = False
         self.layer_name = None
         self.rows = None
         self.columns = None
-        self.H = None
+        # self.H = None
         self.nsamples = 0
         self.layer_module = None
         self.dev = torch.device('cpu')
+        self.register_buffer('H', torch.tensor([0], dtype=torch.float))
+
 
     def forward(self, X):
         # print('This FakeQuantizer is "', self.layer_name, '" and input is "', self.layer_input, '" and type is "', self.layer_type, '" is weight? ', self.is_weight)
@@ -51,7 +52,7 @@ class GPTQFakeQuantize(QuantizeBase):
                     W = W.t()
                 self.rows = W.shape[0]
                 self.columns = W.shape[1]
-                self.H = torch.zeros((self.columns, self.columns), device=self.dev)
+                self.H = torch.zeros((W.shape[1], W.shape[1]), device=self.dev)
 
             self.activation_post_process(X.detach())
             # All is per layer
@@ -69,11 +70,15 @@ class GPTQFakeQuantize(QuantizeBase):
         if self.fake_quant_enabled[0] == 1:
             # Use GPTQ
             if (self.is_gptq_valid):
-                self.input = global_var.get_value(self.layer_name+'.inp')
-                self.output = global_var.get_value(self.layer_name+'.out')
-                self.weight = X
-                self.add_batch()
-                X = self.fasterquant()
+                with torch.no_grad():
+                    self.input = global_var.get_value(self.layer_name+'.inp')
+                    self.output = global_var.get_value(self.layer_name+'.out')
+                    if (self.input.device != self.dev or self.output.device != self.dev):
+                        self.input = self.input.to(self.dev)
+                        self.output = self.output.to(self.dev)
+                    self.weight = X
+                    self.add_batch()
+                    X = self.fasterquant()
             # Use FixedFakeQuantize per Tensor
             else:
                 X = torch.fake_quantize_per_tensor_affine(
@@ -210,15 +215,17 @@ class GPTQFakeQuantize(QuantizeBase):
 
         if isinstance(self.layer_module, transformers.Conv1D):
             Q = Q.t()
-        self.weight.data = Q.reshape(self.weight.shape).to(self.weight.data.dtype)
+        # self.weight.data = Q.reshape(self.weight.shape).to(self.weight.data.dtype)
+        W = Q.reshape(self.weight.shape).to(self.weight.data.dtype) # fixed fakequantize 并没有重置 parameter weight
+
         # if DEBUG:
         #     print(torch.sum((self.layer(self.inp1) - self.out1) ** 2))
 
-        self.layer_module.weight.data = self.weight.data
+        self.layer_module.weight.data = W
         # if ('Conv2d' in self.layer_type):
             # print(torch.sum((self.layer_module(self.input) - self.layer_out) ** 2))
         # if ('Linear' in self.layer_type):
         # print(torch.sum((self.layer_module(self.input) - self.output) ** 2))
         # del self.layer_module
         
-        return self.weight
+        return W
