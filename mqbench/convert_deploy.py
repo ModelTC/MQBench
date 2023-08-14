@@ -127,6 +127,7 @@ def deploy_qparams_tensorrt(model: GraphModule, onnx_model_path, model_name, **k
     logger.info("Extract qparams for TensorRT.")
     remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='tensorrt')
 
+
 @register_deploy_function(BackendType.Sophgo_TPU)
 def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, **kwargs):
     logger.info("Extract qparams for sophgo_tpu.")
