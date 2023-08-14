@@ -9,6 +9,7 @@ from mqbench.fake_quantize import global_var
 import transformers
 import math
 import time
+import numpy as np
 
 DEBUG = False 
 
@@ -31,20 +32,22 @@ class GPTQFakeQuantize(QuantizeBase):
         self.layer_name = None
         self.rows = None
         self.columns = None
-        # self.H = None
+        self.H = torch.tensor([0], dtype=torch.float)
         self.nsamples = 0
         self.layer_module = None
         self.dev = torch.device('cpu')
-        self.register_buffer('H', torch.tensor([0], dtype=torch.float))
-
+        # self.register_buffer('H', torch.tensor([0], dtype=torch.float))
+        self.is_gptq_done = False
+        self.is_add_batch = False
+        self.actorder = False
 
     def forward(self, X):
-        # print('This FakeQuantizer is "', self.layer_name, '" and input is "', self.layer_input, '" and type is "', self.layer_type, '" is weight? ', self.is_weight)
+        # print('This FakeQuantizer is "', self.layer_name)
         self.dev = X.device
         x_ori = X
         # print("GPTQFakeQuantize - forward")
         if self.observer_enabled[0] == 1:
-            if (self.is_gptq_valid):
+            if (self.H.shape == torch.Size([1])):
                 W = X.data.clone()
                 if isinstance(self.layer_module, torch.nn.Conv2d):
                     W = W.flatten(1)
@@ -53,6 +56,11 @@ class GPTQFakeQuantize(QuantizeBase):
                 self.rows = W.shape[0]
                 self.columns = W.shape[1]
                 self.H = torch.zeros((W.shape[1], W.shape[1]), device=self.dev)
+
+            if (self.is_gptq_valid):
+                if (self.layer_name+'.inp' in global_var.get_var().keys()):
+                    self.input = global_var.get_value(self.layer_name+'.inp')
+                    self.add_batch()
 
             self.activation_post_process(X.detach())
             # All is per layer
@@ -66,24 +74,29 @@ class GPTQFakeQuantize(QuantizeBase):
 
             self.scale.data.copy_(_scale)
             self.zero_point.data.copy_(_zero_point.float())
-
         if self.fake_quant_enabled[0] == 1:
-            # Use GPTQ
+            # # Use GPTQ
             if (self.is_gptq_valid):
-                with torch.no_grad():
-                    self.input = global_var.get_value(self.layer_name+'.inp')
-                    self.output = global_var.get_value(self.layer_name+'.out')
-                    if (self.input.device != self.dev or self.output.device != self.dev):
-                        self.input = self.input.to(self.dev)
-                        self.output = self.output.to(self.dev)
-                    self.weight = X
-                    self.add_batch()
-                    X = self.fasterquant()
-            # Use FixedFakeQuantize per Tensor
+                if (not self.is_gptq_done):
+                    with torch.no_grad():
+                        self.input = global_var.get_value(self.layer_name+'.inp')
+                        self.output = global_var.get_value(self.layer_name+'.out')
+                        if (self.input.device != self.dev or self.output.device != self.dev):
+                            self.input = self.input.to(self.dev)
+                            self.output = self.output.to(self.dev)
+                        self.weight = X
+                        # self.add_batch()
+                        X = self.fasterquant(X)
+                else:
+                    return X
+            # # Use FixedFakeQuantize per Tensor
             else:
                 X = torch.fake_quantize_per_tensor_affine(
                     X, self.scale.item(), int(self.zero_point.item()),
                     self.quant_min, self.quant_max)
+            # X = torch.fake_quantize_per_tensor_affine(
+            #     X, self.scale.item(), int(self.zero_point.item()),
+            #     self.quant_min, self.quant_max)
         return X
     
     @torch.jit.export
@@ -129,10 +142,11 @@ class GPTQFakeQuantize(QuantizeBase):
         del inp_inpt
         # print(self.H.size())
 
-    def fasterquant(self, blocksize=128, percdamp=.01, groupsize=-1, actorder=False):
+    def fasterquant(self, X, blocksize=128, percdamp=.01, groupsize=-1, actorder=False):
         # W = self.layer.weight.data.clone()
         # if isinstance(self.layer,torch.nn.Conv2d):
-        W = self.weight.data.clone()
+        # W = self.weight.data.clone()
+        W = X.data.clone()
 
         if isinstance(self.layer_module, torch.nn.Conv2d):
             W = W.flatten(1)
@@ -140,34 +154,50 @@ class GPTQFakeQuantize(QuantizeBase):
             W = W.t()
         W = W.float()
 
-        tick = time.time()
-
-        # Calculate by Observer
-        # if not self.quantizer.ready():
-        #     self.quantizer.find_params(W, weight=True)
+        # # Calculate by Observer
+        # # if not self.quantizer.ready():
+        # #     self.quantizer.find_params(W, weight=True)
 
         H = self.H
-        # del self.H
+        # # del self.H
 
-        dead = torch.diag(H) == 0
+        # dead = torch.diag(H) == 0
+        dead = []
+        h, w = H.shape
+        H_diag = torch.zeros(w)
+        for i in range(h):
+            if (H[i, i] == 0):
+                dead.append(i)
+            H_diag[i] = H[i, i]
+
         H[dead, dead] = 1
         W[:, dead] = 0
 
-        # if actorder:
-        #     perm = torch.argsort(torch.diag(H), descending=True)
-        #     W = W[:, perm]
-        #     H = H[perm][:, perm]
+        if actorder:
+            perm = torch.argsort(torch.diag(H), descending=True)
+            W = W[:, perm]
+            H = H[perm][:, perm]
 
         Losses = torch.zeros_like(W)
         Q = torch.zeros_like(W)
 
-        damp = percdamp * torch.mean(torch.diag(H))
+        
+        damp = percdamp * torch.mean(H_diag)
         diag = torch.arange(self.columns, device=self.dev)
-        H[diag, diag] += damp
-        H = torch.linalg.cholesky(H)
-        H = torch.cholesky_inverse(H)
-        H = torch.linalg.cholesky(H, upper=True)
-        Hinv = H
+        H[diag, diag] += damp # 使 H 转变为全正数，保证正定
+
+        H_c = H.clone()
+        H_cpu = H_c.cpu()
+        del H_c
+
+        # H1 = torch.linalg.cholesky(H)
+        # H2 = torch.cholesky_inverse(H1)
+        # H3 = torch.linalg.cholesky(H2, upper=True)
+        # Hinv = H
+
+        H_cpu = np.linalg.inv(H_cpu)
+        H_cpu = np.linalg.cholesky(H_cpu)
+        Hinv = torch.tensor(H_cpu, device=self.dev)
 
         for i1 in range(0, self.columns, blocksize): # 以步长 blocksize (128) 循环到 columns
             i2 = min(i1 + blocksize, self.columns)
@@ -188,9 +218,12 @@ class GPTQFakeQuantize(QuantizeBase):
                 #     if (i1 + i) % groupsize == 0:
                 #         self.quantizer.find_params(W[:, (i1 + i):(i1 + i + groupsize)], weight=True)
 
-                q = quantize(
-                    w, self.scale, self.zero_point, self.quant_max
-                ).flatten()
+                # q = quantize(
+                #     w, self.scale, self.zero_point, self.quant_max
+                # ).flatten()
+                q = torch.fake_quantize_per_tensor_affine(
+                    w, self.scale.item(), int(self.zero_point.item()),
+                    self.quant_min, self.quant_max)
                 Q1[:, i] = q
                 Losses1[:, i] = (w - q) ** 2 / d ** 2
 
@@ -203,25 +236,21 @@ class GPTQFakeQuantize(QuantizeBase):
 
             W[:, i2:] -= Err1.matmul(Hinv[i1:i2, i2:])
 
-            if DEBUG:
-                self.layer.weight.data[:, :i2] = Q[:, :i2]
-                self.layer.weight.data[:, i2:] = W[:, i2:]
-                print(torch.sum((self.layer(self.inp1) - self.out1) ** 2))
-                print(torch.sum(Losses))
 
         torch.cuda.synchronize()
         # print('time %.2f' % (time.time() - tick))
-        # print('error', torch.sum(Losses).item())
+        print('error', torch.sum(Losses).item())
 
         if isinstance(self.layer_module, transformers.Conv1D):
             Q = Q.t()
         # self.weight.data = Q.reshape(self.weight.shape).to(self.weight.data.dtype)
         W = Q.reshape(self.weight.shape).to(self.weight.data.dtype) # fixed fakequantize 并没有重置 parameter weight
 
+
         # if DEBUG:
         #     print(torch.sum((self.layer(self.inp1) - self.out1) ** 2))
 
-        self.layer_module.weight.data = W
+        # self.layer_module.weight.data = W
         # if ('Conv2d' in self.layer_type):
             # print(torch.sum((self.layer_module(self.input) - self.layer_out) ** 2))
         # if ('Linear' in self.layer_type):

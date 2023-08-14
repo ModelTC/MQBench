@@ -11,7 +11,7 @@ quant:
         bit: 8
         symmetric: True
         per_channel: False
-    calibrate: 64
+    calibrate: 128
     pot_scale: False
     backend: academic
 

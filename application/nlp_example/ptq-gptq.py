@@ -20,7 +20,7 @@ from transformers.utils.fx import HFTracer
 from transformers.onnx.features import FeaturesManager
 from itertools import chain
 from mqbench.prepare_by_platform import prepare_by_platform, BackendType
-from mqbench.convert_deploy import convert_deploy
+from mqbench.convert_deploy import convert_deploy, convert_onnx
 from mqbench.utils.state import enable_quantization, enable_calibration_woquantization, enable_calibration
 import re
 from mqbench.fake_quantize import global_var
@@ -100,61 +100,10 @@ def quantize_model(model, config_quant):
     model = prepare_by_platform(model, backend, prepare_custom_config_dict, custom_tracer=HFTracer())
     return model
 
+inp_out_hooks = []
+
 def insert_model_info(model, valid_layers=(torch.nn.Conv2d, torch.nn.Linear, transformers.Conv1D)):
     print('>'*6, 'Start Insert Info')
-    # for name, module in model.named_modules():
-    #     setattr(module, 'layer_name', name)
-        
-    #     if (name == ''):
-    #         code = module._code
-    #         print(code)
-    #         func_inp = re.findall(r'self\.(.*)[(](.*)[)]', code)
-    #         for func, inps in func_inp:
-    #             print(func, '--- input is  ---', inps)
-    #         continue
-            
-    #     print("=================================")
-    #     print(name)
-    #     print(module)
-    #     print(type(module))
-
-    #     if ('_post_act_fake_quantizer' in name):
-    #         if ('activation_post_process' not in name):
-    #             setattr(module, 'is_weight', False)
-        
-    #     if ('weight_fake_quant' in name):
-    #         if ('activation_post_process' not in name):
-    #             setattr(module, 'is_weight', True)
-        
-    #     if (isinstance(module, torch.nn.Conv2d)):
-    #         setattr(module.weight_fake_quant, 'conv2d_dilation', module.dilation)
-    #         setattr(module.weight_fake_quant, 'conv2d_kernel_size', module.kernel_size)
-    #         setattr(module.weight_fake_quant, 'conv2d_padding', module.padding)
-    #         setattr(module.weight_fake_quant, 'conv2d_stride', module.stride)
-    #         setattr(module.weight_fake_quant, 'conv2d_in_channels', module.in_channels)
-    #         setattr(module.weight_fake_quant, 'conv2d_out_channels', module.out_channels)
-    #         setattr(module.weight_fake_quant, 'layer_type', str(type(module)))
-    #         setattr(module.weight_fake_quant, 'layer_bias', module.bias)
-        
-    #     if (isinstance(module, torch.nn.Linear)):
-    #         setattr(module.weight_fake_quant, 'layer_type', str(type(module)))
-    #         setattr(module.weight_fake_quant, 'layer_weight', module.weight)
-    #         setattr(module.weight_fake_quant, 'layer_bias', module.bias)
-    #         setattr(module.weight_fake_quant, 'linear_in_features', module.in_features)
-    #         setattr(module.weight_fake_quant, 'linear_out_features', module.out_features)
-        
-    #     if (isinstance(module, torch.nn.Conv1d)):
-    #         setattr(module.weight_fake_quant, 'layer_type', str(type(module)))
-
-    #     if (isinstance(module, torch.nn.Conv2d) or isinstance(module, torch.nn.Linear) or isinstance(module, torch.nn.Conv1d)):
-    #         setattr(module.weight_fake_quant, 'layer_module', module)
-
-    #     for func, inps in func_inp:
-    #         if (func in name):
-    #             setattr(module, 'layer_input', inps)
-    #             if (not hasattr(module, 'layer_type')):
-    #                 setattr(module, 'layer_type', type(module))
-    prefix = model.__class__.__name__
     for name, module in model.named_modules():
         try:
             items = module._modules.items()
@@ -176,16 +125,53 @@ def insert_model_info(model, valid_layers=(torch.nn.Conv2d, torch.nn.Linear, tra
                             global_var.set_value(layer_name+'.weight_fake_quant.inp', inp[0].data)
                             global_var.set_value(layer_name+'.weight_fake_quant.out', out.data)
                         return tmp
-                    upper_layer.register_forward_hook(get_inp_out(layer_name))
+                    inp_out_hooks.append(upper_layer.register_forward_hook(get_inp_out(layer_name)))
                     layer_module = copy.deepcopy(upper_layer)
                     layer_module.weight_fake_quant = torch.nn.Sequential()
                     layer_module.requires_grad = False
                     setattr(upper_layer.weight_fake_quant, 'layer_module', layer_module)
+                    setattr(upper_layer.weight_fake_quant, 'layer_type', type(layer_module))
                     setattr(upper_layer.weight_fake_quant, 'layer_name', layer_name+'.weight_fake_quant')
                     setattr(upper_layer.weight_fake_quant, 'is_gptq_valid', True)
+                    setattr(upper_layer.weight_fake_quant, 'is_gptq_done', False)
             else:
                 setattr(upper_layer.weight_fake_quant, 'is_gptq_valid', False)
     print('>'*6, 'End Insert Info')
+
+def remove_model_info(model, valid_layers=(torch.nn.Conv2d, torch.nn.Linear, transformers.Conv1D)):
+    print('>'*6, 'Start Remove Info')
+    print('>'*4, 'Remove hooks')
+    for hook in inp_out_hooks:
+        hook.remove()
+    print('>'*4, 'Set GPTQ Done')
+    layer_modules = []
+    for name, module in model.named_modules():
+        try:
+            items = module._modules.items()
+            assert(len(items))
+        except:
+            # print(name)
+            if('.weight_fake_quant' in name):
+                layer_name = name.split('.weight_fake_quant')[0]
+                layer_names = layer_name.split('.')
+                upper_layer = model
+                for l in layer_names:
+                    upper_layer = getattr(upper_layer, l)
+                
+                if isinstance(upper_layer, valid_layers):
+                    if (getattr(upper_layer.weight_fake_quant, 'is_gptq_valid') == True):
+                        setattr(upper_layer.weight_fake_quant, 'is_gptq_done', True)
+                    if hasattr(upper_layer.weight_fake_quant, 'layer_module'):
+                        layer_modules.append(upper_layer.weight_fake_quant)
+                
+                #     print('>'*8, 'Remove', layer_name, type(upper_layer))
+                #     inp_out_hooks[name].remove()
+            # else:
+            #     setattr(upper_layer.weight_fake_quant, 'is_gptq_valid', False)
+    for lm in layer_modules:
+        if hasattr(lm, 'layer_module'):
+            del lm.layer_module
+    print('>'*6, 'End Remove Info')
 
 def main(config_path):
     global_var._init()
@@ -300,6 +286,8 @@ def main(config_path):
 
         calibrate_datasets = raw_datasets['train'].shuffle().select(range(config.quant.calibrate))
         insert_model_info(trainer.model)
+        # export model
+        torch.save({'net': trainer.model.state_dict()}, 'torch_model_before.pth')
         eval_dataloader = trainer.get_eval_dataloader(calibrate_datasets)
         step, inputs = next(enumerate(eval_dataloader), 'end')
         # inputs = inputs.to(device)
@@ -311,27 +299,39 @@ def main(config_path):
         evaluate(trainer, calibrate_datasets)
         # trainer.model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
         enable_quantization(trainer.model)
-        evaluate(trainer, calibrate_datasets.select(range(2)))
+        evaluate(trainer, calibrate_datasets.select(range(1)))
         # trainer.model(input_ids=input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
         print("GPTQ End.")
         # evaluate(trainer, calibrate_datasets.select(range(2)))
+        remove_model_info(trainer.model)
+        torch.save({'net': trainer.model.state_dict()}, 'torch_model_after.pth')
 
     if training_args.do_eval:
         if hasattr(config, 'quant'):
             enable_quantization(trainer.model)
-        evaluate(trainer, eval_datasets.select(range(1)))
+        evaluate(trainer, eval_datasets)
     
     model_kind, model_onnx_config = FeaturesManager.check_supported_model_or_raise(model, feature='default')
     onnx_config = model_onnx_config(model.config)
     export_inputs = {}
+    # device = torch.device('cpu')
     export_inputs['input_ids'] = torch.tensor(eval_datasets[0]['input_ids']).unsqueeze(0).to(torch.device('cpu'))
     export_inputs['token_type_ids'] = torch.tensor(eval_datasets[0]['token_type_ids']).unsqueeze(0).to(torch.device('cpu'))
     export_inputs['attention_mask'] = torch.tensor(eval_datasets[0]['attention_mask']).unsqueeze(0).to(torch.device('cpu'))
 
     model = model.to(torch.device('cpu'))
     for tensor in model.state_dict(): 
-        if (model.state_dict()[tensor].device != torch.device('cpu')): 
-            print(tensor)
+        if (model.state_dict()[tensor].device.type != 'cpu'): 
+            print('*'*10, 'not same device', tensor)
+
+    # kwargs = {
+    #     'input_shape_dict': {'input_ids': [1, 128], 'token_type_ids': [1, 128], 'attention_mask': [1, 128]},
+    #     'output_path': './',
+    #     'model_name':  'mqbench_model_gptq',
+    #     'dummy_input': export_inputs, 
+    #     'onnx_model_path':  './mqbench_model_gptq.onnx',
+    # }
+    # convert_onnx(model, **kwargs)
 
     convert_deploy(model,
                 backends[config.quant.backend],
