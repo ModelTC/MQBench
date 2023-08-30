@@ -3,6 +3,7 @@ import torch.nn as nn
 import inspect
 import unittest
 import argparse
+import copy 
 from itertools import chain
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
@@ -201,9 +202,10 @@ enable_calibration(model_prepared1)
 model_prepared1=model_prepared1.to(device)
 calibrate(cali_loader, model_prepared1)
 #原始模型精度
-disable_all(model_prepared1)
-model_prepared1=model_prepared1.train()
-optimizer = AdamW(model_prepared1.parameters(), lr=learning_rate)
+model_prepared11=copy.deepcopy(model_prepared1)
+disable_all(model_prepared11)
+model_prepared11=model_prepared11.train()
+optimizer = AdamW(model_prepared11.parameters(), lr=learning_rate)
 lr_scheduler = get_scheduler(
     "linear",
     optimizer=optimizer,
@@ -215,8 +217,8 @@ total_loss = 0
 best_acc = 0
 for t in range(epoch_num):
     print(f"Epoch {t+1}/{epoch_num}\n-------------------------------")
-    total_loss = train_loop(train_dataloader, model_prepared1, loss_fn, optimizer, lr_scheduler, t+1, total_loss)
-    Test_acc = test_loop(test_dataloader,model_prepared1, mode='Test')
+    total_loss = train_loop(train_dataloader, model_prepared11, loss_fn, optimizer, lr_scheduler, t+1, total_loss)
+    Test_acc = test_loop(test_dataloader,model_prepared11, mode='Test')
     if Test_acc > best_acc:
         best_acc = Test_acc
         print('saving new weights...\n')
@@ -227,15 +229,16 @@ enable_quantization(model_prepared1)
 model_prepared1=model_prepared1.train()
 total_loss = 0
 best_acc = 0
+optimizer1 = AdamW(model_prepared1.parameters(), lr=learning_rate)
 lr_scheduler1 = get_scheduler(
     "linear",
-    optimizer=optimizer,
+    optimizer=optimizer1,
     num_warmup_steps=0,
     num_training_steps=epoch_num*len(train_dataloader),
 )
 for t in range(epoch_num):
     print(f"Epoch {t+1}/{epoch_num}\n-------------------------------")
-    total_loss = train_loop(train_dataloader, model_prepared1, loss_fn, optimizer, lr_scheduler1, t+1, total_loss)
+    total_loss = train_loop(train_dataloader, model_prepared1, loss_fn, optimizer1, lr_scheduler1, t+1, total_loss)
     Test_acc = test_loop(test_dataloader,model_prepared1, mode='Test')
     if Test_acc > best_acc:
         best_acc = Test_acc
