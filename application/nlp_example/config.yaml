@@ -6,11 +6,13 @@ quant:
         symmetric: False
         per_channel: False
     w_qconfig:
-        quantizer: FixedFakeQuantize
+        quantizer: E4M3FakeQuantize
         observer: MinMaxObserver
         bit: 8
         symmetric: True
-        per_channel: True
+        per_channel: False # per-channel需要更长的训练时间
+    mode: STOCHASTIC # 在这个地方选择一种FP8的具体ROUNDING方法（STOCHASTIC和RNE较常用）
+    scaling_method: no_scaling # 在这个地方选取一种scale获取的手段（max/mean/no_scaling，具体的获取流程可以阅读E4/E5的fake quant）
     calibrate: 64
     pot_scale: False
     backend: academic
@@ -31,13 +33,13 @@ data:
 
 model:
     type: bert
-    model_name_or_path: final_pretrain_models/bert-base-uncased-mrpc
+    model_name_or_path: Intel/bert-base-uncased-mrpc # 需要将此处的模型更改为要测试的网络模型
     config_name: null # pretrained config name or path if not the same as model_name
     tokenizer_name: null
     cache_dir: ./cache_dir 
     use_fast_tokenizer: True # whether to use one of the fast tokenizer (backed by the tokenizers library) or not
     model_revision: main # The specific model version to use (can be a branch name, tag name or commit id).
-    use_auth_token: Fasle # will use the token generated when running `transformers-cli login` (necessary to use this script "
+    use_auth_token: False # will use the token generated when running `transformers-cli login` (necessary to use this script "
             # with private models)"
 
 train:
@@ -65,7 +67,7 @@ progress:
                            # Deletes the older checkpoints in the output_dir. Default is unlimited checkpoints
     save_on_each_node: False #When doing multi-node distributed training, whether to save models and checkpoints on each node, or only on the main one
 
-    no_cuda: False # Do not use CUDA even when it is available
+    no_cuda: False # Do not use CUDA even when it is available (CUDA版本的使用开关)
     run_name: null # An optional descriptor for the run. Notably used for wandb logging.
     disable_tqdm: null # Whether or not to disable the tqdm progress bars. use False or True
 
