@@ -14,6 +14,7 @@ import numpy as np
 import random
 import datetime
 import time
+import copy 
 from torch.utils.data import Dataset, DataLoader, random_split, RandomSampler, SequentialSampler
 torch.manual_seed(42)
 from transformers import GPT2LMHeadModel,  GPT2Tokenizer, GPT2Config, GPT2LMHeadModel
@@ -49,7 +50,7 @@ from transformers.utils.fx import HFTracer
 
 parser = argparse.ArgumentParser(description='MQBench gpt2 Training')
 
-parser.add_argument('--epochs', default=4, type=int, metavar='N',
+parser.add_argument('--epochs', default=3, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--b', '--batch-size', default=1, type=int,
                     metavar='N',
@@ -467,22 +468,26 @@ optimizer = AdamW(model_prepared1.parameters(),
                   eps = epsilon
                 )
 total_steps = len(train_dataloader) * epochs
-
 scheduler = get_linear_schedule_with_warmup(optimizer, 
-                                            num_warmup_steps = warmup_steps, 
-                                            num_training_steps = total_steps)
-scheduler1 = get_linear_schedule_with_warmup(optimizer, 
                                             num_warmup_steps = warmup_steps, 
                                             num_training_steps = total_steps)
 def format_time(elapsed):
     return str(datetime.timedelta(seconds=int(round((elapsed)))))
 
 #Original model training
-disable_all(model_prepared1)
+model_prepared11=copy.deepcopy(model_prepared1)
+optimizer1 = AdamW(model_prepared11.parameters(),
+                  lr = learning_rate,
+                  eps = epsilon
+                )
+scheduler1 = get_linear_schedule_with_warmup(optimizer1, 
+                                            num_warmup_steps = warmup_steps, 
+                                            num_training_steps = total_steps)
+disable_all(model_prepared11)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 #model_prepared1=DataParallel(model_prepared1)
-model_prepared1=model_prepared1.train()
-model_prepared2,training_stats1=train(model_prepared1,epochs,optimizer,scheduler,train_dataloader,validation_dataloader)
+model_prepared11=model_prepared11.train()
+model_prepared2,training_stats1=train(model_prepared11,epochs,optimizer1,scheduler1,train_dataloader,validation_dataloader)
 
 # Display floats with two decimal places.
 pd.set_option('precision', 2)
@@ -506,7 +511,7 @@ calibrate(cali_loader, model_prepared1)
 #quantize model train
 enable_quantization(model_prepared1)
 model_prepared1=model_prepared1.train()
-model_prepared3,training_stats2=train1(model_prepared1,epochs,optimizer,scheduler1,train_dataloader,validation_dataloader)
+model_prepared3,training_stats2=train1(model_prepared1,epochs,optimizer,scheduler,train_dataloader,validation_dataloader)
 
 # Display floats with two decimal places.
 pd.set_option('precision', 2)

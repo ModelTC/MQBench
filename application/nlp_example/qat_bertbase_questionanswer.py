@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import inspect
 import unittest
+import copy
 from itertools import chain
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
@@ -429,10 +430,11 @@ config1 = DistilBertConfig.from_pretrained('distilbert-base-uncased')
 # 创建自定义配置对象
 model_prepared2=BertForQuestionAnswering(config1)
 # 原始模型训练
-disable_all(model_prepared2)
-model_prepared2=model_prepared2.train()
+model_prepared22=copy.deepcopy(model_prepared2)
+disable_all(model_prepared22)
+model_prepared22=model_prepared22.train()
 trainer1 = Trainer(
-    model_prepared2,
+    model_prepared22,
     args1,
     train_dataset=tokenized_datasets["train"],
     eval_dataset=tokenized_datasets["validation"],
