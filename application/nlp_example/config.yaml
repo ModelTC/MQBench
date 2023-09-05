@@ -11,7 +11,6 @@ quant:
         bit: 8
         symmetric: True
         per_channel: False # per-channel需要更长的训练时间
-    mode: STOCHASTIC # 在这个地方选择一种FP8的具体ROUNDING方法（STOCHASTIC和RNE较常用）
     scaling_method: no_scaling # 在这个地方选取一种scale获取的手段（max/mean/no_scaling，具体的获取流程可以阅读E4/E5的fake quant）
     calibrate: 64
     pot_scale: False
