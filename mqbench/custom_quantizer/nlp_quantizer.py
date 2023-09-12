@@ -10,7 +10,7 @@ class AcademicNLPQuantizer(ModelQuantizer):
     """
     NLP model quantizer for Academic settings. Should not de 8bit for
     first / last layer.
-    We should uantize Linear / Embedding weights.
+    We should quantize Linear / Embedding weights.
     Linear / Matmul layer inputs(activations).
     """
     @property
