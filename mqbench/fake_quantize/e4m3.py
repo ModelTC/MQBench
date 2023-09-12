@@ -130,11 +130,11 @@ class E4M3FakeQuantize(QuantizeBase):
 
         if self.fake_quant_enabled[0] == 1: # 如果使用fake quantize
             #work_mode = 'E4M3_' + parse_config('config.yaml').quant.mode.upper()
-            work_mode = 'E4M3_STOCHASTIC'
+            work_mode = 'E4M3_RNE'
             if self.is_per_channel: # 按照per channel的方式计算scale
-                channels = X.shape[0]
+                channels = X.shape[1]
                 for c in range(channels):
-                    sub_tensor = X.select(0, c).detach()
+                    sub_tensor = X.select(1, c).detach()
                     if scaling_method.lower() == "mean":
                         mean = torch.mean(abs(torch.flatten(X.detach())))
                         mean = abs(mean) if abs(mean) > 1e-5 else get_flt_min("e4m3")
@@ -148,7 +148,7 @@ class E4M3FakeQuantize(QuantizeBase):
                         _scale = torch.tensor(1.0)
                     self.scale.copy_(_scale)
                     sub_tensor = fpemu_device_fn(sub_tensor, mode=work_mode, inplace=False, scale=self.scale.item())
-                    tensor_q.select(0, c).data.copy_(sub_tensor)
+                    tensor_q.select(1, c).data.copy_(sub_tensor)
                 X = tensor_q # per channel方式计算后的量化权重
             else: # 按照per tensor的方法计算scale
                 if scaling_method.lower() == "mean":
