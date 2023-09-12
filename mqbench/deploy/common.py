@@ -230,18 +230,25 @@ def parse_attrs(node_attrs):
     for attr in node_attrs:
         if attr.type == onnx.AttributeProto.AttributeType.INTS:
             attrs[attr.name] = tuple(attr.ints)
+            attrs['dtype']='ints'
         elif attr.type == onnx.AttributeProto.AttributeType.INT:
             attrs[attr.name] = attr.i
+            attrs['dtype']='int'
         elif attr.type == onnx.AttributeProto.AttributeType.FLOATS:
             attrs[attr.name] = tuple(attr.floats)
+            attrs['dtype']='floats'
         elif attr.type == onnx.AttributeProto.AttributeType.FLOAT:
             attrs[attr.name] = attr.f
+            attrs['dtype']='float'
         elif attr.type == onnx.AttributeProto.AttributeType.TENSOR:
             attrs[attr.name] = numpy_helper.to_array(attr.t)
+            attrs['dtype']='t'
         elif attr.type == onnx.AttributeProto.AttributeType.STRING:
             attrs[attr.name] = str(attr.s)
+            attrs['dtype']='st'
         elif attr.type == onnx.AttributeProto.AttributeType.STRINGS:
             attrs[attr.name] = tuple([str(x) for x in attr.strings])
+            attrs['dtype']='none'
         else:
             raise Exception("ATTR Type [{}] Not Supported!".format(attr.type))
     return attrs

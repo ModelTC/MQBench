@@ -22,6 +22,8 @@ from mqbench.fake_quantize import (
     TqtFakeQuantize,
     AdaRoundFakeQuantize,
     QDropFakeQuantize,
+    E4M3FakeQuantize,
+    E5M2FakeQuantize
 )
 from mqbench.observer import (
     ClipStdObserver,
@@ -61,7 +63,13 @@ class BackendType(Enum):
 
 
 ParamsTable = {
-    BackendType.Academic:   dict(qtype='affine'),    # noqa: E241
+    BackendType.Academic:   dict(qtype='affine',
+                                 w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8),
+                                 a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
+                                 default_weight_quantize=E4M3FakeQuantize,
+                                 default_act_quantize=LearnableFakeQuantize,
+                                 default_weight_observer=MinMaxObserver,
+                                 default_act_observer=EMAMinMaxObserver),    # noqa: E241
     BackendType.NNIE:       dict(qtype='nnie',       # noqa: E241
                                  # NNIE actually do not need w/a qscheme. We add for initialize observer only.
                                  w_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
@@ -160,6 +168,8 @@ FakeQuantizeDict = {
     'TqtFakeQuantize':       TqtFakeQuantize,        # TQT                          # noqa: E241
     'AdaRoundFakeQuantize':  AdaRoundFakeQuantize,   # AdaRound                     # noqa: E241
     'QDropFakeQuantize':     QDropFakeQuantize,      # BRECQ & QDrop                # noqa: E241
+    'E4M3FakeQuantize':      E4M3FakeQuantize,
+    'E5M2FakeQuantize':      E5M2FakeQuantize 
 }
 
 
@@ -286,11 +296,11 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict, wo
                                                          a_observer.__name__, str(a_qscheme)))
     if backend_params['qtype'] == 'vitis':
         logger.info('Bias Qconfig:\n    TqtFakeQuantize with MinMaxObserver')
-
-    if deploy_backend in [BackendType.Academic]:
-        return QConfig(activation=a_qconfig, weight=w_qconfig)
-
-    qconfig = {'': QConfig(activation=a_qconfig, weight=w_qconfig)}
+    
+    if deploy_backend in [BackendType.Academic, BackendType.Academic_NLP]:
+       return {'':QConfig(activation=a_qconfig, weight=w_qconfig)}
+    
+    qconfig = {'': QConfig(activation=a_qconfig, weight=w_qconfig)}    
     if deploy_backend == BackendType.Sophgo_TPU:
         qconfig["object_type"] = {torch.nn.Linear:createQConfigForSophgoLiner()} #int8 qat, Sophgo_TPU use sym per-layer
         if work_mode == 'all_int4_qat':

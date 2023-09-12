@@ -21,6 +21,7 @@ from mqbench.deploy import (
     replace_fakequantize_and_collect_params_openvino,
     remove_fakequantize_and_collect_params_tengine,
     remove_fakequantize_and_collect_params_sophgo,
+    remove_fakequantize_and_collect_params_academic,
     ONNXQLinearPass, ONNXQNNPass
 )
 
@@ -132,6 +133,58 @@ def deploy_qparams_openvino(model: GraphModule, onnx_model_path, model_name, **k
 def deploy_qparams_tensorrt(model: GraphModule, onnx_model_path, model_name, **kwargs):
     logger.info("Extract qparams for TensorRT.")
     remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='tensorrt')
+#2023.7.27修改
+@register_deploy_function(BackendType.Academic_NLP)
+def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name, **kwargs):
+    logger.info("Extract qparams for Academic_NLP.")
+    remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='Academic_NLP')
+    print("导出calitable")
+    output_path = osp.dirname(onnx_model_path)
+    context_filename = osp.join(output_path, '{}_clip_ranges.json'.format(model_name))
+    file_h = open(context_filename, "r")
+    blob_range = json.loads(file_h.read())["Academic_NLP"]
+    file_h.close()
+    cali_table = osp.join(output_path, '{}_cali_table_from_mqbench_Academic_NLP'.format(model_name))
+    work_mode = kwargs.get('work_mode', 'QAT_all_int8')
+    if work_mode not in  ['QAT_all_int8', 'int4_and_int8_mix', 'int4_and_int8_mix_no_fc']:
+        print('QAT_all_int8 not in [QAT_all_int8, int4_and_int8_mix, int4_and_int8_mix_no_fc],set to QAT_all_int8')
+        work_mode = 'QAT_all_int8'
+    with open(cali_table, 'w') as f:
+        f.write(f"# work_mode:{work_mode} #Automatically generated, do not modify, work_mode choice:[QAT_all_int8, int4_and_int8_mix, int4_and_int8_mix_no_fc]\n")
+        f.write("# op_name    threshold    min    max\n")
+        weight_scale = []
+        int4_th = []
+        for name,value in blob_range.items():
+            if 'threshold' in value:
+                tmpstr = "{} {:.7f} {:.7f} {:.7f}\n".format(name[:-2], value['threshold'], value['min'], value['max'])
+                if name.endswith('_4'):
+                    int4_th.append(tmpstr)
+                elif name.endswith('_8'):
+                    f.write(tmpstr)
+                else:
+                    f.write("{} {:.7f} {:.7f} {:.7f}\n".format(name, value['threshold'], value['min'], value['max']))
+            else:
+                tmpstr = "{} {} {} {} {}\n".format(name, len(value['step']), ' '.join([str(i) for i in value['step']]), 
+                        len(value['zero_point']), ' '.join([str(i) for i in value['zero_point']]))
+                if name.endswith('_weight') or name.endswith('_bias'):
+                    weight_scale.append(tmpstr)
+                else:
+                    f.write(tmpstr)
+        f.write('#int4_th\n')
+        for i in int4_th:
+            f.write(i)
+        f.write('#weight_scale\n')
+        for i in weight_scale:
+            f.write(i)
+    print("导出qtable")
+    file_h = open(context_filename, "r")
+    blob_range = json.loads(file_h.read())["Academic_NLP"]
+    file_h.close()
+    q_table = osp.join(output_path, '{}_q_table_from_mqbench_Academic_NLP'.format(model_name))
+    with open(q_table, 'w') as f:
+        f.write("# op_name    bit    type\n")
+        for name,value in blob_range.items():
+            f.write("{} {} {} \n".format(name, value['bit'], value['type']))
 
 @register_deploy_function(BackendType.Sophgo_TPU)
 def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, **kwargs):
