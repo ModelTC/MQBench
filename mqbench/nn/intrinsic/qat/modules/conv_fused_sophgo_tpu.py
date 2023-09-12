@@ -193,8 +193,12 @@ class _ConvBnNd(nn.modules.conv._ConvNd, _FusedModule):
             full_bias = (conv_bias - self.bn.running_mean) / running_std * self.bn.weight + self.bn.bias 
         else:
             full_bias = (conv_bias - self.bn.running_mean) / running_std 
-        # quant_bias = self.bias_fake_quant(full_bias)
-        quant_bias = self.bias_fake_quant_proc(full_bias, self.weight_fake_quant.scale, self.input_fake_quantizer.scale)
+
+        if full_bias is not None and self.weight_fake_quant.fake_quant_enabled[0] == 1:
+            quant_bias = self.bias_fake_quant_proc(full_bias, self.weight_fake_quant.scale, self.input_fake_quantizer.scale)
+        else:
+            quant_bias = full_bias
+
         conv_with_bias = self._conv_forward(input, scaled_weight, quant_bias)
         conv_orig = (conv_with_bias - full_bias.reshape(bias_shape)) / scale_factor.reshape(bias_shape) + conv_bias.reshape(bias_shape)
         conv = self.bn(conv_orig)

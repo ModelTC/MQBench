@@ -4,6 +4,7 @@ import os
 import torch
 from torch.fx import GraphModule
 import onnx
+from onnxsim import simplify
 import mqbench.custom_symbolic_opset  # noqa: F401
 import mqbench.fusion_method          # noqa: F401
 from mqbench.prepare_by_platform import BackendType
@@ -87,18 +88,23 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
                                   opset_version=opset_version,
                                   dynamic_axes=dynamic_axes,
                                   do_constant_folding=True,
-                                  custom_opsets={'' : opset_version})
+                                  custom_opsets={'MQBench_custom' : opset_version})
             except ONNXCheckerError:
                 pass
         except ImportError:
+            ### torch 1.13 and 2.0.1
             torch.onnx.export(model, dummy_input, onnx_model_path,
-                              input_names=input_names,
-                              output_names=output_names,
-                              opset_version=opset_version,
-                              do_constant_folding=True,
-                              custom_opsets={'' : opset_version},
-                              enable_onnx_checker=False)
+                                input_names=input_names,
+                                output_names=output_names,
+                                opset_version=opset_version,
+                                do_constant_folding=True,
+                                custom_opsets={'MQBench_custom' : opset_version})
+            tmp_model = onnx.load(onnx_model_path)
+            simplified_model, check = simplify(tmp_model)
+            onnx.save_model(simplified_model, onnx_model_path)
+
     model_onnx = onnx.load(onnx_model_path)
+    onnx.checker.check_model(model_onnx)
     model_onnx = onnx.shape_inference.infer_shapes(model_onnx)
     os.system(f"rm -f {onnx_model_path}")
     onnx.save(model_onnx, onnx_model_path)

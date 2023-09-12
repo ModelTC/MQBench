@@ -34,7 +34,7 @@ def get_quantize_model(model, config):
     extra_prepare_dict = {} if not hasattr(
         config, 'extra_prepare_dict') else config.extra_prepare_dict
     return prepare_by_platform(
-        model, backend_type, extra_prepare_dict)
+        model, backend_type, prepare_custom_config_dict=extra_prepare_dict)
 
 
 def deploy(model, config):

@@ -1,7 +1,7 @@
 import math
 
 import torch
-
+from torch.onnx import symbolic_helper
 from mqbench.fake_quantize.quantize_base import QuantizeBase
 from mqbench.utils import is_tracing_state
 from mqbench.utils.hook import PerChannelLoadHook
@@ -84,8 +84,14 @@ class FakeQuantizeDSQPerchannel(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, x, scale, zero_point, quant_min, quant_max, ch_axis, alpha):
-        return g.op("::FakeQuantizeDSQPerchannel", x, scale, zero_point, quant_min_i=quant_min, quant_max_i=quant_max, alpha_f=alpha)
+        output = g.op("MQBench_custom::FakeQuantizeDSQPerchannel", x, scale, zero_point, quant_min_i=quant_min, quant_max_i=quant_max, alpha_f=alpha)
 
+        input_shape = symbolic_helper._get_tensor_sizes(x)
+        if input_shape is not None and hasattr(x.type(), 'with_sizes'):
+            output_type = x.type().with_sizes(input_shape)
+            output.setType(output_type)
+
+        return output
 
 class FakeQuantizeDSQPertensor(torch.autograd.Function):
     @staticmethod
@@ -94,4 +100,11 @@ class FakeQuantizeDSQPertensor(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, x, scale, zero_point, quant_min, quant_max, alpha):
-        return g.op("::FakeQuantizeDSQPertensor", x, scale, zero_point, quant_min_i=quant_min, quant_max_i=quant_max, alpha_f=alpha)
+        output = g.op("MQBench_custom::FakeQuantizeDSQPertensor", x, scale, zero_point, quant_min_i=quant_min, quant_max_i=quant_max, alpha_f=alpha)
+
+        input_shape = symbolic_helper._get_tensor_sizes(x)
+        if input_shape is not None and hasattr(x.type(), 'with_sizes'):
+            output_type = x.type().with_sizes(input_shape)
+            output.setType(output_type)
+
+        return output

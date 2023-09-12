@@ -61,7 +61,8 @@ def make_huggingface_training_args(config_train, config_progress):
         run_name=config_progress.run_name,
         disable_tqdm=config_progress.disable_tqdm,
         metric_for_best_model=config_progress.metric_for_best_model,
-        greater_is_better=config_progress.greater_is_better
+        greater_is_better=config_progress.greater_is_better,
+        label_names = ['labels']
     )
     
     config_progress.log_level = training_args.get_process_log_level()

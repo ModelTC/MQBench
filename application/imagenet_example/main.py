@@ -108,6 +108,7 @@ BackendMap = {'tensorrt': BackendType.Tensorrt,
 best_acc1 = 0
 
 def main():
+    time_start = time.time()
     args = parser.parse_args()
 
     if args.output_path is None:
@@ -149,6 +150,8 @@ def main():
         # Simply call main_worker function
         main_worker(args.gpu, ngpus_per_node, args)
 
+    time_end = time.time()
+    print('totally time is ', time_end-time_start)
 
 def main_worker(gpu, ngpus_per_node, args):
     global best_acc1
@@ -287,7 +290,7 @@ def main_worker(gpu, ngpus_per_node, args):
                                      weight_decay=args.weight_decay,
                                      amsgrad=False)
 
-    if args.quant and not args.cpu:
+    if args.quant:
         enable_calibration(model)
         calibrate(cali_loader, model, args)
 
@@ -342,7 +345,7 @@ def main_worker(gpu, ngpus_per_node, args):
             convert_deploy(model.eval(), args.backend, input_shape_dict={'data': [args.deploy_batch_size, 3, 224, 224]}, 
                 model_name='{}_mqmoble'.format(args.arch), output_path=args.output_path)
         exit(0)
-     
+
     if args.fast_test:
         args.epochs = 1
     for epoch in range(args.start_epoch, args.epochs):
@@ -578,9 +581,8 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         # measure data loading time
         data_time.update(time.time() - end)
 
-        if args.gpu is not None:
+        if args.gpu is not None and torch.cuda.is_available():
             images = images.cuda(args.gpu, non_blocking=True)
-        if torch.cuda.is_available():
             target = target.cuda(args.gpu, non_blocking=True)
 
         # compute output

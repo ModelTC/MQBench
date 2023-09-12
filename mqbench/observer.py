@@ -636,3 +636,21 @@ class EMAMSEObserver(ObserverBase):
             self.min_val = self.min_val * self.ema_ratio + min_val_cur * (1.0 - self.ema_ratio)
             self.max_val = self.max_val * self.ema_ratio + max_val_cur * (1.0 - self.ema_ratio)
         return x
+
+
+class KLDObserver(ObserverBase):
+    '''
+    KLD observer,
+    With the help of HistogramObserver in torch
+    '''
+    def __init__(self, dtype=torch.quint8, qscheme=torch.per_tensor_affine, reduce_range=False,
+                 quant_min=None, quant_max=None, ch_axis=-1, pot_scale=False, factory_kwargs=None):
+        super(KLDObserver, self).__init__(dtype, qscheme, reduce_range, quant_min, quant_max,
+                                          ch_axis, pot_scale, factory_kwargs)
+        self.histobserver = torch.ao.quantization.observer.HistogramObserver(dtype=dtype, qscheme=qscheme, reduce_range=reduce_range, quant_min=quant_min, quant_max=quant_max)
+
+    def forward(self, x_orig):
+        return self.histobserver.forward(x_orig)
+
+    def calculate_qparams(self):
+        return self.histobserver.calculate_qparams()

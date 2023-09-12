@@ -92,7 +92,7 @@ def quantize_model(model, config_quant):
             }
     }
     backend = backends[config_quant.backend] 
-    model = prepare_by_platform(model, backend, prepare_custom_config_dict, custom_tracer=HFTracer())
+    model = prepare_by_platform(model, backend, prepare_custom_config_dict=prepare_custom_config_dict, custom_tracer=HFTracer())
     return model
 
 
@@ -136,7 +136,7 @@ def main(config_path):
     else:
         eval_datasets = raw_datasets['validation']
     metric = datasets.load_metric("glue", config.data.task_name)
-    
+
     if hasattr(config, 'quant'):
         model = quantize_model(model, config.quant)
 

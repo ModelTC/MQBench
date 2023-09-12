@@ -33,6 +33,7 @@ from mqbench.observer import (
     EMAQuantileObserver,
     MSEObserver,
     EMAMSEObserver,
+    KLDObserver,
 )
 import mqbench
 from mqbench.fuser_method_mappings import fuse_custom_config_dict
@@ -146,6 +147,7 @@ ObserverDict = {
     'LSQObserver':              LSQObserver,              # Usually used for LSQ.  # noqa: E241
     'MSEObserver':              MSEObserver,                                       # noqa: E241
     'EMAMSEObserver':           EMAMSEObserver,                                    # noqa: E241
+    'KLDObserver':              KLDObserver,
 }
 
 FakeQuantizeDict = {
@@ -284,8 +286,8 @@ def get_qconfig_by_platform(deploy_backend: BackendType, extra_qparams: Dict, wo
                                                          a_observer.__name__, str(a_qscheme)))
     if backend_params['qtype'] == 'vitis':
         logger.info('Bias Qconfig:\n    TqtFakeQuantize with MinMaxObserver')
-    
-    if deploy_backend in [BackendType.Academic, BackendType.Academic_NLP]:
+
+    if deploy_backend in [BackendType.Academic]:
         return QConfig(activation=a_qconfig, weight=w_qconfig)
 
     qconfig = {'': QConfig(activation=a_qconfig, weight=w_qconfig)}
