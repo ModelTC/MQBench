@@ -69,6 +69,6 @@ class FPEmuOp(torch.autograd.Function):
         # straight-through estimator
         return output_grad, None, None, None, None
 
-    '''@staticmethod
+    @staticmethod
     def symbolic(g, input, mode='NONE', inplace=False, scale=1.0, blocknorm=False, blocksize=1):
-        return g.op("::FPEmuOp", input, mode, inplace, scale, blocknorm, blocksize)'''
+        return g.op("::FPEmuOp", input, mode, inplace, scale, blocknorm, blocksize)
