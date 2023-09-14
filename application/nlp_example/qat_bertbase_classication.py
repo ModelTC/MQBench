@@ -178,7 +178,7 @@ prepare_custom_config_dict = {
     #'work_mode':'all_int4_qat',
     'extra_qconfig_dict':extra_qconfig_dict}
 #插入量化节点
-model_prepared= prepare_by_platform(model1, BackendType.Academic_NLP,[], prepare_custom_config_dict, custom_tracer=HFTracer())
+model_prepared= prepare_by_platform(model1, BackendType.Academic_NLP,prepare_custom_config_dict=prepare_custom_config_dict, custom_tracer=HFTracer())
 #后处理
 class NeuralNetwork2(nn.Module):
     def __init__(self):

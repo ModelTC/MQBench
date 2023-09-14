@@ -14,7 +14,8 @@ import numpy as np
 import random
 import datetime
 import time
-import copy 
+import copy
+import ipdb 
 from torch.utils.data import Dataset, DataLoader, random_split, RandomSampler, SequentialSampler
 torch.manual_seed(42)
 from transformers import GPT2LMHeadModel,  GPT2Tokenizer, GPT2Config, GPT2LMHeadModel
@@ -46,6 +47,7 @@ from transformers import AutoModelForQuestionAnswering, TrainingArguments, Train
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
 from transformers import GPT2Tokenizer, GPT2LMHeadModel, AdamW, get_linear_schedule_with_warmup
 from transformers import BertTokenizer, BertModel
+from fairscale.nn.data_parallel import FullyShardedDataParallel as FSDP
 from transformers.utils.fx import HFTracer
 
 parser = argparse.ArgumentParser(description='MQBench gpt2 Training')
@@ -310,7 +312,7 @@ def calibrate(cali_loader, model):
     return
 class GPT2Dataset(Dataset):
 
-    def __init__(self, txt_list, tokenizer, gpt2_type="gpt2", max_length=1024):
+    def __init__(self, txt_list, tokenizer, gpt2_type="gpt2-large", max_length=1024):
 
         self.tokenizer = tokenizer
         self.input_ids = []
@@ -437,7 +439,7 @@ prepare_custom_config_dict = {
     #'work_mode':'all_int4_qat',
     'extra_qconfig_dict':extra_qconfig_dict}
 #Insert quantization node
-model_prepared= prepare_by_platform(model, BackendType.Academic_NLP,[], prepare_custom_config_dict, custom_tracer=HFTracer())
+model_prepared= prepare_by_platform(model, BackendType.Academic_NLP,prepare_custom_config_dict=prepare_custom_config_dict, custom_tracer=HFTracer())
 
 #Post processing
 class Quantizegpt2(GPT2PreTrainedModel):
@@ -475,7 +477,9 @@ def format_time(elapsed):
     return str(datetime.timedelta(seconds=int(round((elapsed)))))
 
 #Original model training
+torch.cuda.empty_cache()
 model_prepared11=copy.deepcopy(model_prepared1)
+model_prepared11=FSDP(model_prepared11)
 optimizer1 = AdamW(model_prepared11.parameters(),
                   lr = learning_rate,
                   eps = epsilon

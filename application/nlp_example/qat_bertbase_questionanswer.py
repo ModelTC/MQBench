@@ -371,7 +371,7 @@ prepare_custom_config_dict = {
     #'work_mode':'all_int4_qat',
     'extra_qconfig_dict':extra_qconfig_dict}
 #插入量化节点
-model_prepared= prepare_by_platform(model, BackendType.Academic_NLP,[], prepare_custom_config_dict, custom_tracer=HFTracer())
+model_prepared= prepare_by_platform(model, BackendType.Academic_NLP,prepare_custom_config_dict=prepare_custom_config_dict, custom_tracer=HFTracer())
 
 #校准
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
