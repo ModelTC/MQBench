@@ -1,4 +1,10 @@
 #-- coding: gb2312 --
+import sys
+import os
+import time
+sys.path.append(os.path.abspath('.'))
+print(sys.path)
+
 import argparse
 import os
 import random

@@ -1,3 +1,9 @@
+import sys
+import os
+import time
+sys.path.append(os.path.abspath('.'))
+print(sys.path)
+
 import torchvision.models as models
 import numpy as np
 import time
@@ -85,7 +91,7 @@ def get_quantize_model(model, args):
         extra_prepare_dict = {
             "extra_qconfig_dict": { 
                                     'w_observer': 'MinMaxObserver',
-                                    'a_observer': 'KLDObserver',}}
+                                    'a_observer': 'EMAMinMaxObserver',}}
     else:
         extra_prepare_dict = {}
     return prepare_by_platform(

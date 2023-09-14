@@ -21,7 +21,7 @@ from mqbench.deploy import (
     replace_fakequantize_and_collect_params_openvino,
     remove_fakequantize_and_collect_params_tengine,
     remove_fakequantize_and_collect_params_sophgo,
-    remove_fakequantize_and_collect_params_academic,
+    # remove_fakequantize_and_collect_params_academic,
     ONNXQLinearPass, ONNXQNNPass
 )
 
