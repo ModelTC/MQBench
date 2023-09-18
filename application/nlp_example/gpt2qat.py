@@ -312,7 +312,7 @@ def calibrate(cali_loader, model):
     return
 class GPT2Dataset(Dataset):
 
-    def __init__(self, txt_list, tokenizer, gpt2_type="gpt2-large", max_length=1024):
+    def __init__(self, txt_list, tokenizer, gpt2_type="gpt2", max_length=1024):
 
         self.tokenizer = tokenizer
         self.input_ids = []
