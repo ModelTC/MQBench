@@ -45,9 +45,6 @@ def parse_config(config_file):
 def make_huggingface_training_args(config_train, config_progress):
     training_args = TrainingArguments(
         seed=config_train.seed,
-        label_names = [
-            'labels'
-        ],
         output_dir=config_train.output_dir,
         overwrite_output_dir=config_train.overwrite_output_dir,
         do_train=config_train.do_train,

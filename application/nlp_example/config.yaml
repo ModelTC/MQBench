@@ -6,7 +6,7 @@ quant:
         symmetric: False
         per_channel: False
     w_qconfig:
-        quantizer: E4M3FakeQuantize
+        quantizer: FixedFakeQuantize
         observer: MinMaxObserver
         bit: 8
         symmetric: True
