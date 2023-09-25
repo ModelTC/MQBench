@@ -148,14 +148,14 @@ def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name,
     if len(test_nodes) > 2:
         num = len(test_nodes) // 2
     item = modules.get(test_nodes[num])
-    if "E4M3" in str(type(item)):
+    if isinstance(item, mqbench.fake_quantize.e4m3.E4M3FakeQuantize):
         mode = "E4M3"
-    elif "E5M2" in str(type(item)):
+    elif isinstance(item, mqbench.fake_quantize.e5m2.E5M2FakeQuantize):
         mode = "E5M2"
     else:
         mode = "INT"
     # 根据Fake Quantizer的选择判断mode，如果是浮点的mode则进入deploy_float，反之则进入deploy_linear
-    mode = "E4M3"  # 目前尚未实现fp8的onnx，因此需要暂时使用int的onnx，这里手动将mode定义，进入deploy_float模块，之后实现浮点的onnx后可以删除此段代码
+    # mode = "E4M3" 目前尚未实现fp8的onnx，因此需要暂时使用int的onnx，这里手动将mode定义，进入deploy_float模块，之后实现浮点的onnx后可以删除此段代码
     if mode in ["E4M3", "E5M2"]:
         remove_fakequantize_and_collect_params_flt(onnx_model_path, model_name, backend='Academic_NLP') # 修改flt deploy or linear deploy
         print("导出calitable")
@@ -173,14 +173,14 @@ def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name,
             f.write(f"# work_mode:{work_mode} #Automatically generated, do not modify, work_mode choice:[E4ME_RNE, E5M2_RNE]\n")
             f.write("#       op_name        threshold        FP8_no_scaling        E4M3_max_scale        E5M2_max_scale        E4M3_mean_scale        E5M2_mean_scale\n")
             weight_scale = []
-            int4_th = []
+            fp8_th = []
             for name,value in blob_range.items():
                 if 'threshold' in value:
                     tmpstr = "{}     {:.7f}     {:.7f}     {:.7f}     {:.7f}     {:.7f}\n".format(name[:-2], value['threshold'], value['FP8_no_scaling'], 
                                                                 value['E4M3_max_scale'], value['E5M2_max_scale'], value['E4M3_mean_scale'],
                                                                 value['E5M2_mean_scale'])
                     if name.endswith('_4'):
-                        int4_th.append(tmpstr)
+                        fp8_th.append(tmpstr)
                     elif name.endswith('_8'):
                         f.write(tmpstr)
                     else:
@@ -194,8 +194,8 @@ def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name,
                         weight_scale.append(tmpstr)
                     else:
                         f.write(tmpstr)
-            f.write('#int4_th\n')
-            for i in int4_th:
+            f.write('#fp8_th\n')
+            for i in fp8_th:
                 f.write(i)
             f.write('#weight_scale\n')
             for i in weight_scale:
