@@ -36,7 +36,8 @@ We follow the Huggingface [official example][https://github.com/huggingface/tran
     ```
     git clone https://github.com/ModelTC/MQBench.git
     cd application/nlp_example
-    sh run.sh
+    sh run.sh 运行INT类型NLP PTQ
+    sh run-fp8.sh 运行FP8 NLP PTQ
     ```
 
 ## Results
