@@ -144,7 +144,7 @@ def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name,
     for node in nodes:
         if "post_act_fake_quantizer" in str(node):
             test_nodes.append(str(node))
-    modules = dict(model.named_modules)
+    modules = dict(model.named_modules())
     if len(test_nodes) > 2:
         num = len(test_nodes) // 2
     item = modules.get(test_nodes[num])
