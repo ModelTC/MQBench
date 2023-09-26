@@ -308,7 +308,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         # print('named_modules:', dict(model.named_modules())[''])
         model.train()
         model = model.to(device)
-        model = prepare_by_platform(model, backend, prepare_custom_config_dict)
+        model = prepare_by_platform(model, backend, prepare_custom_config_dict=prepare_custom_config_dict)
         # print('prepared module:', model)
         enable_calibration(model)
         calibration_flag = True
@@ -339,8 +339,10 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         print('sample_size:', sample_size)
         optimizer.zero_grad()
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
-            if opt.fast_test and i % sample_size != 0:
-                continue
+
+            if opt.fast_test and i == 100:
+                break
+
             callbacks.run('on_train_batch_start')
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device, non_blocking=True).float() / 255  # uint8 to float32, 0-255 to 0.0-1.0
@@ -413,6 +415,9 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         # Scheduler
         lr = [x['lr'] for x in optimizer.param_groups]  # for loggers
         scheduler.step()
+
+        if opt.fast_test: # fast_test only run 1 epoch
+            break
 
         if RANK in {-1, 0}:
             # mAP
