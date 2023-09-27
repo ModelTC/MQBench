@@ -11,6 +11,7 @@ We follow the Huggingface [official example][https://github.com/huggingface/tran
 
 - **Post Training Quantization:**
   We support PTQ of Bert for text-classification now.
+  完成了Bert的text-classification的PTQ，如果选择INT类型的fake quantizer可以在config.yaml里进行更改；如果选择FP8的fake quantizer可以在config-fp8.yaml里更改
   You can modify the config in "config.yaml". And an example quantization config is as follows. 
   ```
   quant:
@@ -30,7 +31,7 @@ We follow the Huggingface [official example][https://github.com/huggingface/tran
     pot_scale: False
     backend: academic
   ```
-  You need to prepare the finetuned FP32 model of the specific task and change the "model_name_or_path" in "config.yaml".
+  You need to prepare the finetuned FP32 model of the specific task and change the "model_name_or_path" in "config.yaml" or "config-fp8.yaml".
   
   Steps:
     ```
