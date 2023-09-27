@@ -165,12 +165,8 @@ def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name,
         blob_range = json.loads(file_h.read())["Academic_NLP_Float"]
         file_h.close()
         cali_table = osp.join(output_path, '{}_float_cali_table_from_mqbench_Academic_NLP'.format(model_name))
-        work_mode = kwargs.get('work_mode', 'E4M3_RNE')
-        if work_mode not in  ['E4M3_RNE', 'E5M2_RNE']:
-            print('E4M3_RNE not in [E4M3_RNE, E5M2_RNE],set to E4M3_RNE')
-            work_mode = 'E4M3_RNE'
         with open(cali_table, 'w') as f:
-            f.write(f"# work_mode:{work_mode} #Automatically generated, do not modify, work_mode choice:[E4ME_RNE, E5M2_RNE]\n")
+            f.write(f"# work_mode:{mode} #Automatically generated, do not modify, work_mode choice:[E4ME_RNE, E5M2_RNE]\n")
             f.write("#       op_name        threshold        FP8_no_scaling        E4M3_max_scale        E5M2_max_scale        E4M3_mean_scale        E5M2_mean_scale\n")
             weight_scale = []
             fp8_th = []
