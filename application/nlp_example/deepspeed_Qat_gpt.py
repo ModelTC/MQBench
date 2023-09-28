@@ -91,8 +91,8 @@ def train(model,epochs,traindataset,validation_dataloader):
             model_engine.backward(loss)
             model_engine.step()
             running_loss+=loss.item()
-            # if (step+1) % args.log_interval==0:
-            #     print("GPUs:%d:epoch:%d,loss:%.3f,device:%d\n"%(torch.cuda.device_count(),epoch_i,running_loss/((step+1)*2),model_engine.local_rank))
+            if (step+1) % args.log_interval==0:
+                print("GPUs:%d:epoch:%d,loss:%.3f,device:%d\n"%(torch.cuda.device_count(),epoch_i,running_loss/(step+1),model_engine.local_rank))
         # Measure how long this epoch took.
         print("GPUs:%d:epoch:%d,loss:%.3f,device:%d\n"%(torch.cuda.device_count(),epoch_i,running_loss/len(trainloader),model_engine.local_rank))
         training_time = format_time(time.time() - t0)
@@ -111,8 +111,8 @@ def train(model,epochs,traindataset,validation_dataloader):
     #                            token_type_ids=None, 
                                 attention_mask = b_masks,
                                 labels=b_labels)
-                loss = outputs[0] 
-                running_loss1+=loss.item() 
+                loss = outputs[0]
+                running_loss1+=loss.item()
             print("GPUs:%d:epoch:%d,loss:%.3f,device:%d\n"%(torch.cuda.device_count(),epoch_i,running_loss1/len(validation_dataloader),model_engine.local_rank))              
         validation_time = format_time(time.time() - t0)    
         # Record all statistics from this epoch.
@@ -142,8 +142,8 @@ def train1(model_engine,epochs,trainloader,validation_dataloader):
             model_engine.backward(loss)
             model_engine.step()
             running_loss+=loss.item()
-            # if (step+1) % args.log_interval==0:
-            #     print("GPUs:%d:epoch:%d,loss:%.3f,device:%d\n"%(torch.cuda.device_count(),epoch_i,running_loss/((step+1)*2),model_engine.local_rank))
+            if (step+1) % args.log_interval==0:
+                print("GPUs:%d:epoch:%d,loss:%.3f,device:%d\n"%(torch.cuda.device_count(),epoch_i,running_loss/(step+1),model_engine.local_rank))
         # Measure how long this epoch took.
         training_time = format_time(time.time() - t0)
         print("")
@@ -194,7 +194,8 @@ def cal_ppl_bygpt2(model,test_dataloader):
             ppl = torch.exp(meanloss).cpu()
             ppl=ppl.numpy().tolist()
             total_ppl+=ppl[0]
-        avg_ppl=total_ppl/len(test_dataloader)
+        avg_ppl=total_ppl/(3*len(test_dataloader))
+        print(len(test_dataloader))
     return avg_ppl
 def calibrate(cali_loader,model_engine):
     print("Start calibration ...")
