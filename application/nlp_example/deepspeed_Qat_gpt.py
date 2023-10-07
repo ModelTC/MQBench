@@ -194,7 +194,7 @@ def cal_ppl_bygpt2(model,test_dataloader):
             ppl = torch.exp(meanloss).cpu()
             ppl=ppl.numpy().tolist()
             total_ppl+=ppl[0]
-        avg_ppl=total_ppl/(3*len(test_dataloader))
+        avg_ppl=total_ppl/(len(test_dataloader))
         print(len(test_dataloader))
     return avg_ppl
 def calibrate(cali_loader,model_engine):
@@ -269,7 +269,7 @@ def main(args):
     test_dataloader = DataLoader(
             testdataset, # The validation samples.
             sampler = SequentialSampler(testdataset), # Pull out batches sequentially.
-            batch_size = 6 # Evaluate with this batch size.
+            batch_size = 2 # Evaluate with this batch size.
         )
     cali_loader = DataLoader(
             cali_loader, 
