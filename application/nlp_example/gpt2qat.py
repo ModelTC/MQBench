@@ -47,7 +47,6 @@ from transformers import AutoModelForQuestionAnswering, TrainingArguments, Train
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
 from transformers import GPT2Tokenizer, GPT2LMHeadModel, AdamW, get_linear_schedule_with_warmup
 from transformers import BertTokenizer, BertModel
-from fairscale.nn.data_parallel import FullyShardedDataParallel as FSDP
 from transformers.utils.fx import HFTracer
 
 parser = argparse.ArgumentParser(description='MQBench gpt2 Training')
@@ -264,6 +263,7 @@ def cal_ppl_bygpt2(model,test_dataloader):
             loss_fct = CrossEntropyLoss(ignore_index=0, reduction="none")
             loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)).detach().reshape(bs, -1)
             meanloss = loss.sum(1) / shift_attentions.sum(1)
+            print(shift_attentions.sum(1),loss,loss.sum(1),meanloss)
             ppl = torch.exp(meanloss).cpu()
             ppl=ppl.numpy().tolist()
             total_ppl+=ppl[0]
@@ -479,7 +479,6 @@ def format_time(elapsed):
 #Original model training
 torch.cuda.empty_cache()
 model_prepared11=copy.deepcopy(model_prepared1)
-model_prepared11=FSDP(model_prepared11)
 optimizer1 = AdamW(model_prepared11.parameters(),
                   lr = learning_rate,
                   eps = epsilon
