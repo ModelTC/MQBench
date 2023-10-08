@@ -263,7 +263,6 @@ def cal_ppl_bygpt2(model,test_dataloader):
             loss_fct = CrossEntropyLoss(ignore_index=0, reduction="none")
             loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)).detach().reshape(bs, -1)
             meanloss = loss.sum(1) / shift_attentions.sum(1)
-            print(shift_attentions.sum(1),loss,loss.sum(1),meanloss)
             ppl = torch.exp(meanloss).cpu()
             ppl=ppl.numpy().tolist()
             total_ppl+=ppl[0]
@@ -397,7 +396,7 @@ cali_loader = DataLoader(
 test_dataloader = DataLoader(
             testdataset, 
             sampler = RandomSampler(testdataset), 
-            batch_size = batch_size 
+            batch_size =batch_size 
         )
 #load model
 configuration = GPT2Config.from_pretrained('gpt2',resid_pdrop = 0.3 , output_hidden_states=False)
@@ -493,7 +492,7 @@ model_prepared11=model_prepared11.train()
 model_prepared2,training_stats1=train(model_prepared11,epochs,optimizer1,scheduler1,train_dataloader,validation_dataloader)
 
 # Display floats with two decimal places.
-pd.set_option('precision', 2)
+#pd.set_option('precision', 2)
 # Create a DataFrame from our training statistics.
 df_stats1 = pd.DataFrame(data=training_stats1)
 # Use the 'epoch' as the row index.
@@ -516,8 +515,6 @@ enable_quantization(model_prepared1)
 model_prepared1=model_prepared1.train()
 model_prepared3,training_stats2=train1(model_prepared1,epochs,optimizer,scheduler,train_dataloader,validation_dataloader)
 
-# Display floats with two decimal places.
-pd.set_option('precision', 2)
 # Create a DataFrame from our training statistics.
 df_stats2 = pd.DataFrame(data=training_stats2)
 # Use the 'epoch' as the row index.
