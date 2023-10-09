@@ -216,6 +216,12 @@ class FloatQuantizer_process(object):
                 nodes_to_be_removed.extend(redundant_nodes)
                 self.clip_weight(node, name2data, inp2node, named_initializer)
                 tensor_name, scale, zero_point, qmin, qmax,dtype1 = self.parse_qparams(node, name2data)
+                try:
+                    tensor_data = name2data[tensor_name]
+                except:
+                    tensor_data = np.ones(10)
+                mean = np.array(np.mean(abs(tensor_data)))
+                max_data = np.array(np.max(tensor_data))
                 if backend == 'ppl':
                     clip_ranges[tensor_name] = {'step': [float(x) for x in scale],
                                                 'zero_point': [int(x) for x in zero_point],
@@ -241,6 +247,17 @@ class FloatQuantizer_process(object):
                         clip_ranges[tensor_name] = {'step': [float(x) for x in scale],
                                                     'zero_point': [int(x) for x in zero_point]
                                                     }
+                        
+                elif backend == 'Academic_NLP':
+                    assert next_nodes[0][0].op_type == 'Gemm'
+                    tensor_name += '{}_{}_weight'.format(inp2node[node.output[0]][0][0].output[0], inp2node[node.output[0]][0][0].op_type)
+                    clip_ranges[tensor_name] = {'threshold':float(scale * max(-qmin, qmax)), #对称量化时这个参数生效
+                                                'mean': float(mean),
+                                                'max': float(max_data),
+                                                'bit': int(np.log2(qmax - qmin + 1)),
+                                                'type': "int" if int(np.log2(qmax - qmin + 1))==4 else dtype1,
+                                                'ori_name': 'none'}
+                      
             elif node.op_type in PERTENSOR_FAKEQUANTIZER:
                 if len(next_nodes) == 1 and next_nodes[0][1] == 1 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:
                     # fake quantize for weights
@@ -250,11 +267,8 @@ class FloatQuantizer_process(object):
                         tensor_data = name2data[tensor_name]
                     except:
                         tensor_data = np.ones(10)
-                    mean = np.array(np.mean(tensor_data))
-                    E4M3_mean_scale = float(1.9e-03) / mean
-                    E5M2_mean_scale = float(1.9e-05) / mean
-                    E4M3_max_scale = float(448.0 / qmax)
-                    E5M2_max_scale = float(57344.0 / qmax)
+                    mean = np.array(np.mean(abs(tensor_data)))
+                    max_data = np.array(np.max(tensor_data))
                     nodes_to_be_removed.extend(redundant_nodes)
                     self.clip_weight(node, name2data, inp2node, named_initializer)
                     if backend == 'sophgo_tpu':
@@ -268,11 +282,8 @@ class FloatQuantizer_process(object):
                         assert next_nodes[0][0].op_type == 'Gemm'
                         tensor_name += '{}_{}_weight'.format(inp2node[node.output[0]][0][0].output[0], inp2node[node.output[0]][0][0].op_type)
                         clip_ranges[tensor_name] = {'threshold':float(scale * max(-qmin, qmax)), #对称量化时这个参数生效
-                                                    'FP8_no_scaling': float(1.0),
-                                                    'E4M3_max_scale': E4M3_max_scale,
-                                                    'E5M2_max_scale': E5M2_max_scale,
-                                                    'E4M3_mean_scale': E4M3_mean_scale,
-                                                    'E5M2_mean_scale': E5M2_mean_scale,
+                                                    'mean': float(mean),
+                                                    'max': float(max_data),
                                                     'bit': int(np.log2(qmax - qmin + 1)),
                                                     'type': "int" if int(np.log2(qmax - qmin + 1))==4 else dtype1,
                                                     'ori_name': 'none'}                      
@@ -291,11 +302,8 @@ class FloatQuantizer_process(object):
                         tensor_data = name2data[tensor_name]
                     except:
                         tensor_data = np.ones(10)
-                    mean = np.array(np.mean(tensor_data))
-                    E4M3_mean_scale = float(1.9e-03) / mean
-                    E5M2_mean_scale = float(1.9e-05) / mean
-                    E4M3_max_scale = float(448.0 / qmax)
-                    E5M2_max_scale = float(57344.0 / qmax)
+                    mean = np.array(np.mean(abs(tensor_data)))
+                    max_data = np.array(np.max(tensor_data))
                     for out in graph.output:
                         if out.name == node.output[0]:
                             out.name = tensor_name
@@ -323,11 +331,8 @@ class FloatQuantizer_process(object):
                         if tensor_name in out2node:
                             tensor_name += '_{}'.format(out2node[tensor_name].op_type)
                         clip_ranges[tensor_name] = {'threshold':float(scale * max(-qmin, qmax)), #对称量化时这个参数生效
-                                                    'FP8_no_scaling': float(1.0),
-                                                    'E4M3_max_scale': E4M3_max_scale,
-                                                    'E5M2_max_scale':E5M2_max_scale,
-                                                    'E4M3_mean_scale': E4M3_mean_scale,
-                                                    'E5M2_mean_scale': E5M2_mean_scale,
+                                                    'mean': float(mean),
+                                                    'max': float(max_data),
                                                     'bit': int(np.log2(qmax - qmin + 1)),
                                                     'type': "int" if int(np.log2(qmax - qmin + 1))==4 else dtype1,
                                                     'ori_name': scale_name[:len(scale_name)-len(post_str)] if scale_name.endswith(post_str) else 'none'}
