@@ -91,7 +91,7 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
 
 parser.add_argument('--model_path', type=str, default=None)
 parser.add_argument('--output_path', type=str, default=None)
-parser.add_argument('--backend', type=str, choices=['tengine_u8', 'tensorrt', 'nnie', 'ppl', 'snpe', 'sophgo_tpu', 'openvino', 'tensorrt_nlp'], default='sophgo_tpu')
+parser.add_argument('--backend', type=str, choices=['tensorrt', 'nnie', 'ppl', 'snpe', 'sophgo_tpu', 'openvino', 'tensorrt_nlp'], default='sophgo_tpu')
 parser.add_argument('--optim', type=str, default='sgd')
 parser.add_argument('--not-quant', action='store_true')
 parser.add_argument('--deploy', action='store_true')
@@ -108,8 +108,7 @@ BackendMap = {'tensorrt': BackendType.Tensorrt,
                'ppl': BackendType.PPLW8A16,
                'openvino': BackendType.OPENVINO,
                'snpe': BackendType.SNPE,
-               'vitis': BackendType.Vitis,
-               'tengine_u8': BackendType.Tengine_u8}
+               'vitis': BackendType.Vitis}
 
 best_acc1 = 0
 
@@ -181,7 +180,8 @@ def main_worker(gpu, ngpus_per_node, args):
         print("=> using pre-trained model '{}'".format(args.arch))
         model = models.__dict__[args.arch](pretrained=True)
     else:
-        print("=> creating model '{}'".format(args.arch))
+        print(args.arch)
+        print(f"=> creating model '{args.arch}'")
         model = models.__dict__[args.arch]()
     # print('ori module:', model)
 
@@ -202,8 +202,8 @@ def main_worker(gpu, ngpus_per_node, args):
         model = model.cpu() 
 
     if args.pre_eval_and_export:
-        print('Ô­Ê¼onnxÄ£ÐÍ¾«¶È')
-        validate(val_loader, model.eval(), criterion, args)  #ÕâÀïÎ´Ö´ÐÐmodel.cuda()£¬»á±¨´í
+        print('Ô­Ê¼onnxÄ£ï¿½Í¾ï¿½ï¿½ï¿½')
+        validate(val_loader, model.eval(), criterion, args)  #ï¿½ï¿½ï¿½ï¿½Î´Ö´ï¿½ï¿½model.cuda()ï¿½ï¿½ï¿½á±¨ï¿½ï¿½
 
         kwargs = {
             'input_shape_dict': {'data': [args.deploy_batch_size, 3, 224, 224]},
@@ -216,7 +216,7 @@ def main_worker(gpu, ngpus_per_node, args):
         module_tmp = module_tmp.cpu()
         convert_onnx(module_tmp.eval(), **kwargs)
         del module_tmp
-        model = model.train() #prepareÇ°Ò»¶¨ÒªÊÇtrainÄ£Ê½£¡£¡
+        model = model.train() #prepareÇ°Ò»ï¿½ï¿½Òªï¿½ï¿½trainÄ£Ê½ï¿½ï¿½ï¿½ï¿½
 
     # quantize model
     if args.quant:
@@ -282,7 +282,7 @@ def main_worker(gpu, ngpus_per_node, args):
             if args.cpu:
                 model = model.cpu()
             else:
-                # model = torch.nn.DataParallel(model).cuda() #»áµ¼ÖÂgpuÑµÁ·±£´æµÄÄ£ÐÍÎÞ·¨resumeºóÓÃcpuÍÆÀí
+                # model = torch.nn.DataParallel(model).cuda() #ï¿½áµ¼ï¿½ï¿½gpuÑµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£ï¿½ï¿½ï¿½Þ·ï¿½resumeï¿½ï¿½ï¿½ï¿½cpuï¿½ï¿½ï¿½ï¿½
                 model = model.cuda()
 
     # define loss function (criterion) and optimizer
@@ -304,7 +304,7 @@ def main_worker(gpu, ngpus_per_node, args):
         enable_quantization(model)
 
     cudnn.benchmark = True
-    # cudnn.deterministic = True #±ÜÃâ¼ÆËã½á¹û²¨¶¯
+    # cudnn.deterministic = True #ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -341,7 +341,7 @@ def main_worker(gpu, ngpus_per_node, args):
             exit(1)
 
         if args.evaluate:
-            print('resumeÄ£ÐÍ¾«¶È')
+            print('resumeÄ£ï¿½Í¾ï¿½ï¿½ï¿½')
             from mqbench.convert_deploy import convert_merge_bn
             module_tmp2 = copy.deepcopy(model)
             convert_merge_bn(module_tmp2.eval())
@@ -364,9 +364,9 @@ def main_worker(gpu, ngpus_per_node, args):
 
         # evaluate on validation set
         if epoch == args.epochs - 1:
-            print('qatÑµÁ·ºóµÄ´øÁ¿»¯½ÚµãµÄeval¾«¶È:')
+            print('qatÑµï¿½ï¿½ï¿½ï¿½Ä´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Úµï¿½ï¿½evalï¿½ï¿½ï¿½ï¿½:')
         else:
-            print(f'epoch{epoch}ÑµÁ·ºóeval¾«¶È:')
+            print(f'epoch{epoch}Ñµï¿½ï¿½ï¿½ï¿½evalï¿½ï¿½ï¿½ï¿½:')
         acc1 = validate(val_loader, model, criterion, args)
 
         # # remember best acc@1 and save checkpoint
@@ -383,7 +383,7 @@ def main_worker(gpu, ngpus_per_node, args):
         #         'optimizer' : optimizer.state_dict(),
         #     }, is_best, filename=os.path.join(args.output_path, 'checkpoint.pth.tar'))
 
-    print('disable_allºó²âÊÔ¾«¶È:')
+    print('disable_allï¿½ï¿½ï¿½ï¿½Ô¾ï¿½ï¿½ï¿½:')
     disable_all(model)
     validate(val_loader, model, criterion, args)
     enable_quantization(model)
@@ -401,7 +401,7 @@ def main_worker(gpu, ngpus_per_node, args):
         model_pt = model_pt.cuda(args.gpu)    
     else:
         model_pt = model_pt.cpu() 
-    print('load fused bn ptºó²âÊÔ¾«¶È:')
+    print('load fused bn ptï¿½ï¿½ï¿½ï¿½Ô¾ï¿½ï¿½ï¿½:')
     validate(val_loader, model_pt, criterion, args)
 
     validate_onnx(criterion, args)'''
@@ -613,7 +613,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         if i % args.print_freq == 0:
             progress.display(i)
 
-        # # ¼ì²éÑµÁ·¹ý³Ì²ÎÊýÊÇ·ñÒì³£            
+        # # ï¿½ï¿½ï¿½Ñµï¿½ï¿½ï¿½ï¿½ï¿½Ì²ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ï¿½ì³£            
         # for param in model.named_parameters():
         #     sum = torch.isnan(param[1]).sum()
         #     if sum > 0:
@@ -732,7 +732,7 @@ def validate_onnx(criterion, args):
             #         break
 
         # TODO: this should also be done with the ProgressMeter
-        print('deploy_model.onnxÍê³ÉËùÓÐ´¦ÀíºóµÄonnxruntime²âÊÔ¾«¶È:')
+        print('deploy_model.onnxï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½onnxruntimeï¿½ï¿½ï¿½Ô¾ï¿½ï¿½ï¿½:')
         print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
             .format(top1=top1, top5=top5))
 

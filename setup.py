@@ -4,9 +4,6 @@ import setuptools
 from mqbench import __version__
 from torch.utils.cpp_extension import BuildExtension, CppExtension
 
-with open("READMEFP8.md", "r") as fh:
-    long_description = fh.read()
-
 def read_requirements():
     reqs = []
     with open('requirements.txt', 'r') as fin:
@@ -40,8 +37,6 @@ setuptools.setup(
     description=("Quantization aware training."),
     ext_modules=ext_modules,
     cmdclass=cmdclass,
-    long_description=long_description,
-    long_description_content_type="text/markdown",
     url="",
     python_requires='>=3.6',
     packages=setuptools.find_packages(),

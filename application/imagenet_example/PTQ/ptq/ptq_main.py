@@ -32,7 +32,7 @@ parser.add_argument('-b', '--batch-size', default=64, type=int,
                     help='mini-batch size (default: 64), this is the total '
                          'batch size of all GPUs on the current node when '
                          'using Data Parallel or Distributed Data Parallel')
-parser.add_argument('--backend', type=str, choices=['academic', 'tengine_u8', 'tensorrt', 'nnie', 'ppl', 'snpe', 'sophgo_tpu', 'openvino', 'tensorrt_nlp'], default='sophgo_tpu')
+parser.add_argument('--backend', type=str, choices=['academic', 'tensorrt', 'nnie', 'ppl', 'snpe', 'sophgo_tpu', 'openvino', 'tensorrt_nlp'], default='sophgo_tpu')
 parser.add_argument('--cali-batch-num', default=16, type=int,
                     metavar='N', help='set calibration batch num (default: 16)')
 parser.add_argument('--output_path', type=str, default=None)
@@ -43,6 +43,8 @@ parser.add_argument('--pretrained', dest='pretrained', action='store_true',
 parser.add_argument('--quantize_type', metavar='DIR',
                     help='set quantize_type', type=str, default='naive_ptq')
 parser.add_argument('--deploy', action='store_true')
+parser.add_argument('--cpu', action='store_true',
+                    help='use cpu to quant')
 
 BackendMap = {
     'academic': BackendType.Academic,
@@ -53,7 +55,6 @@ BackendMap = {
     'openvino': BackendType.OPENVINO,
     'snpe': BackendType.SNPE,
     'vitis': BackendType.Vitis,
-    'tengine_u8': BackendType.Tengine_u8,
     'tensorrt': BackendType.Tensorrt
 }
 
@@ -131,7 +132,8 @@ def main():
     else:
         print("=> creating model '{}'".format(args.arch))
         model = models.__dict__[args.arch]()
-    model.cuda()
+    if not args.cpu:
+        model.cuda()
 
     # load_data
     train_loader, val_loader = load_data(path=args.data_path , batch_size=args.batch_size)
@@ -141,7 +143,8 @@ def main():
 
     # get quantize model
     model = get_quantize_model(model, args)
-    model.cuda()
+    if not args.cpu:
+        model.cuda()
     print('>>>>>model after insert fake quantization node: ', model)
 
     # ptq
@@ -155,9 +158,15 @@ def main():
         with torch.no_grad():
             enable_calibration_woquantization(model, quantizer_type='act_fake_quant')
             for batch in cali_data:
-                model(batch.cuda())
+                if not args.cpu:
+                    model(batch.cuda())
+                else:
+                    model(batch)
             enable_calibration_woquantization(model, quantizer_type='weight_fake_quant')
-            model(cali_data[0].cuda())
+            if not args.cpu:
+                model(cali_data[0].cuda())
+            else:
+                model(cali_data[0])
         print('begin advanced PTQ now!')
         if hasattr(args, 'reconstruction'):
             model = ptq_reconstruction(
@@ -173,9 +182,13 @@ def main():
         model.eval() 
         enable_calibration(model)
         for batch in cali_data:
-            model(batch.cuda())
+            if not args.cpu:
+                model(batch.cuda())
+            else:
+                model(batch)
         print('begin quantization now!')
         enable_quantization(model)
+        print('begin eval now!')
         evaluate(val_loader, model)
         if args.deploy:
             deploy(model, args)

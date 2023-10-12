@@ -30,7 +30,6 @@ MQBench provides a simple API for naive PTQ, learn our step-by-step instructions
     # backend = BackendType.ONNX_QNN
     # backend = BackendType.PPLCUDA
     # backend = BackendType.OPENVINO
-    # backend = BackendType.Tengine_u8
     # backend = BackendType.Tensorrt_NLP
 
 **3**. **The next step prepares to quantize the model.**

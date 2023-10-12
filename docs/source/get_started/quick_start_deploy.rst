@@ -40,7 +40,6 @@ Before starting, you should install MQBench first. Now we start the tour.
     # backend = BackendType.ONNX_QNN
     # backend = BackendType.PPLCUDA
     # backend = BackendType.OPENVINO
-    # backend = BackendType.Tengine_u8
     # backend = BackendType.Tensorrt_NLP
 
 **3**. **Prepares to quantize the model.**

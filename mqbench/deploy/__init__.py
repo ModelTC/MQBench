@@ -3,7 +3,6 @@ from .deploy_nnie import remove_fakequantize_and_collect_params_nnie
 from .deploy_onnx_qlinear import ONNXQLinearPass
 from .deploy_onnx_qnn import ONNXQNNPass
 from .deploy_openvino import replace_fakequantize_and_collect_params_openvino
-from .deploy_tengine import remove_fakequantize_and_collect_params_tengine
 from .deploy_sophgo import remove_fakequantize_and_collect_params_sophgo
 from .deploy_float import remove_fakequantize_and_collect_params_flt
 #from .deploy_academicnlp import remove_fakequantize_and_collect_params_academic

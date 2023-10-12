@@ -38,7 +38,11 @@ if __name__ == "__main__":
     arch = model.split(' ')[0].split('=')[1].strip()
     os.system(f'mkdir -p {output_path}/{arch}')
 
-    cmd_line = f'cd {wp};CUDA_VISIBLE_DEVICES=0 python3 application/imagenet_example/PTQ/ptq/ptq_main.py  {model} {cmd_str} > {output_path}/{arch}/{i}_log_train_{arch} 2>&1'
+    import torch
+    if torch.cuda.is_available():
+        cmd_line = f'cd {wp};CUDA_VISIBLE_DEVICES=0 python3 application/imagenet_example/PTQ/ptq/ptq_main.py  {model} {cmd_str} > {output_path}/{arch}/{i}_log_train_{arch} 2>&1'
+    else:
+        cmd_line = f'cd {wp};python3 application/imagenet_example/PTQ/ptq/ptq_main.py  {model} {cmd_str} --cpu > {output_path}/{arch}/{i}_log_train_{arch} 2>&1'
     # cmd_line = f'cd {wp};CUDA_VISIBLE_DEVICES=0 python3 application/imagenet_example/PTQ/ptq/ptq_main.py  {model} {cmd_str}'
 
     print('start', model)

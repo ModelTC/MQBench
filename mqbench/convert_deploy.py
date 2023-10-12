@@ -20,7 +20,6 @@ from mqbench.deploy import (
     remove_fakequantize_and_collect_params,
     remove_fakequantize_and_collect_params_flt,
     replace_fakequantize_and_collect_params_openvino,
-    remove_fakequantize_and_collect_params_tengine,
     remove_fakequantize_and_collect_params_sophgo,
     # remove_fakequantize_and_collect_params_academic,
     ONNXQLinearPass, ONNXQNNPass
@@ -28,7 +27,6 @@ from mqbench.deploy import (
 
 __all__ = ['convert_deploy']
 
-@register_deploy_function(BackendType.Tengine_u8)
 @register_deploy_function(BackendType.PPLCUDA)
 @register_deploy_function(BackendType.ONNX_QNN)
 @register_deploy_function(BackendType.SNPE)
@@ -53,7 +51,6 @@ def convert_merge_bn(model: GraphModule, **kwargs):
 
 @register_deploy_function(BackendType.Academic_NLP)
 @register_deploy_function(BackendType.Tensorrt_NLP)
-@register_deploy_function(BackendType.Tengine_u8)
 @register_deploy_function(BackendType.PPLCUDA)
 @register_deploy_function(BackendType.ONNX_QNN)
 @register_deploy_function(BackendType.Academic)
@@ -201,7 +198,7 @@ def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name,
             f.write("# op_name    bit    type\n")
             for name,value in blob_range.items():
                 f.write("{} {} {} \n".format(name, value['bit'], value['type']))
-    else:          
+    else:
         remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='Academic_NLP')
         print("导出calitable")
         output_path = osp.dirname(onnx_model_path)
@@ -322,12 +319,6 @@ def deploy_qparams_tvm(model: GraphModule, onnx_model_path, model_name, **kwargs
 def deploy_qparams_ppl_cuda(model: GraphModule, onnx_model_path, model_name, **kwargs):
     logger.info("Extract qparams for PPL-CUDA.")
     remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='ppl-cuda')
-
-@register_deploy_function(BackendType.Tengine_u8)
-def deploy_qparams_tengine(model: GraphModule, onnx_model_path, model_name, **kwargs):
-    logger.info("Extract qparams for Tengine.")
-    remove_fakequantize_and_collect_params_tengine(onnx_model_path, model_name)
-
 
 def convert_deploy(model: GraphModule, backend_type: BackendType,
                    input_shape_dict=None, dummy_input=None, output_path='./',

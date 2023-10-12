@@ -14,8 +14,7 @@ Hardware/Backend
 6. PPLW8A16
 7. PPLCUDA
 8. OPENVINO
-9. Tengine_u8
-10. Tensorrt_NLP
+9. Tensorrt_NLP
 
 Algorithm
 ^^^^^^^^^

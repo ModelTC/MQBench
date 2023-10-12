@@ -8,6 +8,5 @@ How to deploy the model
    SNPE <deploy/snpe.rst>
    OpenVINO <deploy/openvino.rst>
    Vitis <deploy/vitis.rst>
-   Tengine <deploy/tengine.rst>
 
 
