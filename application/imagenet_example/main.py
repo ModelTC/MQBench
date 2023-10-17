@@ -99,7 +99,7 @@ parser.add_argument('--fast_test', action='store_true')
 parser.add_argument('--cpu', action='store_true')
 parser.add_argument('--pre_eval_and_export', action='store_true')
 parser.add_argument('--deploy_batch_size', default=1, type=int, help='deploy_batch_size.')
-
+parser.add_argument('--fp8', action='store_true')
 
 BackendMap = {'tensorrt': BackendType.Tensorrt,
                'sophgo_tpu': BackendType.Sophgo_TPU,
@@ -118,7 +118,10 @@ def main():
 
     if args.output_path is None:
         args.output_path = './'
-    args.output_path=os.path.join(args.output_path, args.arch) 
+    if args.fp8:
+        args.output_path=os.path.join(args.output_path, args.arch+'_fp8')
+    else:
+        args.output_path=os.path.join(args.output_path, args.arch)
     os.system('mkdir -p {}'.format(args.output_path))
 
     args.quant = not args.not_quant
@@ -220,27 +223,26 @@ def main_worker(gpu, ngpus_per_node, args):
 
     # quantize model
     if args.quant:
-        prepare_custom_config_dict= {
-            # 'extra_qconfig_dict':{'w_fakequantize':'PACTFakeQuantize'},
-            # 'work_mode':'int4_and_int8_mix',
-
-            # 'work_mode':'all_int4_qat', #int4_and_int8_mix
-            # 'extra_qconfig_dict': {
-            #     'w_qscheme': {
-            #         'bit': 4,                                             # custom bitwidth for weight,
-            #         'symmetry': True,                                    # custom whether quant is symmetric for weight,
-            #         'per_channel': True,                                  # custom whether quant is per-channel or per-tensor for weight,
-            #         'pot_scale': False,                                   # custom whether scale is power of two for weight.
-            #     },
-            #     'a_qscheme': {
-            #         'bit': 4,                                             # custom bitwidth for activation,
-            #         'symmetry': True,                                    # custom whether quant is symmetric for activation,
-            #         'per_channel': False,                                  # custom whether quant is per-channel or per-tensor for activation,
-            #         'pot_scale': False,                                   # custom whether scale is power of two for activation.
-            #     }
-            # }
+        if args.fp8:
+            extra_prepare_dict = {
+            "extra_qconfig_dict": {
+                                    'w_observer': 'MinMaxObserver',
+                                    'a_observer': 'EMAMinMaxObserver',
+                                    "w_fakequantize": "E5M2FakeQuantize",
+                                    "a_fakequantize": "LearnableFakeQuantize",
+                                    'w_qscheme': {  'bit': 8,
+                                                    'symmetry': True,
+                                                    'per_channel': False,
+                                                    'pot_scale': False },
+                                    'a_qscheme': {  'bit': 8,
+                                                    'symmetry': True,
+                                                    'per_channel': False,
+                                                    'pot_scale': False }
+                                }
         }
-        model = prepare_by_platform(model, args.backend, input_shape_dict = {'data': [args.deploy_batch_size, 3, 224, 224]})
+        else:
+            extra_prepare_dict = {}
+        model = prepare_by_platform(model, args.backend, input_shape_dict = {'data': [args.deploy_batch_size, 3, 224, 224]}, prepare_custom_config_dict=extra_prepare_dict)
         print('>>>>>prepared module:', model)
 
         if args.fast_test:

@@ -45,6 +45,7 @@ parser.add_argument('--quantize_type', metavar='DIR',
 parser.add_argument('--deploy', action='store_true')
 parser.add_argument('--cpu', action='store_true',
                     help='use cpu to quant')
+parser.add_argument('--fp8', action='store_true')
 
 BackendMap = {
     'academic': BackendType.Academic,
@@ -85,11 +86,29 @@ def get_quantize_model(model, args):
                                     'a_qscheme': {  'bit': 8,
                                                     'symmetry': False,
                                                     'per_channel': False,
-                                                    'pot_scale': False }                  
+                                                    'pot_scale': False }
                                 }
         }
     elif backend_type == BackendType.Sophgo_TPU:
-        extra_prepare_dict = {
+        if args.fp8:
+            extra_prepare_dict = {
+            "extra_qconfig_dict": {
+                                    'w_observer': 'MinMaxObserver',
+                                    'a_observer': 'EMAMinMaxObserver',
+                                    "w_fakequantize": "E5M2FakeQuantize",
+                                    "a_fakequantize": "LearnableFakeQuantize",
+                                    'w_qscheme': {  'bit': 8,
+                                                    'symmetry': True,
+                                                    'per_channel': False,
+                                                    'pot_scale': False },
+                                    'a_qscheme': {  'bit': 8,
+                                                    'symmetry': True,
+                                                    'per_channel': False,
+                                                    'pot_scale': False }
+                                }
+        }
+        else:
+            extra_prepare_dict = {
             "extra_qconfig_dict": { 
                                     'w_observer': 'MinMaxObserver',
                                     'a_observer': 'EMAMinMaxObserver',}}
@@ -118,7 +137,10 @@ def main():
     # set output path
     if args.output_path is None:
         args.output_path = './'
-    args.output_path=os.path.join(args.output_path, args.arch) 
+    if args.fp8:
+        args.output_path=os.path.join(args.output_path, args.arch+'_fp8')
+    else:
+        args.output_path=os.path.join(args.output_path, args.arch)
     os.system('mkdir -p {}'.format(args.output_path))
 
     # set seed first

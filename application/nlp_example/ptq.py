@@ -190,6 +190,7 @@ def main(config_path):
     convert_deploy(model,
                 backends[config.quant.backend],
                 dummy_input=(export_inputs,),
+                output_path=config.train.output_dir,
                 model_name='bert-base-uncased',
                 input_names=list(onnx_config.inputs.keys()),
                 output_names=list(onnx_config.outputs.keys()),
