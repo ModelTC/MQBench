@@ -131,6 +131,24 @@ def deploy_qparams_openvino(model: GraphModule, onnx_model_path, model_name, **k
 def deploy_qparams_tensorrt(model: GraphModule, onnx_model_path, model_name, **kwargs):
     logger.info("Extract qparams for TensorRT.")
     remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='tensorrt')
+
+def export_qtable(context_filename, model_name, output_path, quant_mode):
+        print("导出qtable")
+        file_h = open(context_filename, "r")
+        blob_range = json.loads(file_h.read())[quant_mode]
+        file_h.close()
+        q_table = osp.join(output_path, '{}_q_table_from_mqbench_{}'.format(model_name, quant_mode))
+        with open(q_table, 'w') as f:
+            f.write("# qtable from MQBench\n")
+            f.write("# op_name  type\n")
+            for name,value in blob_range.items():
+                dtype = 'INT8'
+                if value['bit'] == 4:
+                    dtype = 'INT4'
+                elif value['type'] == 'uint':
+                    dtype = 'UINT8'
+                f.write("{} {}\n".format(name, dtype))
+
 #2023.7.27修改
 @register_deploy_function(BackendType.Academic_NLP)
 def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name, **kwargs):
@@ -153,13 +171,14 @@ def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name,
         mode = "INT"
     # 根据Fake Quantizer的选择判断mode，如果是浮点的mode则进入deploy_float，反之则进入deploy_linear
     # mode = "E4M3" 目前尚未实现fp8的onnx，因此需要暂时使用int的onnx，这里手动将mode定义，进入deploy_float模块，之后实现浮点的onnx后可以删除此段代码
+    cali_mode = "Academic_NLP"
     if mode in ["E4M3", "E5M2"]:
         remove_fakequantize_and_collect_params_flt(onnx_model_path, model_name, backend='Academic_NLP') # 修改flt deploy or linear deploy
         print("导出calitable")
         output_path = osp.dirname(onnx_model_path)
         context_filename = osp.join(output_path, '{}_clip_ranges.json'.format(model_name))
         file_h = open(context_filename, "r")
-        blob_range = json.loads(file_h.read())["Academic_NLP_Float"]
+        blob_range = json.loads(file_h.read())[cali_mode+"_Float"]
         file_h.close()
         cali_table = osp.join(output_path, '{}_float_cali_table_from_mqbench_Academic_NLP'.format(model_name))
         with open(cali_table, 'w') as f:
@@ -189,15 +208,7 @@ def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name,
             f.write('#weight_scale\n')
             for i in weight_scale:
                 f.write(i)
-        print("导出qtable")
-        file_h = open(context_filename, "r")
-        blob_range = json.loads(file_h.read())["Academic_NLP_Float"]
-        file_h.close()
-        q_table = osp.join(output_path, '{}_q_table_from_mqbench_Academic_NLP'.format(model_name))
-        with open(q_table, 'w') as f:
-            f.write("# op_name    bit    type\n")
-            for name,value in blob_range.items():
-                f.write("{} {} {} \n".format(name, value['bit'], value['type']))
+        export_qtable(context_filename, model_name, output_path, cali_mode)
     else:
         remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='Academic_NLP')
         print("导出calitable")
@@ -238,15 +249,7 @@ def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name,
             f.write('#weight_scale\n')
             for i in weight_scale:
                 f.write(i)
-        print("导出qtable")
-        file_h = open(context_filename, "r")
-        blob_range = json.loads(file_h.read())["Academic_NLP"]
-        file_h.close()
-        q_table = osp.join(output_path, '{}_q_table_from_mqbench_Academic_NLP'.format(model_name))
-        with open(q_table, 'w') as f:
-            f.write("# op_name    bit    type\n")
-            for name,value in blob_range.items():
-                f.write("{} {} {} \n".format(name, value['bit'], value['type']))
+        export_qtable(context_filename, model_name, output_path, cali_mode)
 
 @register_deploy_function(BackendType.Sophgo_TPU)
 def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, **kwargs):
@@ -254,10 +257,11 @@ def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, *
     remove_fakequantize_and_collect_params_sophgo(onnx_model_path, model_name)
     output_path = osp.dirname(onnx_model_path)
     context_filename = osp.join(output_path, '{}_clip_ranges.json'.format(model_name))
+    cali_mode = "sophgo_tpu"
     file_h = open(context_filename, "r")
-    blob_range = json.loads(file_h.read())["sophgo_tpu"]
+    blob_range = json.loads(file_h.read())[cali_mode]
     file_h.close()
-    cali_table = osp.join(output_path, '{}_cali_table_from_mqbench_sophgo_tpu'.format(model_name))
+    cali_table = osp.join(output_path, '{}_cali_table_from_mqbench_{}'.format(model_name, cali_mode))
     work_mode = kwargs.get('work_mode', 'QAT_all_int8')
     if work_mode not in  ['QAT_all_int8', 'int4_and_int8_mix', 'int4_and_int8_mix_no_fc']:
         print('QAT_all_int8 not in [QAT_all_int8, int4_and_int8_mix, int4_and_int8_mix_no_fc],set to QAT_all_int8')
@@ -289,6 +293,7 @@ def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, *
         f.write('#weight_scale\n')
         for i in weight_scale:
             f.write(i)
+    export_qtable(context_filename, model_name, output_path, cali_mode)
 
 
 @register_deploy_function(BackendType.Vitis)

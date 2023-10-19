@@ -1,4 +1,3 @@
-#-- coding: gb2312 --
 import sys
 import os
 import time

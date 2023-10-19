@@ -84,20 +84,33 @@ class LinearQuantizer_process(object):
 
     def parse_qparams(self, node, name2data):
         tensor_name, scale, zero_point = node.input[:3]
+        dtype = 'None'
         scale, zero_point = name2data[scale], name2data[zero_point]
         if len(node.input) > 3:
             qmin, qmax = node.input[-2:]
             qmin, qmax = name2data[qmin], name2data[qmax]
+            if len(node.attribute) > 0:
+                qparams = parse_attrs(node.attribute)
+                dtype = qparams['dtype']
+            else:
+                dtype='None' 
         elif len(node.attribute) > 0:
             qparams = parse_attrs(node.attribute)
             qmin = qparams['quant_min']
             qmax = qparams['quant_max']
+            dtype = qparams['dtype']
         else:
             logger.info(f'qmin and qmax are not found for <{node.name}>!')
-        return tensor_name, scale, zero_point, qmin, qmax
+        if dtype == 'None' or dtype == 'biased':
+            bit = int(np.log2(qmax-qmin+1))
+            if (bit == 8 and qmin < 0) or (bit == 4):
+                dtype = 'int'
+            elif (bit == 8 and qmin ==0):
+                dtype = 'uint'
+        return tensor_name, scale, zero_point, qmin, qmax, dtype
 
     def clip_weight(self, node, name2data, inp2node, named_initializer):
-        tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
+        tensor_name, scale, zero_point, qmin, qmax, dtype1= self.parse_qparams(node, name2data)
         data = name2data[tensor_name]
         clip_range_min = ((qmin - zero_point) * scale).astype(data.dtype)
         clip_range_max = ((qmax - zero_point) * scale).astype(data.dtype)
@@ -150,6 +163,7 @@ class LinearQuantizer_process(object):
                 if tensor_name:
                     new_name = self.get_correct_sophgo_tpu_input_tensor_name(node, out2node)
                     clip_ranges[new_name] = copy.deepcopy(clip_ranges[tensor_name])
+                    clip_ranges[new_name]['ori_name'] =  new_name
                     logger.info(f'Pass <{tensor_name}> clip range to <{node.name}> input <{node.input[0]}>.')
         return clip_ranges
 
@@ -262,7 +276,7 @@ class LinearQuantizer_process(object):
                 redundant_nodes = self.deal_with_weight_fakequant(node, out2node, inp2node, named_initializer)
                 nodes_to_be_removed.extend(redundant_nodes)
                 self.clip_weight(node, name2data, inp2node, named_initializer)
-                tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
+                tensor_name, scale, zero_point, qmin, qmax, dtype = self.parse_qparams(node, name2data)
                 #卷积权重per-channel量化参数，bias的per-chan量化参数没有去调优
                 if len(next_nodes) == 1 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:#当前伪量化节点只有1个后继，且第1个后继节点为conv类型
                     next_node_output = next_nodes[0][0].output[0]
@@ -274,22 +288,33 @@ class LinearQuantizer_process(object):
                         tensor_name = '{}_{}'.format(next_node_output, next_nodes[0][0].op_type)
                     tensor_name += '_{}'.format('weight' if next_nodes[0][1] == 1 else 'bias'  )
                     clip_ranges[tensor_name] = {'step': [float(x) for x in scale],
-                                                'zero_point': [int(x) for x in zero_point]}
+                                                'zero_point': [int(x) for x in zero_point],
+                                                'min': [float(x) for x in scale * (qmin - zero_point)],
+                                                'max': [float(x) for x in scale * (qmax - zero_point)],
+                                                'bit': int(np.log2(qmax - qmin + 1)),
+                                                'type': dtype,
+						}
             elif node.op_type in PERTENSOR_FAKEQUANTIZER:
                 if len(next_nodes) == 1 and next_nodes[0][1] == 1 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:
                     # fake quantize for weights
                     redundant_nodes = self.deal_with_weight_fakequant(node, out2node, inp2node, named_initializer)
-                    tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
+                    tensor_name, scale, zero_point, qmin, qmax, dtype = self.parse_qparams(node, name2data)
                     nodes_to_be_removed.extend(redundant_nodes)
                     self.clip_weight(node, name2data, inp2node, named_initializer)
                     assert next_nodes[0][0].op_type == 'Gemm'
                     tensor_name_new = '{}_{}_weight'.format(next_nodes[0][0].output[0], next_nodes[0][0].op_type)
                     clip_ranges[tensor_name_new] = {'step': [float(x) for x in scale],
-                                                'zero_point': [int(x) for x in zero_point]}
+                                                'zero_point': [int(x) for x in zero_point],
+                                                'min': [float(x) for x in scale * (qmin - zero_point)],
+                                                'max': [float(x) for x in scale * (qmax - zero_point)],
+                                                'bit': int(np.log2(qmax - qmin + 1)),
+                                                'type': dtype,
+                                                'ori_name': 'none',
+                                                }
                 else:
                     # fake quantize for activations
                     self.deal_with_activation_fakequant(node, inp2node)
-                    tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
+                    tensor_name, scale, zero_point, qmin, qmax, dtype = self.parse_qparams(node, name2data)
                     bits = 4 if qmax == 7 else 8
                     if bits == 4:
                         have_int4 = True
@@ -322,7 +347,11 @@ class LinearQuantizer_process(object):
                             layer_out_tensor2[tensor_name_new] = layer_out_tensor[torch_name]
                     clip_ranges[tensor_name_new+f'_{bits}'] = {'threshold':float(scale * max(-qmin, qmax)), #对称量化时这个参数生效
                                                 'min': float(scale * (qmin - zero_point)),
-                                                'max': float(scale * (qmax - zero_point))}
+                                                'max': float(scale * (qmax - zero_point)),
+                                                'bit': int(np.log2(qmax - qmin + 1)),
+                                                'type': dtype,
+                                                'ori_name': 'none',
+                                                }
         if layer_out_tensor is not None and len(layer_out_tensor2) > 0:
             if 'data' in layer_out_tensor.files:
                 layer_out_tensor2['data'] = layer_out_tensor['data']

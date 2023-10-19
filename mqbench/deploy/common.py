@@ -228,6 +228,7 @@ def prepare_initializer(graph):
 def parse_attrs(node_attrs):
     attrs = {}
     for attr in node_attrs:
+        print(f'parse node attrs {attr}')
         if attr.type == onnx.AttributeProto.AttributeType.INTS:
             attrs[attr.name] = tuple(attr.ints)
             attrs['dtype']='ints'

@@ -56,7 +56,6 @@ class BackendType(Enum):
     ONNX_QNN = 'ONNX_QNN'
     PPLCUDA = 'PPLCUDA'
     OPENVINO = 'OPENVINO'
-    Tengine_u8 = "Tengine_u8"
     Tensorrt_NLP = "Tensorrt_NLP"
     Academic_NLP = "Academic_NLP"
     Sophgo_TPU = "Sophgo_TPU"
@@ -127,13 +126,6 @@ ParamsTable = {
                                  default_act_quantize=LearnableFakeQuantize,
                                  default_weight_observer=MinMaxObserver,
                                  default_act_observer=MinMaxObserver),
-    BackendType.Tengine_u8: dict(qtype="affine",
-                                 w_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
-                                 a_qscheme=QuantizeScheme(symmetry=False, per_channel=False, pot_scale=False, bit=8),
-                                 default_weight_quantize=LearnableFakeQuantize,
-                                 default_act_quantize=LearnableFakeQuantize,
-                                 default_weight_observer=MinMaxObserver,
-                                 default_act_observer=EMAMinMaxObserver),
     BackendType.Sophgo_TPU:   dict(qtype='affine',     # noqa: E241
                                  w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8),
                                  a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),

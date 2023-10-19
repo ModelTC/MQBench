@@ -254,6 +254,8 @@ class LinearQuantizer_process(object):
                         clip_ranges[tensor_name] = {'threshold':float(scale * max(-qmin, qmax)), #对称量化时这个参数生效
                                                     'min': float(scale * (qmin - zero_point)),
                                                     'max': float(scale * (qmax - zero_point)),
+                                                    'bit': int(np.log2(qmax - qmin + 1)),
+                                                    'type': "int" if int(np.log2(qmax - qmin + 1))==4 else dtype,
                                                     'ori_name': 'none'} 
                     if backend == 'Academic_NLP':
                         assert next_nodes[0][0].op_type == 'Gemm'
@@ -262,7 +264,7 @@ class LinearQuantizer_process(object):
                                                     'min': float(scale * (qmin - zero_point)),
                                                     'max': float(scale * (qmax - zero_point)),
                                                     'bit': int(np.log2(qmax - qmin + 1)),
-                                                    'type': "int" if int(np.log2(qmax - qmin + 1))==4 else dtype1,
+                                                    'type': "int" if int(np.log2(qmax - qmin + 1))==4 else dtype,
                                                     'ori_name': 'none'}                      
                 elif len(next_nodes) == 1 and next_nodes[0][1] == 2 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:
                     # fake quantize for bias 
