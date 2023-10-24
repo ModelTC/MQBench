@@ -220,7 +220,6 @@ class FloatQuantizer_process(object):
                     tensor_data = name2data[tensor_name]
                 except:
                     tensor_data = np.ones(10)
-                mean = np.array(np.mean(abs(tensor_data)))
                 max_data = np.array(np.max(tensor_data))
                 if backend == 'ppl':
                     clip_ranges[tensor_name] = {'step': [float(x) for x in scale],
@@ -249,14 +248,19 @@ class FloatQuantizer_process(object):
                                                     }
                         
                 elif backend == 'Academic_NLP':
-                    assert next_nodes[0][0].op_type == 'Gemm'
-                    tensor_name += '{}_{}_weight'.format(inp2node[node.output[0]][0][0].output[0], inp2node[node.output[0]][0][0].op_type)
-                    clip_ranges[tensor_name] = {'threshold':float(scale * max(-qmin, qmax)), #对称量化时这个参数生效
-                                                'mean': float(mean),
-                                                'max': float(max_data),
-                                                'bit': int(np.log2(qmax - qmin + 1)),
-                                                'type': "int" if int(np.log2(qmax - qmin + 1))==4 else dtype1,
-                                                'ori_name': 'none'}
+                    #卷积权重per-channel量化参数，bias的per-chan量化参数没有去调优
+                    if len(next_nodes) == 1 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:#当前伪量化节点只有1个后继，且第1个后继节点为conv类型
+                        next_node_output = next_nodes[0][0].output[0]
+                        if inp2node[next_node_output][0][0].op_type == 'Relu':##伪量化节点的第1个后继conv节点的第1个后继节点为Relu(fake->conv->relu)
+                            #若是fake->conv->relu,因为relu会融合到前面conv，故用relu的输出tensor名+Relu作为量化参数保存tensor名
+                            tensor_name = '{}_{}'.format(inp2node[next_node_output][0][0].output[0], 'Relu')
+                        else:
+                            #若是fake->conv->not_relu_type,直接用conv的输出tensor名+conv作为量化参数保存tensor名
+                            tensor_name = '{}_{}'.format(next_node_output, next_nodes[0][0].op_type)
+                        tensor_name += '_{}'.format('weight_fp8' if next_nodes[0][1] == 1 else 'bias_fp8'  )
+                        clip_ranges[tensor_name] = {'step': [float(x) for x in scale],
+                                                    'zero_point': [int(x) for x in zero_point]
+                                                    }
                       
             elif node.op_type in PERTENSOR_FAKEQUANTIZER:
                 if len(next_nodes) == 1 and next_nodes[0][1] == 1 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:
@@ -267,7 +271,6 @@ class FloatQuantizer_process(object):
                         tensor_data = name2data[tensor_name]
                     except:
                         tensor_data = np.ones(10)
-                    mean = np.array(np.mean(abs(tensor_data)))
                     max_data = np.array(np.max(tensor_data))
                     nodes_to_be_removed.extend(redundant_nodes)
                     self.clip_weight(node, name2data, inp2node, named_initializer)
@@ -280,9 +283,9 @@ class FloatQuantizer_process(object):
                                                     'ori_name': 'none'} 
                     if backend == 'Academic_NLP':
                         assert next_nodes[0][0].op_type == 'Gemm'
-                        tensor_name += '{}_{}_weight'.format(inp2node[node.output[0]][0][0].output[0], inp2node[node.output[0]][0][0].op_type)
+                        tensor_name += '{}_{}_weight_fp8'.format(inp2node[node.output[0]][0][0].output[0], inp2node[node.output[0]][0][0].op_type)
                         clip_ranges[tensor_name] = {'threshold':float(scale * max(-qmin, qmax)), #对称量化时这个参数生效
-                                                    'mean': float(mean),
+                                                    'min': float(scale * (qmin - zero_point)),
                                                     'max': float(max_data),
                                                     'bit': int(np.log2(qmax - qmin + 1)),
                                                     'type': "int" if int(np.log2(qmax - qmin + 1))==4 else dtype1,
@@ -302,7 +305,6 @@ class FloatQuantizer_process(object):
                         tensor_data = name2data[tensor_name]
                     except:
                         tensor_data = np.ones(10)
-                    mean = np.array(np.mean(abs(tensor_data)))
                     max_data = np.array(np.max(tensor_data))
                     for out in graph.output:
                         if out.name == node.output[0]:
@@ -331,7 +333,7 @@ class FloatQuantizer_process(object):
                         if tensor_name in out2node:
                             tensor_name += '_{}'.format(out2node[tensor_name].op_type)
                         clip_ranges[tensor_name] = {'threshold':float(scale * max(-qmin, qmax)), #对称量化时这个参数生效
-                                                    'mean': float(mean),
+                                                    'min': float(scale * (qmin - zero_point)),
                                                     'max': float(max_data),
                                                     'bit': int(np.log2(qmax - qmin + 1)),
                                                     'type': "int" if int(np.log2(qmax - qmin + 1))==4 else dtype1,

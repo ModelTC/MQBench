@@ -76,8 +76,7 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
         input_names = list(dummy_input.keys())
         dummy_input = tuple(dummy_input.values())
     # Per-channel QuantizeLinear and DequantizeLinear is supported since opset 13
-    # opset_version = 13 if kwargs.get('deploy_to_qlinear', False) else 11
-    opset_version = 18
+    opset_version = 13 if kwargs.get('deploy_to_qlinear', False) else 11
     with torch.no_grad():
         try:
             from torch.onnx.utils import ONNXCheckerError
@@ -184,32 +183,31 @@ def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name,
         cali_table = osp.join(output_path, '{}_float_cali_table_from_mqbench_Academic_NLP'.format(model_name))
         with open(cali_table, 'w') as f:
             f.write(f"# work_mode:{mode} #Automatically generated, do not modify, work_mode choice:[E4ME_RNE, E5M2_RNE]\n")
-            f.write("#       op_name        threshold        mean        max\n")
-            weight_scale = []
-            fp8_th = []
+            f.write("#       op_name        threshold        min        max\n")
+            weight_scale_fp8 = []
+            #fp8_th = []
             for name,value in blob_range.items():
                 if 'threshold' in value:
-                    tmpstr = "{}     {:.7f}     {:.7f}     {:.7f}\n".format(name[:-2], value['threshold'], value['mean'], value['max'])
-                    if name.endswith('_4'):
-                        fp8_th.append(tmpstr)
-                    elif name.endswith('_8'):
+                    tmpstr = "{}     {:.7f}     {:.7f}     {:.7f}\n".format(name[:-2], value['threshold'], value['min'], value['max'])
+                    if name.endswith('_fp8'):
                         f.write(tmpstr)
                     else:
-                        f.write("{}     {:.7f}     {:.7f}     {:.7f}\n".format(name, value['threshold'], value['mean'], value['max']))
+                        f.write("{}     {:.7f}     {:.7f}     {:.7f}\n".format(name, value['threshold'], value['min'], value['max']))
                 else:
                     tmpstr = "{} {} {} {} {}\n".format(name, len(value['step']), ' '.join([str(i) for i in value['step']]), 
                             len(value['zero_point']), ' '.join([str(i) for i in value['zero_point']]))
-                    if name.endswith('_weight') or name.endswith('_bias'):
-                        weight_scale.append(tmpstr)
+                    if name.endswith('_weight_fp8') or name.endswith('_bias_fp8'):
+                        weight_scale_fp8.append(tmpstr)
                     else:
                         f.write(tmpstr)
-            f.write('#fp8_th\n')
-            for i in fp8_th:
+            # f.write('#fp8_th\n')
+            # for i in fp8_th:
+            #     f.write(i)
+            f.write('#weight_scale_fp8\n')
+            for i in weight_scale_fp8:
                 f.write(i)
-            f.write('#weight_scale\n')
-            for i in weight_scale:
-                f.write(i)
-        export_qtable(context_filename, model_name, output_path, cali_mode)
+        cali_mode_new = cali_mode + '_Float'
+        export_qtable(context_filename, model_name, output_path, cali_mode_new)
     else:
         remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='Academic_NLP')
         print("导出calitable")
