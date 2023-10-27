@@ -9,3 +9,6 @@ from .adaround_quantizer import AdaRoundFakeQuantize
 from .qdrop_quantizer import QDropFakeQuantize
 from .e4m3 import E4M3FakeQuantize
 from .e5m2 import E5M2FakeQuantize
+from .gptq import GPTQFakeQuantize
+from .fp4 import FP4FakeQuantize
+from .gptq_FP4 import GPTQFP4FakeQuantize
