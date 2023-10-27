@@ -23,7 +23,10 @@ from mqbench.fake_quantize import (
     AdaRoundFakeQuantize,
     QDropFakeQuantize,
     E4M3FakeQuantize,
-    E5M2FakeQuantize
+    E5M2FakeQuantize,
+    GPTQFakeQuantize,
+    FP4FakeQuantize,
+    GPTQFP4FakeQuantize
 )
 from mqbench.observer import (
     ClipStdObserver,
@@ -161,7 +164,10 @@ FakeQuantizeDict = {
     'AdaRoundFakeQuantize':  AdaRoundFakeQuantize,   # AdaRound                     # noqa: E241
     'QDropFakeQuantize':     QDropFakeQuantize,      # BRECQ & QDrop                # noqa: E241
     'E4M3FakeQuantize':      E4M3FakeQuantize,
-    'E5M2FakeQuantize':      E5M2FakeQuantize 
+    'E5M2FakeQuantize':      E5M2FakeQuantize,
+    'GPTQFakeQuantize':      GPTQFakeQuantize, 
+    'FP4FakeQuantize':       FP4FakeQuantize,
+    'GPTQFP4FakeQuantize':   GPTQFP4FakeQuantize  
 }
 
 
