@@ -195,8 +195,9 @@ def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name,
         blob_range = json.loads(file_h.read())[cali_mode+"_Float"]
         file_h.close()
         cali_table = osp.join(output_path, '{}_float_cali_table_from_mqbench_Academic_NLP'.format(model_name))
+        fp8_header = "mqbench-fp8"
         with open(cali_table, 'w') as f:
-            f.write(f"# work_mode:{mode} #Automatically generated, do not modify, work_mode choice:[E4ME_RNE, E5M2_RNE]\n")
+            f.write(f"# work_mode:{fp8_header} #Automatically generated, do not modify, work_mode choice:[E4ME_RNE, E5M2_RNE]\n")
             f.write("#       op_name        threshold        min        max\n")
             weight_scale_fp8 = []
             #fp8_th = []
