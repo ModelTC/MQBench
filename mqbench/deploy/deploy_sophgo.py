@@ -260,6 +260,8 @@ class LinearQuantizer_process(object):
         layer_out_tensor = None
         have_int4 = False
         layer_out_tensor2 = {}
+        tensor_name_to_node_name = {}
+
         if os.path.exists(file_name):
             layer_out_tensor = np.load(file_name)
         for node in graph.node:
@@ -294,6 +296,8 @@ class LinearQuantizer_process(object):
                                                 'bit': int(np.log2(qmax - qmin + 1)),
                                                 'type': dtype,
 						}
+                    tensor_name_to_node_name[tensor_name] = {node.name: node.input}
+
             elif node.op_type in PERTENSOR_FAKEQUANTIZER:
                 if len(next_nodes) == 1 and next_nodes[0][1] == 1 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:
                     # fake quantize for weights
@@ -311,6 +315,8 @@ class LinearQuantizer_process(object):
                                                 'type': dtype,
                                                 'ori_name': 'none',
                                                 }
+                    tensor_name_to_node_name[tensor_name_new] = {node.name: node.input}
+
                 else:
                     # fake quantize for activations
                     self.deal_with_activation_fakequant(node, inp2node)
@@ -352,6 +358,16 @@ class LinearQuantizer_process(object):
                                                 'type': dtype,
                                                 'ori_name': 'none',
                                                 }
+                    tensor_name_to_node_name[tensor_name_new+f'_{bits}'] = {node.name: node.input}
+
+        ### show relation between tensor name in clip_ranges with fake quant node name
+        print(">>>>> print tensor name to node name dict")
+        for key,subdict in tensor_name_to_node_name.items():
+            print(key," : ", list(subdict.keys()))
+            print("input is :", list(subdict.values()))
+            print("\n")
+        print(">>>>> end")
+
         if layer_out_tensor is not None and len(layer_out_tensor2) > 0:
             if 'data' in layer_out_tensor.files:
                 layer_out_tensor2['data'] = layer_out_tensor['data']

@@ -274,6 +274,8 @@ class SophgoTpuQuantizer(ModelQuantizer):
     def prepare(self, model: GraphModule, qconfig):
         model = super().prepare(model, qconfig)
         model = self._set_fake_quantizer_to_next_weight_layer(model)
+        model = self._set_module_only_enable_observer(model)
+        self._show_all_fake_quant_name(model)
         return model
 
     def _find_act_quants(self, model: GraphModule) -> list:
@@ -302,9 +304,10 @@ class SophgoTpuQuantizer(ModelQuantizer):
                             self.only_enable_ob.append(node.name)
         for node in nodes:
             if node.target in modules and type(modules[node.target]) in self.exclude_module_name:
+            # if node.target in modules and (type(modules[node.target]) in self.exclude_module_name or node.target in self.exclude_module_name) and (node in node_need_to_quantize_output):
                 print(f'{type(modules[node.target])} is excluded')
                 node_need_to_quantize_output.remove(node)
-            if node.op == "placeholder":
+            if node.op == "placeholder" and (node.name not in self.exclude_node_name):
                 if 'tensor_meta' in node.meta:
                     if len(node.meta['tensor_meta'].shape) > 1:
                         print(f'add placeholder {node.target} to node_need_to_quantize_output by tensor_meta')
@@ -331,4 +334,25 @@ class SophgoTpuQuantizer(ModelQuantizer):
                                 setattr(modules[user2.target], "input_fake_quantizer", fake_quantizer)
                                 print('wlog:', user2.target,'\'type is:', type(modules[user2.target]), "add input_fake_quantizer")
 
+        return model
+
+    def _show_all_fake_quant_name(self, model: GraphModule):
+        print(">>>>> All fake quant nodes have been inserted. Their names : ")
+        for name, submodule in model.named_modules():
+            if isinstance(submodule, torch.quantization.FakeQuantizeBase):
+                print(">>>>> ", name)
+        print(">>>>> end")
+        return
+
+    def _set_module_only_enable_observer(self, model: GraphModule):
+        if len(self.module_only_enable_observer) == 0:
+            return model
+        for name, submodule in model.named_modules():
+            if isinstance(submodule, torch.quantization.FakeQuantizeBase) and (name in self.module_only_enable_observer):
+                logger.info('Only enable observer : {}'.format(name))
+                submodule.enable_observer()
+                submodule.disable_fake_quant()
+                submodule.only_enable_observer = True
+                # setattr(submodule, 'only_enable_ob', True)
+                # import pdb;pdb.set_trace()
         return model

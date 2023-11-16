@@ -62,6 +62,7 @@ class ModelQuantizer(object):
         self.exclude_module_name = extra_quantizer_dict.get('exclude_module_name', [])
         self.exclude_function_type = extra_quantizer_dict.get('exclude_function_type', [])
         self.exclude_node_name = extra_quantizer_dict.get('exclude_node_name', [])
+        self.module_only_enable_observer = extra_quantizer_dict.get('module_only_enable_observer', [])
         self.extra_fuse_dict = extra_fuse_dict
 
     def prepare(self, model: GraphModule, qconfig):

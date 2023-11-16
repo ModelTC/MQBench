@@ -41,8 +41,18 @@ def enable_quantization(model):
         if isinstance(submodule, torch.quantization.FakeQuantizeBase):
             logger.debug('Disable observer and Enable quant: {}'.format(name))
             submodule.disable_observer()
-            submodule.enable_fake_quant()
+            if not submodule.only_enable_observer:
+                submodule.enable_fake_quant()
 
+def enable_quantization_except_some_block(model, block_name_list):
+    logger.info('Disable observer and Enable quantize except some block.')
+    for name, submodule in model.named_modules():
+        if isinstance(submodule, torch.quantization.FakeQuantizeBase):
+            submodule.disable_observer()
+            submodule.disable_fake_quant()
+            if name not in block_name_list:
+                logger.debug('Disable observer : {}'.format(name))
+                submodule.enable_fake_quant()
 
 def disable_all(model):
     logger.info('Disable observer and Disable quantize.')

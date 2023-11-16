@@ -4,6 +4,7 @@ import time
 sys.path.append(os.path.abspath('.'))
 print(sys.path)
 
+import torch
 import torchvision.models as models
 import numpy as np
 import time
@@ -112,6 +113,33 @@ def get_quantize_model(model, args):
             "extra_qconfig_dict": { 
                                     'w_observer': 'MinMaxObserver',
                                     'a_observer': 'EMAMinMaxObserver',}}
+
+        # For mobilenet_v3_small, we set some fakequant node only observe
+        if "mobilenet_v3" in args.arch:
+            extra_prepare_dict["extra_quantizer_dict"] = {'module_only_enable_observer': [
+                                                                    'features.0.0.weight_fake_quant',
+                                                                    'features.0.0.input_fake_quantizer',
+                                                                    'features.1.block.0.0.weight_fake_quant',
+                                                                    'features.1.block.0.0.input_fake_quantizer',
+                                                                    'features.1.block.1.fc1.weight_fake_quant',
+                                                                    'features.1.block.1.fc1.input_fake_quantizer',
+                                                                    'features.1.block.1.fc2.weight_fake_quant',
+                                                                    'features.1.block.1.fc2.input_fake_quantizer',
+                                                                    'features.1.block.2.0.weight_fake_quant',
+                                                                    'features.1.block.2.0.input_fake_quantizer',
+                                                                    'features.2.block.0.0.weight_fake_quant',
+                                                                    'features.2.block.0.0.input_fake_quantizer',
+                                                                    'features.2.block.1.0.weight_fake_quant',
+                                                                    'features.2.block.1.0.input_fake_quantizer',
+                                                                    'features.2.block.2.0.weight_fake_quant',
+                                                                    'features.2.block.2.0.input_fake_quantizer',
+
+                                                                    'features_0_0_post_act_fake_quantizer',
+                                                                    'features_1_block_0_0_post_act_fake_quantizer',
+                                                                    'features_1_block_1_fc2_post_act_fake_quantizer',
+                                                                    'features_1_block_1_scale_activation_post_act_fake_quantizer',
+                                                                    ]
+                                                                }
     else:
         extra_prepare_dict = {}
     return prepare_by_platform(
@@ -129,6 +157,69 @@ def deploy(model, args):
 
     convert_deploy(model, backend_type, {
                    'input': [1, 3, 224, 224]}, output_path=output_path, model_name=model_name, deploy_to_qlinear=deploy_to_qlinear)
+
+layer_names = []
+features_out_hook = {}
+i = 0
+def hook(module, fea_in, fea_out):
+    global i
+    if i >= len(layer_names):
+        return None
+    name = layer_names[i]
+    i += 1
+    global features_out_hook
+    features_out_hook[name] = fea_out.cpu().numpy()
+    return None
+
+def gen_test_ref_data(cali_loader, model, args):
+    # return
+    model.eval()
+    global layer_names
+    hook_handles = []
+    input_data = {}
+    # exclude_module = ['fake_quantize', 'observer', 'torch.fx', 'batchnorm', 'torch.nn.modules.module.Module']
+    for name, child in model.named_modules():
+        # if not any([i in str(type(child)) for i in exclude_module]):
+        if name.endswith('_act_fake_quantizer'):
+            # if '_dup' in name:
+            #     name = name[:-5]
+            # layer_names.append(name.replace('.','_'))
+            # output = get_node_name_by_module_name(name, model)
+            # input = get_node_input_by_module_name(name, model)
+            # print(f'name:{name}, output:{output}, input:{input}')
+            # if input != '':
+            layer_names.append(name)
+            print(f"add hook on {name} for {str(type(child))}")
+            hd = child.register_forward_hook(hook=hook)
+            hook_handles.append(hd)
+    print('layer_names:', layer_names)
+    if args.cpu:
+        model = model.cpu()
+    with torch.no_grad():
+        # for i, (images, target) in enumerate(cali_loader):
+        for i, images in enumerate(cali_loader):
+            if args.cpu:
+                images = images.cpu()
+            else:
+                images = images.cuda()
+            # if args.gpu is not None:
+            #     images = images.cuda(args.gpu, non_blocking=True)
+            # else:
+            #     images = images.cpu()
+            output = model(images)
+            print("gen_test_ref_data ==> ", i+1)
+            if i == 0:
+                input_data['data'] = images.cpu().numpy()
+                np.savez(os.path.join(args.output_path, 'input_data.npz'), **input_data)
+                global features_out_hook
+                features_out_hook['data'] = images.cpu().numpy()
+                np.savez(os.path.join(args.output_path, 'layer_outputs.npz'), **features_out_hook)
+                for hd in hook_handles:
+                    hd.remove()
+                break
+    print("End gen_test_ref_data.")
+    return
+
 
 def main():
     time_start = time.time()
@@ -201,7 +292,7 @@ def main():
         print('begin calibration now!')
         cali_data = load_calibrate_data(train_loader, cali_batchsize=args.cali_batch_num)
         from mqbench.utils.state import enable_quantization, enable_calibration
-        model.eval() 
+        model.eval()
         enable_calibration(model)
         for batch in cali_data:
             if not args.cpu:

@@ -76,7 +76,21 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
         input_names = list(dummy_input.keys())
         dummy_input = tuple(dummy_input.values())
     # Per-channel QuantizeLinear and DequantizeLinear is supported since opset 13
-    opset_version = 13 if kwargs.get('deploy_to_qlinear', False) else 11
+    # opset_version = 13 if kwargs.get('deploy_to_qlinear', False) else 11
+    opset_version = 18
+
+    # open all fake quant node to export
+    if isinstance(model, torch.fx.graph_module.GraphModule):
+        print(">>>>> print graphmodule before export", model)
+        # print(">>>>> print graph before export")
+        # model.graph.print_tabular()
+        for name, submodule in model.named_modules():
+            if isinstance(submodule, torch.quantization.FakeQuantizeBase):
+                if submodule.only_enable_observer == True:
+                    submodule.only_enable_observer = False
+                submodule.disable_observer()
+                submodule.enable_fake_quant()
+
     with torch.no_grad():
         try:
             from torch.onnx.utils import ONNXCheckerError

@@ -80,7 +80,7 @@ parser.add_argument('--dist-backend', default='nccl', type=str,
                     help='distributed backend')
 parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training. ')
-parser.add_argument('--gpu', default=None, type=int,
+parser.add_argument('--cuda', default=None, type=int,
                     help='GPU id to use.')
 parser.add_argument('--multiprocessing-distributed', action='store_true',
                     help='Use multi-processing distributed training to launch '
@@ -136,7 +136,7 @@ def main():
                       'You may see unexpected behavior when restarting '
                       'from checkpoints.')
 
-    if args.gpu is not None:
+    if args.cuda is not None:
         warnings.warn('You have chosen a specific GPU. This will completely '
                       'disable data parallelism.')
 
@@ -155,17 +155,17 @@ def main():
         mp.spawn(main_worker, nprocs=ngpus_per_node, args=(ngpus_per_node, args))
     else:
         # Simply call main_worker function
-        main_worker(args.gpu, ngpus_per_node, args)
+        main_worker(args.cuda, ngpus_per_node, args)
 
     time_end = time.time()
     print('totally time is ', time_end-time_start)
 
 def main_worker(gpu, ngpus_per_node, args):
     global best_acc1
-    args.gpu = gpu
+    args.cuda = gpu
 
-    if args.gpu is not None:
-        print("Use GPU: {} for training".format(args.gpu))
+    if args.cuda is not None:
+        print("Use GPU: {} for training".format(args.cuda))
 
     if args.distributed:
         if args.dist_url == "env://" and args.rank == -1:
@@ -197,15 +197,15 @@ def main_worker(gpu, ngpus_per_node, args):
         model.load_state_dict(state_dict)
 
     train_loader, train_sampler, val_loader, cali_loader = prepare_dataloader(args)
-    criterion = nn.CrossEntropyLoss().cuda(args.gpu)
-    if args.gpu is not None:
-        model = model.cuda(args.gpu)    
+    criterion = nn.CrossEntropyLoss().cuda(args.cuda)
+    if args.cuda is not None:
+        model = model.cuda(args.cuda)
     else:
         model = model.cpu() 
 
     if args.pre_eval_and_export:
-        print('ԭʼonnxģ�;���')
-        validate(val_loader, model.eval(), criterion, args)  #����δִ��model.cuda()���ᱨ��
+        print('原始onnx模型精度')
+        validate(val_loader, model.eval(), criterion, args)  #这里未执行model.cuda()，会报错
 
         kwargs = {
             'input_shape_dict': {'data': [args.deploy_batch_size, 3, 224, 224]},
@@ -218,7 +218,7 @@ def main_worker(gpu, ngpus_per_node, args):
         module_tmp = module_tmp.cpu()
         convert_onnx(module_tmp.eval(), **kwargs)
         del module_tmp
-        model = model.train() #prepareǰһ��Ҫ��trainģʽ����
+        model = model.train() #prepare前一定要是train模式!!
 
     # quantize model
     if args.quant:
@@ -241,15 +241,41 @@ def main_worker(gpu, ngpus_per_node, args):
         }
         else:
             extra_prepare_dict = {}
+
+        if "mobilenet_v3" in args.arch:
+            extra_prepare_dict["extra_quantizer_dict"] = {'module_only_enable_observer': [
+                                                                    'features.0.0.weight_fake_quant',
+                                                                    'features.0.0.input_fake_quantizer',
+                                                                    'features.1.block.0.0.weight_fake_quant',
+                                                                    'features.1.block.0.0.input_fake_quantizer',
+                                                                    'features.1.block.1.fc1.weight_fake_quant',
+                                                                    'features.1.block.1.fc1.input_fake_quantizer',
+                                                                    'features.1.block.1.fc2.weight_fake_quant',
+                                                                    'features.1.block.1.fc2.input_fake_quantizer',
+                                                                    'features.1.block.2.0.weight_fake_quant',
+                                                                    'features.1.block.2.0.input_fake_quantizer',
+                                                                    'features.2.block.0.0.weight_fake_quant',
+                                                                    'features.2.block.0.0.input_fake_quantizer',
+                                                                    'features.2.block.1.0.weight_fake_quant',
+                                                                    'features.2.block.1.0.input_fake_quantizer',
+                                                                    'features.2.block.2.0.weight_fake_quant',
+                                                                    'features.2.block.2.0.input_fake_quantizer',
+
+                                                                    'features_0_0_post_act_fake_quantizer',
+                                                                    'features_1_block_0_0_post_act_fake_quantizer',
+                                                                    'features_1_block_1_fc2_post_act_fake_quantizer',
+                                                                    'features_1_block_1_scale_activation_post_act_fake_quantizer',
+                                                                    ]
+                                                                }
         model = prepare_by_platform(model, args.backend, input_shape_dict = {'data': [args.deploy_batch_size, 3, 224, 224]}, prepare_custom_config_dict=extra_prepare_dict)
         print('>>>>>prepared module:', model)
 
-        if args.fast_test:
-            convert_deploy(model.eval(), args.backend, input_shape_dict=
-                {'data': [args.deploy_batch_size, 3, 224, 224]}, 
-                model_name='{}_mqmoble'.format(args.arch), 
-                # work_mode ='int4_and_int8_mix',
-                output_path=args.output_path)
+        # if args.fast_test:
+        #     convert_deploy(model.eval(), args.backend, input_shape_dict=
+        #         {'data': [args.deploy_batch_size, 3, 224, 224]},
+        #         model_name='{}_mqmoble'.format(args.arch),
+        #         # work_mode ='int4_and_int8_mix',
+        #         output_path=args.output_path)
 
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')
@@ -257,23 +283,23 @@ def main_worker(gpu, ngpus_per_node, args):
         # For multiprocessing distributed, DistributedDataParallel constructor
         # should always set the single device scope, otherwise,
         # DistributedDataParallel will use all available devices.
-        if args.gpu is not None:
-            torch.cuda.set_device(args.gpu)
-            model.cuda(args.gpu)
+        if args.cuda is not None:
+            torch.cuda.set_device(args.cuda)
+            model.cuda(args.cuda)
             # When using a single GPU per process and per
             # DistributedDataParallel, we need to divide the batch size
             # ourselves based on the total number of GPUs we have
             args.batch_size = int(args.batch_size / ngpus_per_node)
             args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
-            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
+            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.cuda])
         else:
             model.cuda()
             # DistributedDataParallel will divide and allocate batch_size to all
             # available GPUs if device_ids are not set
             model = torch.nn.parallel.DistributedDataParallel(model)
-    elif args.gpu is not None:
-        torch.cuda.set_device(args.gpu)
-        model = model.cuda(args.gpu)
+    elif args.cuda is not None:
+        torch.cuda.set_device(args.cuda)
+        model = model.cuda(args.cuda)
     else:
         # DataParallel will divide and allocate batch_size to all available GPUs
         if args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
@@ -283,7 +309,7 @@ def main_worker(gpu, ngpus_per_node, args):
             if args.cpu:
                 model = model.cpu()
             else:
-                # model = torch.nn.DataParallel(model).cuda() #�ᵼ��gpuѵ�������ģ���޷�resume����cpu����
+                # model = torch.nn.DataParallel(model).cuda() #会导致gpu训练保存的模型无法resume后用cpu推理
                 model = model.cuda()
 
     # define loss function (criterion) and optimizer
@@ -305,25 +331,25 @@ def main_worker(gpu, ngpus_per_node, args):
         enable_quantization(model)
 
     cudnn.benchmark = True
-    # cudnn.deterministic = True #�������������
+    # cudnn.deterministic = True #避免计算结果波动
 
     # optionally resume from a checkpoint
     if args.resume:
         if os.path.isfile(args.resume):
             print("=> loading checkpoint '{}'".format(args.resume))
-            if args.gpu is None:
+            if args.cuda is None:
                 checkpoint = torch.load(args.resume)
             else:
                 # Map model to be loaded to specified single gpu.
-                loc = 'cuda:{}'.format(args.gpu)
+                loc = 'cuda:{}'.format(args.cuda)
                 if args.cpu:
                     loc = 'cpu'
                 checkpoint = torch.load(args.resume, map_location=loc)
             args.start_epoch = checkpoint['epoch']
             best_acc1 = checkpoint['best_acc1']
-            if args.gpu is not None:
+            if args.cuda is not None:
                 # best_acc1 may be from a checkpoint from a different GPU
-                best_acc1 = best_acc1.to(args.gpu)
+                best_acc1 = best_acc1.to(args.cuda)
 
             state_dict = checkpoint['state_dict']
             # if args.cpu:
@@ -342,7 +368,7 @@ def main_worker(gpu, ngpus_per_node, args):
             exit(1)
 
         if args.evaluate:
-            print('resumeģ�;���')
+            print('resume模型精度')
             from mqbench.convert_deploy import convert_merge_bn
             module_tmp2 = copy.deepcopy(model)
             convert_merge_bn(module_tmp2.eval())
@@ -365,9 +391,9 @@ def main_worker(gpu, ngpus_per_node, args):
 
         # evaluate on validation set
         if epoch == args.epochs - 1:
-            print('qatѵ����Ĵ������ڵ��eval����:')
+            print('qat训练后的带量化节点的eval精度:')
         else:
-            print(f'epoch{epoch}ѵ����eval����:')
+            print(f'epoch{epoch}训练后eval精度:')
         acc1 = validate(val_loader, model, criterion, args)
 
         # # remember best acc@1 and save checkpoint
@@ -384,7 +410,7 @@ def main_worker(gpu, ngpus_per_node, args):
         #         'optimizer' : optimizer.state_dict(),
         #     }, is_best, filename=os.path.join(args.output_path, 'checkpoint.pth.tar'))
 
-    print('disable_all����Ծ���:')
+    print('disable_all后测试精度:')
     disable_all(model)
     validate(val_loader, model, criterion, args)
     enable_quantization(model)
@@ -398,11 +424,11 @@ def main_worker(gpu, ngpus_per_node, args):
 
     '''model_path = os.path.join(args.output_path, '{}.pt'.format('{}_mqmoble'.format(args.arch)))
     model_pt = torch.load(model_path)
-    if args.gpu is not None:
-        model_pt = model_pt.cuda(args.gpu)    
+    if args.cuda is not None:
+        model_pt = model_pt.cuda(args.cuda)
     else:
         model_pt = model_pt.cpu() 
-    print('load fused bn pt����Ծ���:')
+    print('load fused bn pt后测试精度:')
     validate(val_loader, model_pt, criterion, args)
 
     validate_onnx(criterion, args)'''
@@ -472,8 +498,8 @@ def calibrate(cali_loader, model, args):
     print("Calibrate images number = ", len(cali_loader.dataset))
     with torch.no_grad():
         for i, (images, target) in enumerate(cali_loader):
-            if args.gpu is not None:
-                images = images.cuda(args.gpu, non_blocking=True)
+            if args.cuda is not None:
+                images = images.cuda(args.cuda, non_blocking=True)
             output = model(images)
             print("Calibration ==> ", i+1)
     print("End calibration.")
@@ -551,8 +577,8 @@ def gen_test_ref_data(cali_loader, model, args):
         model = model.cpu()
     with torch.no_grad():
         for i, (images, target) in enumerate(cali_loader):
-            if args.gpu is not None:
-                images = images.cuda(args.gpu, non_blocking=True)
+            if args.cuda is not None:
+                images = images.cuda(args.cuda, non_blocking=True)
             else:
                 images = images.cpu()
             output = model(images)
@@ -588,9 +614,9 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         # measure data loading time
         data_time.update(time.time() - end)
 
-        if args.gpu is not None and torch.cuda.is_available():
-            images = images.cuda(args.gpu, non_blocking=True)
-            target = target.cuda(args.gpu, non_blocking=True)
+        if args.cuda is not None and torch.cuda.is_available():
+            images = images.cuda(args.cuda, non_blocking=True)
+            target = target.cuda(args.cuda, non_blocking=True)
 
         # compute output
         output = model(images)
@@ -614,7 +640,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         if i % args.print_freq == 0:
             progress.display(i)
 
-        # # ���ѵ�����̲����Ƿ��쳣            
+        # # 检查训练过程参数是否异常  
         # for param in model.named_parameters():
         #     sum = torch.isnan(param[1]).sum()
         #     if sum > 0:
@@ -644,10 +670,10 @@ def validate(val_loader, model, criterion, args):
         end = time.time()
         for i, (images, target) in enumerate(val_loader):
             if not args.cpu:
-                if args.gpu is not None:
-                    images = images.cuda(args.gpu, non_blocking=True)
+                if args.cuda is not None:
+                    images = images.cuda(args.cuda, non_blocking=True)
                 if torch.cuda.is_available():
-                    target = target.cuda(args.gpu, non_blocking=True)
+                    target = target.cuda(args.cuda, non_blocking=True)
             else:
                 images = images.cpu()
                 target = target.cpu()
@@ -701,10 +727,10 @@ def validate_onnx(criterion, args):
         end = time.time()
         for i, (images, target) in enumerate(val_loader):
             if not args.cpu:
-                if args.gpu is not None:
-                    images = images.cuda(args.gpu, non_blocking=True)
+                if args.cuda is not None:
+                    images = images.cuda(args.cuda, non_blocking=True)
                 if torch.cuda.is_available():
-                    target = target.cuda(args.gpu, non_blocking=True)
+                    target = target.cuda(args.cuda, non_blocking=True)
             else:
                 images = images.cpu()
                 target = target.cpu()
@@ -712,7 +738,7 @@ def validate_onnx(criterion, args):
             # compute output
             # output = model(images)
             output = sess.run(None, {input_name:images.clone().detach().cpu().numpy()})
-            output = torch.from_numpy(output[0]).cuda(args.gpu, non_blocking=True)
+            output = torch.from_numpy(output[0]).cuda(args.cuda, non_blocking=True)
             loss = criterion(output, target)
 
             # measure accuracy and record loss
@@ -733,7 +759,7 @@ def validate_onnx(criterion, args):
             #         break
 
         # TODO: this should also be done with the ProgressMeter
-        print('deploy_model.onnx������д������onnxruntime���Ծ���:')
+        print('deploy_model.onnx完成所有处理后的onnxruntime测试精度:')
         print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
             .format(top1=top1, top5=top5))
 
