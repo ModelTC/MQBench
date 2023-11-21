@@ -25,6 +25,23 @@ NF4 = [
     0.7229568362236023,
     1.0,
 ]
+AF4=[-1.0, 
+     -0.69441008, 
+     -0.51243739,
+      -0.3736951, 
+     -0.25607552, 
+     -0.14982478,
+     -0.04934812,  
+     0.0, 
+     0.04273164, 
+     0.12934483, 
+     0.21961274, 
+     0.31675666,
+     0.42563882,  
+     0.55496234,  
+     0.72424863,  
+     1.0,
+]
 FP4_BNB = [-12.0, -8.0, -6.0, -4.0, -3.0, -2.0, -0.0625, 0, 0.0625, 2.0, 3.0, 4.0, 6.0, 8.0, 12.0]
 FP4_E2M1 = [-6.0, -4.0, -3.0, -2.0, -1.5, -1.0, -0.0625, 0, 0.0625, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0]
 
@@ -35,8 +52,17 @@ NF4_BIT = [7, 1, 2, 3, 4, 5, 6, 0, -8, -7, -6, -5, -4, -3, -2, -1]
 FP4_BNB_BIT = [-5, -6, -3, -4, -1, -2, -7, 0, 1, 6, 7, 4, 5, 2, 3]
 FP4_E2M1_BIT = [-1, -2, -3, -4, -5, -6, -7, 0, 1, 2, 3, 4, 5, 6, 7]
 
-FLOAT_MAPPING = {"nf4": NF4, "fp4": FP4_BNB, "fp4_e2m1_bnb": FP4_BNB, "fp4_e2m1": FP4_E2M1}
-INT_MAPPING = {"nf4": NF4_BIT, "fp4": FP4_BNB_BIT, "fp4_e2m1_bnb": FP4_BNB_BIT, "fp4_e2m1": FP4_E2M1_BIT}
+#NF8 compute
+offset=(1-(1/(255*2))+1-(1/(256*2)))*(1/2) #0.9981
+v1 = norm.ppf(torch.linspace(offset, 0.5, 129)[:-1]).tolist()
+v3 = (-norm.ppf(torch.linspace(offset, 0.5, 128)[:-1])).tolist()
+v=v1+v3+[0]
+NF8 = torch.Tensor(v)
+NF8 = NF8.sort().values
+NF8 /= NF8.max()
+
+FLOAT_MAPPING = {"nf4": NF4, "fp4": FP4_BNB, "fp4_e2m1_bnb": FP4_BNB, "fp4_e2m1": FP4_E2M1,"af4":AF4,"nf8":NF8}
+INT_MAPPING = {"nf4": NF4_BIT, "fp4": FP4_BNB_BIT, "fp4_e2m1_bnb": FP4_BNB_BIT, "fp4_e2m1": FP4_E2M1_BIT,"af4":AF4,"nf8":NF8}
 class FP4FakeQuantize(QuantizeBase):
     """This is fp4 Quantization Emulator..
     """
@@ -45,7 +71,7 @@ class FP4FakeQuantize(QuantizeBase):
         self.register_buffer('scale', torch.tensor([1.0], dtype=torch.float))
         self.register_buffer('zero_point', torch.tensor([0], dtype=torch.int))
         self.load_state_dict_hook = PerChannelLoadHook(self)
-        self.data_type="nf4"
+        self.data_type="fp4_e2m1"
         self.quantile=1.0
         self.return_int=False
 
@@ -65,16 +91,16 @@ class FP4FakeQuantize(QuantizeBase):
             self.zero_point.copy_(_zero_point)
 
         if self.fake_quant_enabled[0] == 1:
-            _scale = X.abs().max(1)[0] * self.quantile/ max(allow_data)
+            _scale =X.abs().max(1)[0] * self.quantile/ max(allow_data)
             _scale.unsqueeze_(dim=-1)
             X = X/_scale
-            if self.data_type.lower=="nf4":
-                cdf_values = [norm.cdf(x) for x in allow_data]
-                intermediate_cdf_values = [(cdf_values[i] + cdf_values[i+1]) / 2 for i in range(len(allow_data) - 1)]
-                mid_data = norm.ppf(intermediate_cdf_values)
-            else:
-                mid_data = [(allow_data[i] + allow_data[i + 1]) / 2 for i in range(len(allow_data) - 1)]
-            #mid_data = [(allow_data[i] + allow_data[i + 1]) / 2 for i in range(len(allow_data) - 1)]
+            # if self.data_type.lower=="nf4":
+            #     cdf_values = [norm.cdf(x) for x in allow_data]
+            #     intermediate_cdf_values = [(cdf_values[i] + cdf_values[i+1]) / 2 for i in range(len(allow_data) - 1)]
+            #     mid_data = norm.ppf(intermediate_cdf_values)
+            # else:
+            #     mid_data = [(allow_data[i] + allow_data[i + 1]) / 2 for i in range(len(allow_data) - 1)]
+            mid_data = [(allow_data[i] + allow_data[i + 1]) / 2 for i in range(len(allow_data) - 1)]
             q_X= torch.zeros_like(X)
             for i in range(len(allow_data)):
                 data = allow_data_bit[i] if self.return_int else allow_data[i]
