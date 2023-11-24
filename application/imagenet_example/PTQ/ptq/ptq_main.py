@@ -118,26 +118,26 @@ def get_quantize_model(model, args):
         if "mobilenet_v3" in args.arch:
             extra_prepare_dict["extra_quantizer_dict"] = {'module_only_enable_observer': [
                                                                     'features.0.0.weight_fake_quant',
-                                                                    'features.0.0.input_fake_quantizer',
                                                                     'features.1.block.0.0.weight_fake_quant',
-                                                                    'features.1.block.0.0.input_fake_quantizer',
                                                                     'features.1.block.1.fc1.weight_fake_quant',
-                                                                    'features.1.block.1.fc1.input_fake_quantizer',
                                                                     'features.1.block.1.fc2.weight_fake_quant',
-                                                                    'features.1.block.1.fc2.input_fake_quantizer',
                                                                     'features.1.block.2.0.weight_fake_quant',
-                                                                    'features.1.block.2.0.input_fake_quantizer',
                                                                     'features.2.block.0.0.weight_fake_quant',
-                                                                    'features.2.block.0.0.input_fake_quantizer',
                                                                     'features.2.block.1.0.weight_fake_quant',
-                                                                    'features.2.block.1.0.input_fake_quantizer',
                                                                     'features.2.block.2.0.weight_fake_quant',
-                                                                    'features.2.block.2.0.input_fake_quantizer',
 
+                                                                    'x_post_act_fake_quantizer',
                                                                     'features_0_0_post_act_fake_quantizer',
+                                                                    'features_0_2_post_act_fake_quantizer',
                                                                     'features_1_block_0_0_post_act_fake_quantizer',
+                                                                    'features_1_block_1_avgpool_post_act_fake_quantizer',
+                                                                    'features_1_block_1_fc1_post_act_fake_quantizer',
                                                                     'features_1_block_1_fc2_post_act_fake_quantizer',
                                                                     'features_1_block_1_scale_activation_post_act_fake_quantizer',
+                                                                    'mul_post_act_fake_quantizer',
+                                                                    'features_1_block_2_0_post_act_fake_quantizer',
+                                                                    'features_2_block_0_0_post_act_fake_quantizer',
+                                                                    'features_2_block_1_0_post_act_fake_quantizer',
                                                                     ]
                                                                 }
     else:

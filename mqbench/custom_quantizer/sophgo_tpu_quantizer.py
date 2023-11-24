@@ -273,9 +273,9 @@ class SophgoTpuQuantizer(ModelQuantizer):
 
     def prepare(self, model: GraphModule, qconfig):
         model = super().prepare(model, qconfig)
+        self._show_all_fake_quant_name(model)
         model = self._set_fake_quantizer_to_next_weight_layer(model)
         model = self._set_module_only_enable_observer(model)
-        self._show_all_fake_quant_name(model)
         return model
 
     def _find_act_quants(self, model: GraphModule) -> list:
@@ -347,7 +347,7 @@ class SophgoTpuQuantizer(ModelQuantizer):
     def _set_module_only_enable_observer(self, model: GraphModule):
         if len(self.module_only_enable_observer) == 0:
             return model
-        for name, submodule in model.named_modules():
+        for name, submodule in model.named_modules(remove_duplicate=False):
             if isinstance(submodule, torch.quantization.FakeQuantizeBase) and (name in self.module_only_enable_observer):
                 logger.info('Only enable observer : {}'.format(name))
                 submodule.enable_observer()

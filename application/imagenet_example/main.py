@@ -25,7 +25,7 @@ import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
-from mqbench.convert_deploy import convert_deploy, convert_onnx
+from mqbench.convert_deploy import convert_deploy, convert_onnx, export_onnx_with_fakequant_node
 from mqbench.prepare_by_platform import prepare_by_platform, BackendType
 from mqbench.utils.state import enable_calibration, enable_quantization, disable_all
 
@@ -99,6 +99,7 @@ parser.add_argument('--cpu', action='store_true')
 parser.add_argument('--pre_eval_and_export', action='store_true')
 parser.add_argument('--deploy_batch_size', default=1, type=int, help='deploy_batch_size.')
 parser.add_argument('--fp8', action='store_true')
+parser.add_argument('--export_onnx_before_training', action='store_true')
 
 BackendMap = {'tensorrt': BackendType.Tensorrt,
                'sophgo_tpu': BackendType.Sophgo_TPU,
@@ -245,26 +246,26 @@ def main_worker(gpu, ngpus_per_node, args):
         if "mobilenet_v3" in args.arch:
             extra_prepare_dict["extra_quantizer_dict"] = {'module_only_enable_observer': [
                                                                     'features.0.0.weight_fake_quant',
-                                                                    'features.0.0.input_fake_quantizer',
                                                                     'features.1.block.0.0.weight_fake_quant',
-                                                                    'features.1.block.0.0.input_fake_quantizer',
                                                                     'features.1.block.1.fc1.weight_fake_quant',
-                                                                    'features.1.block.1.fc1.input_fake_quantizer',
                                                                     'features.1.block.1.fc2.weight_fake_quant',
-                                                                    'features.1.block.1.fc2.input_fake_quantizer',
                                                                     'features.1.block.2.0.weight_fake_quant',
-                                                                    'features.1.block.2.0.input_fake_quantizer',
                                                                     'features.2.block.0.0.weight_fake_quant',
-                                                                    'features.2.block.0.0.input_fake_quantizer',
                                                                     'features.2.block.1.0.weight_fake_quant',
-                                                                    'features.2.block.1.0.input_fake_quantizer',
                                                                     'features.2.block.2.0.weight_fake_quant',
-                                                                    'features.2.block.2.0.input_fake_quantizer',
 
+                                                                    'x_post_act_fake_quantizer',
                                                                     'features_0_0_post_act_fake_quantizer',
+                                                                    'features_0_2_post_act_fake_quantizer',
                                                                     'features_1_block_0_0_post_act_fake_quantizer',
+                                                                    'features_1_block_1_avgpool_post_act_fake_quantizer',
+                                                                    'features_1_block_1_fc1_post_act_fake_quantizer',
                                                                     'features_1_block_1_fc2_post_act_fake_quantizer',
                                                                     'features_1_block_1_scale_activation_post_act_fake_quantizer',
+                                                                    'mul_post_act_fake_quantizer',
+                                                                    'features_1_block_2_0_post_act_fake_quantizer',
+                                                                    'features_2_block_0_0_post_act_fake_quantizer',
+                                                                    'features_2_block_1_0_post_act_fake_quantizer',
                                                                     ]
                                                                 }
         model = prepare_by_platform(model, args.backend, input_shape_dict = {'data': [args.deploy_batch_size, 3, 224, 224]}, prepare_custom_config_dict=extra_prepare_dict)
@@ -326,7 +327,13 @@ def main_worker(gpu, ngpus_per_node, args):
     if args.quant:
         enable_calibration(model)
         calibrate(cali_loader, model, args)
-
+        # export graphmodule with fakequant node to onnx, so we can clearly see the positions of each fakequant node.
+        if args.export_onnx_before_training:
+            os.system('mkdir -p {}'.format(args.output_path+'_export_onnx_before_training'))
+            export_onnx_with_fakequant_node(model.eval(), args.backend, input_shape_dict=
+                {'data': [args.deploy_batch_size, 3, 224, 224]},
+                model_name='{}_with_fakequant_node'.format(args.arch),
+                output_path=args.output_path+'_export_onnx_before_training')
     if args.quant:
         enable_quantization(model)
 

@@ -372,3 +372,37 @@ def convert_deploy(model: GraphModule, backend_type: BackendType,
     deploy_model = deepcopy_graphmodule(model)
     for convert_function in BACKEND_DEPLOY_FUNCTION[backend_type]:
         convert_function(deploy_model, **kwargs)
+
+def export_onnx_with_fakequant_node(model: GraphModule, backend_type: BackendType,
+                   input_shape_dict=None, dummy_input=None, output_path='./',
+                   model_name='mqbench_qmodel', deploy_to_qlinear=False, **extra_kwargs):
+    r"""Convert GraphModule with fakequant node to onnx
+
+    Args:
+        model (GraphModule): GraphModule prepared qat module.
+        backend_type (BackendType): specific which backend should be converted to.
+        input_shape_dict (dict): keys are model input name(should be forward function
+                                 params name, values are list of tensor dims)
+        output_path (str, optional): path to save convert results. Defaults to './'.
+        model_name (str, optional): name of converted onnx model. Defaults to 'mqbench_qmodel'.
+
+    >>> note on input_shape_dict:
+        example: {'input_0': [1, 3, 224, 224]
+                'input_1': [1, 3, 112, 112]
+                }
+        while forward function signature is like:
+                def forward(self, input_0, input_1):
+                    pass
+    """
+    kwargs = {
+        'input_shape_dict': input_shape_dict,
+        'dummy_input': dummy_input,
+        'output_path': output_path,
+        'model_name': model_name,
+        'onnx_model_path': osp.join(output_path, '{}.onnx'.format(model_name)),
+        'deploy_to_qlinear': deploy_to_qlinear
+    }
+    kwargs.update(extra_kwargs)
+    deploy_model = deepcopy_graphmodule(model)
+    convert_merge_bn(deploy_model, **kwargs)
+    convert_onnx(deploy_model, **kwargs)
