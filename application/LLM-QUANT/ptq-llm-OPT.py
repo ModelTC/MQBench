@@ -316,6 +316,8 @@ def insert_model_info(model, valid_layers=(torch.nn.Conv2d, torch.nn.Linear, tra
                     setattr(upper_layer.weight_fake_quant, 'layer_name', layer_name+'.weight_fake_quant')
                     setattr(upper_layer.weight_fake_quant, 'is_gptq_valid', True)
                     setattr(upper_layer.weight_fake_quant, 'is_gptq_done', False)
+                    setattr(upper_layer.weight_fake_quant, 'weight', layer_module.weight.data)
+                    setattr(upper_layer.weight_fake_quant, 'H', torch.zeros(layer_module.weight.data.shape[1], layer_module.weight.data.shape[1]))
                 else:
                     print('>'*8, 'Not support', layer_name, type(upper_layer))
                     setattr(upper_layer.weight_fake_quant, 'is_gptq_valid', False)
@@ -368,7 +370,7 @@ def format_time(elapsed):
 
 global_var._init()
 args = parser.parse_args()
-checkpoint = "Aalaa/opt-125m-wikitext2"
+checkpoint = "lnair/opt-350m-wikitext2"
 #load parameters
 batch_size =args.b
 epochs = args.epochs
@@ -384,7 +386,7 @@ wikitext_test = load_dataset("wikitext","wikitext-2-raw-v1",split="test")
 # wikitext_validation = load_dataset("zhengxuanzenwu/wikitext-2-split-128",split="validation")
 # wikitext_test = load_dataset("zhengxuanzenwu/wikitext-2-split-128",split="test")
 
-random_indices = random.sample(range(len(wikitext_train)),10)
+random_indices = random.sample(range(len(wikitext_train)),128)
 wikitext_cali= [wikitext_train[i] for i in random_indices]
 random_samples_dict = {'text': [sample['text'] for sample in wikitext_cali]}
 wikitext_cali = datasets.Dataset.from_dict(random_samples_dict)
@@ -409,13 +411,13 @@ train_dataloader = DataLoader(
 validation_dataloader = DataLoader(
             tokenized_validation, # The validation samples.
             shuffle=False,  
-            batch_size = 2, # Evaluate with this batch size.
+            batch_size = 1, # Evaluate with this batch size.
             collate_fn=data_collator
         )
 cali_loader = DataLoader(
             tokenized_cali, 
             shuffle=False, 
-            batch_size = 2,
+            batch_size = 1,
             collate_fn=data_collator
         )
 test_dataloader = DataLoader(
@@ -479,10 +481,12 @@ extra_qconfig_dict={
             }
         }
 preserve_attr={'': ['config']}
+extra_quantizer_dict= {'exclude_module_name': ['model.decoder.embed_tokens','lm_head',],} #'transformer.word_embeddings'
 prepare_custom_config_dict = {
     'concrete_args': concrete_args,
     'preserve_attr': preserve_attr,
     #'work_mode':'all_int4_qat',
+    'extra_quantizer_dict':extra_quantizer_dict,
     'extra_qconfig_dict':extra_qconfig_dict}
 #Insert quantization node
 model_prepared= prepare_by_platform(model, BackendType.Academic_NLP,prepare_custom_config_dict=prepare_custom_config_dict, custom_tracer=HFTracer())
@@ -527,7 +531,7 @@ calibrate(cali_loader, model_prepared1)
 #量化模型PPL
 enable_quantization(model_prepared1)
 calibrate(cali_loader, model_prepared1)
-remove_model_info(model_prepared1)
 enable_quantization(model_prepared1)
 avg_ppl2=cal_ppl_2(model_prepared1,validation_dataloader)
 print("量化模型PPL:{}".format(avg_ppl2))
+remove_model_info(model_prepared1)
