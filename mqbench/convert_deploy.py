@@ -76,8 +76,8 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
         input_names = list(dummy_input.keys())
         dummy_input = tuple(dummy_input.values())
     # Per-channel QuantizeLinear and DequantizeLinear is supported since opset 13
-    # opset_version = 13 if kwargs.get('deploy_to_qlinear', False) else 11
-    opset_version = 18
+    opset_version = 13 if kwargs.get('deploy_to_qlinear', False) else 11
+    # opset_version = 18
 
     # open all fake quant node to export
     if isinstance(model, torch.fx.graph_module.GraphModule):
@@ -161,7 +161,10 @@ def export_qtable(context_filename, model_name, output_path, quant_mode):
                     dtype = 'INT4'
                 elif value['type'] == 'uint':
                     dtype = 'UINT8'
-                f.write("{} {}\n".format(name, dtype))
+                if 'threshold' in value:
+                    f.write("{} {}\n".format(name[:-2], dtype))
+                else:
+                    f.write("{} {}\n".format(name, dtype))
 
 #2023.7.27修改
 @register_deploy_function(BackendType.Academic_NLP)
