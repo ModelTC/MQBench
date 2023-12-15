@@ -97,7 +97,7 @@ def get_quantize_model(model, args):
                                     'w_observer': 'MinMaxObserver',
                                     'a_observer': 'EMAMinMaxObserver',
                                     "w_fakequantize": "E5M2FakeQuantize",
-                                    "a_fakequantize": "LearnableFakeQuantize",
+                                    "a_fakequantize": "E5M2FakeQuantize",
                                     'w_qscheme': {  'bit': 8,
                                                     'symmetry': True,
                                                     'per_channel': False,

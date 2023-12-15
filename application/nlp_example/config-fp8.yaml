@@ -1,12 +1,12 @@
 quant:
     a_qconfig:
-        quantizer: E4M3FakeQuantize
+        quantizer: E5M2FakeQuantize
         observer: EMAQuantileObserver
         bit: 8
         symmetric: False
         per_channel: False
     w_qconfig:
-        quantizer: E4M3FakeQuantize
+        quantizer: E5M2FakeQuantize
         observer: MinMaxObserver
         bit: 8
         symmetric: True

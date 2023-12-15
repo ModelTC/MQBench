@@ -102,6 +102,7 @@ class E4M3FakeQuantize(QuantizeBase):
         self.register_buffer('scale', torch.tensor([1.0], dtype=torch.float)) # 首先定义一个scale，初始值为1.0
         self.register_buffer('zero_point', torch.tensor([0], dtype=torch.int)) # 首先定义一个zero point，初始值为0.0（用于之后输出量化表）
         self.load_state_dict_hook = PerChannelLoadHook(self)
+        self.data_type = "fp8_e4m3"
 
     def forward(self, X):
         tensor_q = torch.zeros_like(X)
@@ -117,7 +118,7 @@ class E4M3FakeQuantize(QuantizeBase):
                     _scale = get_flt_min("e4m3") / abs(mean) # 取得e4m3的最小值，与mean的绝对值做比值求得scale
             elif scaling_method.lower() == "max":
                 vmax = torch.max(abs(torch.flatten(X.detach()))) #求出权重的max
-                _scale = get_flt_max("e4m3") / vmax
+                _scale = vmax / get_flt_max("e4m3")
                 _scale = torch.tensor(6.55e+04) if _scale.item() > 3.275e+04 else _scale
             else:
                 _scale = torch.tensor(1.0)
@@ -142,12 +143,12 @@ class E4M3FakeQuantize(QuantizeBase):
                              _scale = get_flt_min("e4m3") / abs(mean)
                     elif scaling_method.lower() == "max":
                         vmax = torch.max(abs(torch.flatten(X.detach())))
-                        _scale = get_flt_max("e4m3") / vmax
+                        _scale = vmax / get_flt_max("e4m3")
                         _scale = torch.tensor(6.55e+04) if _scale.item() > 3.275e+04 else _scale
                     else:
                         _scale = torch.tensor(1.0)
                     self.scale.copy_(_scale)
-                    sub_tensor = fpemu_device_fn(sub_tensor, mode=work_mode, inplace=False, scale=self.scale.item())
+                    sub_tensor = fpemu_device_fn(sub_tensor, mode=work_mode, inplace=False, scale=1/self.scale.item())
                     tensor_q.select(1, c).data.copy_(sub_tensor)
                 X = tensor_q # per channel方式计算后的量化权重
             else: # 按照per tensor的方法计算scale
@@ -157,14 +158,16 @@ class E4M3FakeQuantize(QuantizeBase):
                     if abs(mean) > 0.0:
                         _scale = get_flt_min("e4m3") / abs(mean) # 取得e4m3的最小值，与mean的绝对值做比值求得scale
                 elif scaling_method.lower() == "max":
-                    vmax = torch.max(abs(torch.flatten(X.detach()))) #求出权重的max
-                    _scale = get_flt_max("e4m3") / vmax
+                    vmax = torch.max(torch.flatten(X.detach())) #求出权重的max
+                    _scale = vmax / get_flt_max("e4m3")
                     _scale = torch.tensor(6.55e+04) if _scale.item() > 3.275e+04 else _scale
+                    if _scale == 0:
+                        _scale = torch.tensor(1.0)
                 else:
                     _scale = torch.tensor(1.0)
                 _scale = _scale.to(self.scale.device)
                 self.scale.copy_(_scale)
-                X = fpemu_device_fn(X, mode=work_mode, inplace=False, scale=self.scale.item()) #返回per tensor方式计算的量化权重
+                X = fpemu_device_fn(X, mode=work_mode, inplace=False, scale=1/self.scale.item()) #返回per tensor方式计算的量化权重
         return X
  
     @torch.jit.export
