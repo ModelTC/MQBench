@@ -82,10 +82,16 @@ class LinearQuantizer_process(object):
             next_node.input[idx] = node.input[0]
         return
 
-    def parse_qparams(self, node, name2data):
+    def parse_qparams(self, node, name2data, quant_type_dict):
         tensor_name, scale, zero_point = node.input[:3]
         dtype = 'None'
         scale, zero_point = name2data[scale], name2data[zero_point]
+
+        scale_name = node.input[1]
+        module_name = scale_name.rsplit('.scale', 1)[0]
+        quant_type = 'None'
+        quant_type = quant_type_dict[module_name]
+
         if len(node.input) > 3:
             qmin, qmax = node.input[-2:]
             qmin, qmax = name2data[qmin], name2data[qmax]
@@ -107,10 +113,10 @@ class LinearQuantizer_process(object):
                 dtype = 'int'
             elif (bit == 8 and qmin ==0):
                 dtype = 'uint'
-        return tensor_name, scale, zero_point, qmin, qmax, dtype
+        return tensor_name, scale, zero_point, qmin, qmax, dtype, quant_type
 
-    def clip_weight(self, node, name2data, inp2node, named_initializer):
-        tensor_name, scale, zero_point, qmin, qmax, dtype1= self.parse_qparams(node, name2data)
+    def clip_weight(self, node, name2data, inp2node, named_initializer, quant_type_dict):
+        tensor_name, scale, zero_point, qmin, qmax, dtype1, quant_type= self.parse_qparams(node, name2data, quant_type_dict)
         data = name2data[tensor_name]
         clip_range_min = ((qmin - zero_point) * scale).astype(data.dtype)
         clip_range_max = ((qmax - zero_point) * scale).astype(data.dtype)
@@ -240,7 +246,7 @@ class LinearQuantizer_process(object):
             graph.node.remove(node)
         return
 
-    def remove_fakequantize_and_collect_params(self, onnx_path, model_name):
+    def remove_fakequantize_and_collect_params(self, onnx_path, model_name, quant_type_dict):
         model = onnx.load(onnx_path)
         graph = model.graph
         out2node, inp2node = update_inp2node_out2node(graph)
@@ -277,8 +283,8 @@ class LinearQuantizer_process(object):
                 # fake quantize for weights, suppose per-channel quantize only for weight
                 redundant_nodes = self.deal_with_weight_fakequant(node, out2node, inp2node, named_initializer)
                 nodes_to_be_removed.extend(redundant_nodes)
-                self.clip_weight(node, name2data, inp2node, named_initializer)
-                tensor_name, scale, zero_point, qmin, qmax, dtype = self.parse_qparams(node, name2data)
+                self.clip_weight(node, name2data, inp2node, named_initializer, quant_type_dict)
+                tensor_name, scale, zero_point, qmin, qmax, dtype, quant_type = self.parse_qparams(node, name2data, quant_type_dict)
                 #卷积权重per-channel量化参数，bias的per-chan量化参数没有去调优
                 if len(next_nodes) == 1 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:#当前伪量化节点只有1个后继，且第1个后继节点为conv类型
                     next_node_output = next_nodes[0][0].output[0]
@@ -295,6 +301,7 @@ class LinearQuantizer_process(object):
                                                 'max': [float(x) for x in scale * (qmax - zero_point)],
                                                 'bit': int(np.log2(qmax - qmin + 1)),
                                                 'type': dtype,
+                                                'quant_type': quant_type
 						}
                     tensor_name_to_node_name[tensor_name] = {node.name: node.input}
 
@@ -302,9 +309,9 @@ class LinearQuantizer_process(object):
                 if len(next_nodes) == 1 and next_nodes[0][1] == 1 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:
                     # fake quantize for weights
                     redundant_nodes = self.deal_with_weight_fakequant(node, out2node, inp2node, named_initializer)
-                    tensor_name, scale, zero_point, qmin, qmax, dtype = self.parse_qparams(node, name2data)
+                    tensor_name, scale, zero_point, qmin, qmax, dtype, quant_type = self.parse_qparams(node, name2data, quant_type_dict)
                     nodes_to_be_removed.extend(redundant_nodes)
-                    self.clip_weight(node, name2data, inp2node, named_initializer)
+                    self.clip_weight(node, name2data, inp2node, named_initializer, quant_type_dict)
                     assert next_nodes[0][0].op_type == 'Gemm'
                     tensor_name_new = '{}_{}_weight'.format(next_nodes[0][0].output[0], next_nodes[0][0].op_type)
                     clip_ranges[tensor_name_new] = {'step': [float(x) for x in scale],
@@ -314,13 +321,14 @@ class LinearQuantizer_process(object):
                                                 'bit': int(np.log2(qmax - qmin + 1)),
                                                 'type': dtype,
                                                 'ori_name': 'none',
+                                                'quant_type': quant_type
                                                 }
                     tensor_name_to_node_name[tensor_name_new] = {node.name: node.input}
 
                 else:
                     # fake quantize for activations
                     self.deal_with_activation_fakequant(node, inp2node)
-                    tensor_name, scale, zero_point, qmin, qmax, dtype = self.parse_qparams(node, name2data)
+                    tensor_name, scale, zero_point, qmin, qmax, dtype, quant_type = self.parse_qparams(node, name2data, quant_type_dict)
                     bits = 4 if qmax == 7 else 8
                     if bits == 4:
                         have_int4 = True
@@ -357,6 +365,7 @@ class LinearQuantizer_process(object):
                                                 'bit': int(np.log2(qmax - qmin + 1)),
                                                 'type': dtype,
                                                 'ori_name': 'none',
+                                                'quant_type': quant_type
                                                 }
                     tensor_name_to_node_name[tensor_name_new+f'_{bits}'] = {node.name: node.input}
 

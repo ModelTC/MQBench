@@ -353,6 +353,4 @@ class SophgoTpuQuantizer(ModelQuantizer):
                 submodule.enable_observer()
                 submodule.disable_fake_quant()
                 submodule.only_enable_observer = True
-                # setattr(submodule, 'only_enable_ob', True)
-                # import pdb;pdb.set_trace()
         return model

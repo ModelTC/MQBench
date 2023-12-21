@@ -1,6 +1,7 @@
 import json
 import os.path as osp
 import os
+import numpy as np
 import torch
 from torch.fx import GraphModule
 import onnx
@@ -24,6 +25,28 @@ from mqbench.deploy import (
     # remove_fakequantize_and_collect_params_academic,
     ONNXQLinearPass, ONNXQNNPass
 )
+from mqbench.fake_quantize import (
+    LearnableFakeQuantize,
+    NNIEFakeQuantize,
+    FixedFakeQuantize,
+    DoReFaFakeQuantize,
+    DSQFakeQuantize,
+    PACTFakeQuantize,
+    TqtFakeQuantize,
+    AdaRoundFakeQuantize,
+    QDropFakeQuantize,
+    E4M3FakeQuantize,
+    E5M2FakeQuantize,
+    GPTQFakeQuantize,
+    FP4FakeQuantize,
+    GPTQFP4FakeQuantize,
+    FP4GROUPFakeQuantize,
+    FP4GROUPFakeQuantize1
+)
+FP8_FAKEQUANTIZER = [E4M3FakeQuantize, E5M2FakeQuantize]
+FP4_FAKEQUANTIZER = [FP4FakeQuantize, GPTQFP4FakeQuantize, FP4GROUPFakeQuantize, FP4GROUPFakeQuantize1]
+INT_FAKEQUANTIZER = [LearnableFakeQuantize, NNIEFakeQuantize, FixedFakeQuantize, DoReFaFakeQuantize, DSQFakeQuantize, PACTFakeQuantize,\
+                     TqtFakeQuantize, AdaRoundFakeQuantize, QDropFakeQuantize, GPTQFakeQuantize]
 
 __all__ = ['convert_deploy']
 
@@ -156,6 +179,13 @@ def export_qtable(context_filename, model_name, output_path, quant_mode):
             f.write("# qtable from MQBench\n")
             f.write("# op_name  type\n")
             for name,value in blob_range.items():
+                if 'quant_type' in value:
+                    quant_type = value['quant_type']
+                    if 'threshold' in value:
+                        f.write("{} {}\n".format(name[:-2], quant_type))
+                    else:
+                        f.write("{} {}\n".format(name, quant_type))
+                    continue
                 dtype = 'INT8'
                 if value['bit'] == 4:
                     dtype = 'INT4'
@@ -269,9 +299,9 @@ def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name,
         export_qtable(context_filename, model_name, output_path, cali_mode)
 
 @register_deploy_function(BackendType.Sophgo_TPU)
-def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, **kwargs):
+def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, quant_type_dict, **kwargs):
     logger.info("Extract qparams for sophgo_tpu.")
-    remove_fakequantize_and_collect_params_sophgo(onnx_model_path, model_name)
+    remove_fakequantize_and_collect_params_sophgo(onnx_model_path, model_name, quant_type_dict)
     output_path = osp.dirname(onnx_model_path)
     context_filename = osp.join(output_path, '{}_clip_ranges.json'.format(model_name))
     cali_mode = "sophgo_tpu"
@@ -342,6 +372,37 @@ def deploy_qparams_ppl_cuda(model: GraphModule, onnx_model_path, model_name, **k
     logger.info("Extract qparams for PPL-CUDA.")
     remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='ppl-cuda')
 
+def get_quant_type_from_fakequant_type(model: GraphModule):
+    r"""
+    Given GraphModule, Traverse each fakequant node within it,
+    obtain the quantization type based on the class of the fakequant node.
+    """
+    quant_type_dict = {}
+    for name, submodule in model.named_modules(remove_duplicate=False):
+        if isinstance(submodule, torch.quantization.FakeQuantizeBase):
+            if submodule.only_enable_observer:
+                quant_type_dict[name] = 'F32'
+            else:
+                class_of_submodule = submodule.__class__
+                if class_of_submodule in INT_FAKEQUANTIZER:
+                    qmax = submodule.quant_max
+                    qmin = submodule.quant_min
+                    bit = int(np.log2(qmax-qmin+1))
+                    if (bit == 8 and qmin < 0):
+                        quant_type_dict[name] = 'INT8'
+                    elif (bit == 8 and qmin ==0):
+                        quant_type_dict[name] = 'UINT8'
+                    elif (bit == 4 and qmin < 0):
+                        quant_type_dict[name] = 'INT4'
+                elif class_of_submodule in FP4_FAKEQUANTIZER:
+                    quant_type_dict[name] = 'FP4'
+                elif class_of_submodule in FP8_FAKEQUANTIZER:
+                    quant_type_dict[name] = 'FP8'
+                else:
+                    quant_type_dict[name] = 'None'
+
+    return quant_type_dict
+
 def convert_deploy(model: GraphModule, backend_type: BackendType,
                    input_shape_dict=None, dummy_input=None, output_path='./',
                    model_name='mqbench_qmodel', deploy_to_qlinear=False, **extra_kwargs):
@@ -363,13 +424,15 @@ def convert_deploy(model: GraphModule, backend_type: BackendType,
                 def forward(self, input_0, input_1):
                     pass
     """
+    quant_type_dict = get_quant_type_from_fakequant_type(model)
     kwargs = {
         'input_shape_dict': input_shape_dict,
         'dummy_input': dummy_input,
         'output_path': output_path,
         'model_name': model_name,
         'onnx_model_path': osp.join(output_path, '{}.onnx'.format(model_name)),
-        'deploy_to_qlinear': deploy_to_qlinear
+        'deploy_to_qlinear': deploy_to_qlinear,
+        'quant_type_dict': quant_type_dict
     }
     kwargs.update(extra_kwargs)
     deploy_model = deepcopy_graphmodule(model)
