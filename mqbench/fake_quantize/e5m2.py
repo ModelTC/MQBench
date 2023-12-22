@@ -9,12 +9,11 @@ from .quantize_base import QuantizeBase
 from ..utils.hook import PerChannelLoadHook
 
 _version_under_1100 = int(torch.__version__.split('.')[1]) < 10
-
+# List the supported rounding method for E5M2:
 mode_list = ["E5M2_RTE", "E5M2_RNE", "E5M2_STOCHASTIC", "E5M2_RNAZ",
              "E5M2_RNTZ", "E5M2_RPINF", "E5M2_RNINF", "E5M2_DAZ_RNE", 
-             "E5M2_DAZ_STOCHASITC", "E5M2_DAZ_RNAZ", "E5M2_DAZ_RNTZ"] # 可以选择的E5M2量化方法
-
-# 用parse_config函数获取config文件中的mode，用于之后具体量化方法的选择：
+             "E5M2_DAZ_STOCHASITC", "E5M2_DAZ_RNAZ", "E5M2_DAZ_RNTZ"]
+# Get the config
 def parse_config(config_file):
     with open(config_file) as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
@@ -32,38 +31,29 @@ def parse_config(config_file):
     config = EasyDict(config)
     return config
 
-# 写一个获取FP8量化所能表示的最大值函数：
 def get_flt_max(mode):
     if mode.lower() == "e5m2":
-        return float(57344.0) # E5M2所能表示的最大值
+        return float(57344.0) 
     elif mode.lower() == "e4m3":
-        return float(448.0) # E4M3所能表示的最大值
+        return float(448.0)
     
-# 写一个获取FP8量化所能表示的最小值函数：
 def get_flt_min(mode):
     if mode.lower() =="e5m2":
-        return float(1.5258789E-05) # E5M2所能表示的最小值
+        return float(1.5258789E-05) # Min Subnormal
     elif mode.lower() == "e4m3":
-        return float(1.9531250E-03) #E4M3所能表示的最小值
+        return float(1.9531250E-03)
 
-# 写一个Int量化的转化函数（以支持INT8/INT4量化）：
 def quantize_to_integer(tensor, mode, inplace=False):
-    # compute tensor min and max values
     min_val = torch.min(tensor)
     max_val = torch.max(tensor)
-    # int8 quantization range 
-
     nbits = int(mode.split("INT")[1])-1
     q_min = -1*2**nbits
     q_max = (2**nbits)-1
-
-    """
     q_min = -128
     q_max = 127
     if mode == "INT4":
         q_min = -8
         q_max = 7
-    """
     # compute scale and zero_point 
     scale = (max_val - min_val) / (q_max - q_min)
     zero_point = q_min - (min_val / scale)
@@ -80,17 +70,16 @@ def quantize_to_integer(tensor, mode, inplace=False):
     
     return dqtensor
 
-#调用emulator函数计算量化后的权重：
+# The function below excuted the FP8 quantization
 def fpemu_device_fn(tensor, mode, inplace=True, scale=1.0):
-    #if "INT8" in mode or "INT4" in mode:
-    if "INT" in mode: # 如果输入的mode是INT类型，走这个循环进行整数的量化
+    if "INT8" in mode or "INT4" in mode:
         return quantize_to_integer(tensor, mode.split("_")[0], inplace=inplace)
 
-    if tensor.is_cuda : # 如果使用CUDA走这个循环，调用了pytquant中的CUDA函数
+    if tensor.is_cuda :
         from FP8_Emulator.pytquant.cuda import fpemu_cuda
         X = fpemu_cuda.FPEmuOp.apply(tensor, mode, inplace, scale)
 
-    else : # 如果使用CPU走这个循环，调用了pytquant中的CPP函数
+    else :
         from FP8_Emulator.pytquant.cpp import fpemu_cpp
         X = fpemu_cpp.FPEmuOp.apply(tensor, mode, inplace, scale)
 
@@ -101,8 +90,8 @@ class E5M2FakeQuantize(QuantizeBase):
 
     def __init__(self, observer, **observer_kwargs):
         super(E5M2FakeQuantize, self).__init__(observer, **observer_kwargs)
-        self.register_buffer('scale', torch.tensor([1.0], dtype=torch.float)) # 首先定义一个scale，初始值为1.0
-        self.register_buffer('zero_point', torch.tensor([0], dtype=torch.int)) # 首先定义一个zero point，初始值为0.0（用于之后输出量化表）
+        self.register_buffer('scale', torch.tensor([1.0], dtype=torch.float))
+        self.register_buffer('zero_point', torch.tensor([0], dtype=torch.int))
         self.load_state_dict_hook = PerChannelLoadHook(self)
         self.data_type = "fp8_e5m2"
 
@@ -110,16 +99,16 @@ class E5M2FakeQuantize(QuantizeBase):
         tensor_q = torch.zeros_like(X)
         #scaling_method = parse_config('config.yaml').quant.scaling_method
         scaling_method = "mean"
-        if self.observer_enabled[0] == 1: # 如果使用observer
+        if self.observer_enabled[0] == 1: # enable the observer
             self.activation_post_process(X.detach())
-            _scale, _zero_point = self.calculate_qparams() # 通过原本的函数获得zp（fp8量化中不需要zp，但可以输出量化表作为参考）
+            _scale, _zero_point = self.calculate_qparams()
             if scaling_method.lower() == "mean":
                 mean = torch.mean(abs(torch.flatten(X.detach())))
-                mean = abs(mean) if abs(mean) > 1e-5 else get_flt_min("e5m2") #将mean的绝对值与1e-5比较
+                mean = abs(mean) if abs(mean) > 1e-5 else get_flt_min("e5m2")
                 if abs(mean) > 0.0:
-                    _scale = get_flt_min("e5m2") / abs(mean) # 取得e5m2的最小值，与mean的绝对值做比值求得scale
+                    _scale = get_flt_min("e5m2") / abs(mean)
             elif scaling_method.lower() == "max":
-                vmax = torch.max(abs(torch.flatten(X.detach()))) #求出权重的max
+                vmax = torch.max(abs(torch.flatten(X.detach()))) 
                 _scale = vmax / get_flt_max("e5m2")
                 _scale = torch.tensor(6.55e+04) if _scale.item() > 3.275e+04 else _scale
             else:
@@ -131,10 +120,9 @@ class E5M2FakeQuantize(QuantizeBase):
             self.scale.copy_(_scale)
             self.zero_point.copy_(_zero_point)
 
-        if self.fake_quant_enabled[0] == 1: # 如果使用fake quantize
-            #work_mode = 'E5M2_' + parse_config('config.yaml').quant.mode.upper()
+        if self.fake_quant_enabled[0] == 1: # enable fake quantize
             work_mode = "E5M2_RNE"
-            if self.is_per_channel: # 按照per channel的方式计算scale
+            if self.is_per_channel: # per-channel
                 channels = X.shape[1]
                 for c in range(channels):
                     sub_tensor = X.select(1, c).detach()
@@ -152,22 +140,23 @@ class E5M2FakeQuantize(QuantizeBase):
                     self.scale.copy_(_scale)
                     sub_tensor = fpemu_device_fn(sub_tensor, mode=work_mode, inplace=False, scale=1.0)
                     tensor_q.select(1, c).data.copy_(sub_tensor)
-                X = tensor_q # per channel方式计算后的量化权重
-            else: # 按照per tensor的方法计算scale
+                X = tensor_q
+            else: # per-tensor
                 if scaling_method.lower() == "mean":
                     mean = torch.mean(abs(torch.flatten(X.detach())))
-                    mean = abs(mean) if abs(mean) > 1e-5 else get_flt_min("e5m2") #将mean的绝对值与1e-5比较
+                    mean = abs(mean) if abs(mean) > 1e-5 else get_flt_min("e5m2") 
                     if abs(mean) > 0.0:
-                        _scale = torch.tensor(get_flt_min("e5m2")) / abs(mean) # 取得e5m2的最小值，与mean的绝对值做比值求得scale
+                        _scale = torch.tensor(get_flt_min("e5m2")) / abs(mean) 
                 elif scaling_method.lower() == "max":
-                    vmax = torch.max(abs(torch.flatten(X.detach()))) #求出权重的max
+                    vmax = torch.max(abs(torch.flatten(X.detach())))
                     _scale = vmax / get_flt_max("e5m2")
                     _scale = torch.tensor(6.55e+04) if _scale.item() > 3.275e+04 else _scale
                 else:
                     _scale = torch.tensor(1.0)
                 _scale = _scale.to(self.scale.device)
                 self.scale.copy_(_scale)
-                X = fpemu_device_fn(X, mode=work_mode, inplace=False, scale=1.0) #返回per tensor方式计算的量化权重
+                # Temporarily fix the scale to 1.0 to match the implement in tpu-mlir
+                X = fpemu_device_fn(X, mode=work_mode, inplace=False, scale=1.0)
         return X
  
     @torch.jit.export
