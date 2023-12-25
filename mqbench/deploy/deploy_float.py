@@ -242,7 +242,7 @@ class FloatQuantizer_process(object):
                         else:
                             #若是fake->conv->not_relu_type,直接用conv的输出tensor名+conv作为量化参数保存tensor名
                             tensor_name = '{}_{}'.format(next_node_output, next_nodes[0][0].op_type)
-                        tensor_name += '_{}'.format('weight' if next_nodes[0][1] == 1 else 'bias'  )
+                        tensor_name += '_{}'.format('weight_fp8' if next_nodes[0][1] == 1 else 'bias_fp8'  )
                         clip_ranges[tensor_name] = {'step': [float(x) for x in scale],
                                                     'zero_point': [int(x) for x in zero_point]
                                                     }
@@ -280,13 +280,15 @@ class FloatQuantizer_process(object):
                         clip_ranges[tensor_name] = {'threshold':float(scale * max(-qmin, qmax)), #对称量化时这个参数生效
                                                     'min': float(scale * (qmin - zero_point)),
                                                     'max': float(scale * (qmax - zero_point)),
-                                                    'ori_name': 'none'} 
+                                                    'bit': int(np.log2(qmax - qmin + 1)),
+                                                    'type': "int" if int(np.log2(qmax - qmin + 1))==4 else dtype1,
+                                                    'ori_name': 'none'}   
                     if backend == 'Academic_NLP':
                         assert next_nodes[0][0].op_type == 'Gemm'
                         tensor_name += '{}_{}_weight_fp8'.format(inp2node[node.output[0]][0][0].output[0], inp2node[node.output[0]][0][0].op_type)
                         clip_ranges[tensor_name] = {'threshold':float(scale * max(-qmin, qmax)), #对称量化时这个参数生效
                                                     'min': float(scale * (qmin - zero_point)),
-                                                    'max': float(max_data),
+                                                    'max': float(scale * (qmax - zero_point)),
                                                     'bit': int(np.log2(qmax - qmin + 1)),
                                                     'type': "int" if int(np.log2(qmax - qmin + 1))==4 else dtype1,
                                                     'ori_name': 'none'}                      
@@ -326,6 +328,8 @@ class FloatQuantizer_process(object):
                         clip_ranges[tensor_name] = {'threshold':float(scale * max(-qmin, qmax)), #对称量化时这个参数生效
                                                     'min': float(scale * (qmin - zero_point)),
                                                     'max': float(scale * (qmax - zero_point)),
+                                                    'bit': int(np.log2(qmax - qmin + 1)),
+                                                    'type': "int" if int(np.log2(qmax - qmin + 1))==4 else dtype1,
                                                     'ori_name': scale_name[:len(scale_name)-len(post_str)] if scale_name.endswith(post_str) else 'none'}
                     elif backend == 'Academic_NLP':
                         scale_name = node.input[1]
@@ -334,7 +338,7 @@ class FloatQuantizer_process(object):
                             tensor_name += '_{}'.format(out2node[tensor_name].op_type)
                         clip_ranges[tensor_name] = {'threshold':float(scale * max(-qmin, qmax)), #对称量化时这个参数生效
                                                     'min': float(scale * (qmin - zero_point)),
-                                                    'max': float(max_data),
+                                                    'max': float(scale * (qmax - zero_point)),
                                                     'bit': int(np.log2(qmax - qmin + 1)),
                                                     'type': "int" if int(np.log2(qmax - qmin + 1))==4 else dtype1,
                                                     'ori_name': scale_name[:len(scale_name)-len(post_str)] if scale_name.endswith(post_str) else 'none'}
@@ -374,9 +378,7 @@ class FloatQuantizer_process(object):
             context = {'ppl-cuda': clip_ranges}
         elif backend == 'sophgo_tpu':
             clip_ranges = self.post_process_clip_ranges2(clip_ranges, graph, inp2node, out2node)
-            context = {'sophgo_tpu': clip_ranges}
-            context['w_qscheme'] = ''
-            context['a_qscheme'] = ''
+            context = {'sophgo_tpu_Float': clip_ranges}
         elif backend == 'Academic_NLP':
             clip_ranges = self.post_process_clip_ranges2(clip_ranges, graph, inp2node, out2node)
             context = {'Academic_NLP_Float': clip_ranges}  
