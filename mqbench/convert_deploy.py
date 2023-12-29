@@ -326,7 +326,7 @@ def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, q
         cali_mode_new = cali_mode + "_Float"
         export_qtable(context_filename, model_name, output_path, cali_mode_new)
     else:
-        remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='sophgo_tpu')
+        remove_fakequantize_and_collect_params_sophgo(onnx_model_path, model_name, quant_type_dict)
         print("导出calitable")
         output_path = osp.dirname(onnx_model_path)
         context_filename = osp.join(output_path, '{}_clip_ranges.json'.format(model_name))
