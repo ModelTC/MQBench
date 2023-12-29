@@ -101,7 +101,7 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
     # Per-channel QuantizeLinear and DequantizeLinear is supported since opset 13
     opset_version = 13 if kwargs.get('deploy_to_qlinear', False) else 11
     # opset_version = 18
-
+    quant_mode = "INT8" # default quant_mode to INT8
     # open all fake quant node to export
     if isinstance(model, torch.fx.graph_module.GraphModule):
         print(">>>>> print graphmodule before export", model)
@@ -203,6 +203,7 @@ def export_qtable(context_filename, model_name, output_path, quant_mode):
 @register_deploy_function(BackendType.Academic_NLP)
 def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name, **kwargs):
     logger.info("Extract qparams for Academic_NLP.")
+    quant_mode = "INT8" # default quant_mode to INT8
     for name, submodule in model.named_modules():
         class_of_submodule = submodule.__class__
         if class_of_submodule in FP8_FAKEQUANTIZER:
@@ -287,6 +288,7 @@ def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name,
 def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, quant_type_dict, **kwargs):
     logger.info("Extract qparams for sophgo_tpu.")
     quant_values_list = list(quant_type_dict.values())
+    quant_mode = "INT8" # default quant_mode to INT8
     if 'FP8' in quant_values_list:
         quant_mode = "FP8"
     cali_mode = "sophgo_tpu"
