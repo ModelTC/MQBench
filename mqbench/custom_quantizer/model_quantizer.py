@@ -24,10 +24,6 @@ from torch.quantization.utils import (
     get_combined_dict
 )
 
-# from torch.quantization.fx.qconfig_utils import(
-#     get_flattened_qconfig_dict
-# )
-
 from torch.quantization.quantize_fx import (
     _fuse_fx
 )
@@ -40,8 +36,6 @@ from mqbench.prepare_by_platform import BackendType
 import mqbench.nn.intrinsic.qat as qnniqat
 import mqbench.nn.qat as qnnqat
 
-@register_model_quantizer(BackendType.Tensorrt)
-@register_model_quantizer(BackendType.NNIE)
 class ModelQuantizer(object):
     """General model quantizer class.
     First, replace common float module to nn.qat.modules to make weight fake
@@ -52,7 +46,7 @@ class ModelQuantizer(object):
     since it is next layer's input.
     """
 
-    def __init__(self, extra_quantizer_dict, extra_fuse_dict):
+    def __init__(self, extra_quantizer_dict, extra_fuse_dict,quant_dict):
         self.additional_function_type = extra_quantizer_dict.get('additional_function_type', [])
         self.additional_module_type = extra_quantizer_dict.get('additional_module_type', ())
         self.additional_fuser_method_mapping = extra_fuse_dict.get('additional_fuser_method_mapping', {})
@@ -63,12 +57,15 @@ class ModelQuantizer(object):
         self.exclude_function_type = extra_quantizer_dict.get('exclude_function_type', [])
         self.exclude_node_name = extra_quantizer_dict.get('exclude_node_name', [])
         self.module_only_enable_observer = extra_quantizer_dict.get('module_only_enable_observer', [])
+        self.quantmode=quant_dict.get('quantmode','weight_activation')
+        self.strategy=quant_dict.get('strategy','CNN')
         self.extra_fuse_dict = extra_fuse_dict
 
     def prepare(self, model: GraphModule, qconfig):
         model = _fuse_fx(model, self.extra_fuse_dict)
         model = self._weight_quant(model, qconfig)
-        model = self._insert_fake_quantize_for_act_quant(model, qconfig)
+        if self.quantmode=="weight_activation":
+            model = self._insert_fake_quantize_for_act_quant(model, qconfig)
         return model
 
     def _insert_fake_quantize_for_act_quant(
@@ -235,6 +232,9 @@ class ModelQuantizer(object):
                     node.name in self.exclude_node_name) and node.name not in self.additional_node_name:
                 logger.info("Exclude skip: {}".format(node.name))
                 continue
+            if (node.op == 'call_function' and node.target in self._passed_func_type) or \
+                (node.op == 'call_module' and isinstance(modules[node.target], self._passed_module_type)):
+                continue
             if (node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_input)) or \
                 ((node.op == 'call_function' or node.op == 'call_method') and
                     node.target in self.function_type_to_quant_input) or node.name in self.additional_node_name:
@@ -243,6 +243,8 @@ class ModelQuantizer(object):
                 if not all([isinstance(_node, torch.fx.node.Node) for _node in input_node_list]):
                     continue
                 for _node in input_node_list:
+                    if _node.target in ["type_as","long","to","expand"] or "getitem" in _node.name or _node.name in 'arange' :#,"expand","to","long"]:
+                        continue
                     if self._is_implicit_merge(modules, (node, _node)):
                         logger.info("Implicit merge: {} + {}".format(_node.name, node.name))
                         continue
