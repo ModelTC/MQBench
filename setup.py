@@ -4,6 +4,7 @@ import setuptools
 from mqbench import __version__
 from torch.utils.cpp_extension import BuildExtension, CppExtension
 
+
 def read_requirements():
     reqs = []
     with open('requirements.txt', 'r') as fin:
