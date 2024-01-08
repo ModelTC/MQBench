@@ -10,15 +10,16 @@ def register_model_quantizer(backend_type):
         return quantizer_cls
     return insert
 
-BACKEND_DEPLOY_FUNCTION = OrderedDict()
+
+NET_DEPLOY_FUNCTION = OrderedDict()
 
 
-def register_deploy_function(backend_type):
+def register_deploy_function(net_type):
     def insert(func):
-        if backend_type in BACKEND_DEPLOY_FUNCTION:
-            BACKEND_DEPLOY_FUNCTION[backend_type].append(func)
+        if net_type in NET_DEPLOY_FUNCTION:
+            NET_DEPLOY_FUNCTION[net_type].append(func)
         else:
-            BACKEND_DEPLOY_FUNCTION[backend_type] = [func]
+            NET_DEPLOY_FUNCTION[net_type] = [func]
         return func
     return insert
 

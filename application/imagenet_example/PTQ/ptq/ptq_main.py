@@ -2,7 +2,6 @@ import sys
 import os
 import time
 sys.path.append(os.path.abspath('.'))
-print(sys.path)
 
 import torch
 import torchvision.models as models
@@ -12,7 +11,7 @@ import argparse
 from data.imagenet import load_data
 from models import load_model
 from utils import parse_config, seed_all, evaluate
-from mqbench.prepare_by_platform import prepare_by_platform, BackendType
+from mqbench.prepare_by_platform import prepare_by_platform
 from mqbench.advanced_ptq import ptq_reconstruction
 from mqbench.convert_deploy import convert_deploy
 
@@ -33,7 +32,8 @@ parser.add_argument('-b', '--batch-size', default=64, type=int,
                     help='mini-batch size (default: 64), this is the total '
                          'batch size of all GPUs on the current node when '
                          'using Data Parallel or Distributed Data Parallel')
-parser.add_argument('--backend', type=str, choices=['academic', 'tensorrt', 'nnie', 'ppl', 'snpe', 'sophgo_tpu', 'openvino', 'tensorrt_nlp'], default='sophgo_tpu')
+parser.add_argument('--chip', type=str, choices=['A2', 'BM1684X', 'SG2260', 'academic'], default='SG2260')
+parser.add_argument('--quantmode', type=str, choices=['weight_activation', 'weight_only'], default='weight_activation')
 parser.add_argument('--cali-batch-num', default=16, type=int,
                     metavar='N', help='set calibration batch num (default: 16)')
 parser.add_argument('--output_path', type=str, default=None)
@@ -48,19 +48,6 @@ parser.add_argument('--cpu', action='store_true',
                     help='use cpu to quant')
 parser.add_argument('--fp8', action='store_true')
 
-BackendMap = {
-    'academic': BackendType.Academic,
-    'sophgo_tpu': BackendType.Sophgo_TPU,
-    'nnie': BackendType.NNIE,
-    'tensorrt_nlp': BackendType.Tensorrt_NLP,
-    'ppl': BackendType.PPLW8A16,
-    'openvino': BackendType.OPENVINO,
-    'snpe': BackendType.SNPE,
-    'vitis': BackendType.Vitis,
-    'tensorrt': BackendType.Tensorrt
-}
-
-
 def load_calibrate_data(train_loader, cali_batchsize):
     cali_data = []
     for i, batch in enumerate(train_loader):
@@ -70,156 +57,54 @@ def load_calibrate_data(train_loader, cali_batchsize):
     return cali_data
 
 def get_quantize_model(model, args):
-    backend_type = BackendType.Academic if not hasattr(
-        args, 'backend') else BackendMap[args.backend]
 
-    if backend_type == BackendType.Academic:
-        extra_prepare_dict = {
-            "extra_qconfig_dict": {
-                                    'w_observer': 'MinMaxObserver',
-                                    'a_observer': 'EMAMinMaxObserver',
-                                    "w_fakequantize": "FixedFakeQuantize",
-                                    "a_fakequantize": "FixedFakeQuantize",
-                                    'w_qscheme': {  'bit': 8,
-                                                    'symmetry': False,
-                                                    'per_channel': True,
-                                                    'pot_scale': False },
-                                    'a_qscheme': {  'bit': 8,
-                                                    'symmetry': False,
-                                                    'per_channel': False,
-                                                    'pot_scale': False }
-                                }
-        }
-    elif backend_type == BackendType.Sophgo_TPU:
-        if args.fp8:
-            extra_prepare_dict = {
-            "extra_qconfig_dict": {
-                                    'w_observer': 'MinMaxObserver',
-                                    'a_observer': 'EMAMinMaxObserver',
-                                    "w_fakequantize": "E5M2FakeQuantize",
-                                    "a_fakequantize": "E5M2FakeQuantize",
-                                    'w_qscheme': {  'bit': 8,
-                                                    'symmetry': True,
-                                                    'per_channel': False,
-                                                    'pot_scale': False },
-                                    'a_qscheme': {  'bit': 8,
-                                                    'symmetry': True,
-                                                    'per_channel': False,
-                                                    'pot_scale': False }
-                                }
-        }
-        else:
-            extra_prepare_dict = {
-            "extra_qconfig_dict": { 
-                                    'w_observer': 'MinMaxObserver',
-                                    'a_observer': 'EMAMinMaxObserver',}}
+    extra_prepare_dict = {
+        'quant_dict': {
+                        'chip': args.chip,
+                        'quantmode': args.quantmode,
+                        'strategy': 'CNN',
+                       },
+    }
 
-        # For mobilenet_v3_small, we set some fakequant node only observe
-        if "mobilenet_v3" in args.arch:
-            extra_prepare_dict["extra_quantizer_dict"] = {'module_only_enable_observer': [
-                                                                    'features.0.0.weight_fake_quant',
-                                                                    'features.1.block.0.0.weight_fake_quant',
-                                                                    'features.1.block.1.fc1.weight_fake_quant',
-                                                                    'features.1.block.1.fc2.weight_fake_quant',
-                                                                    'features.1.block.2.0.weight_fake_quant',
-                                                                    'features.2.block.0.0.weight_fake_quant',
-                                                                    'features.2.block.1.0.weight_fake_quant',
-                                                                    'features.2.block.2.0.weight_fake_quant',
+    # For mobilenet_v3_small, we set some fakequant node only observe
+    if "mobilenet_v3" in args.arch:
+        extra_prepare_dict["extra_quantizer_dict"] = {'module_only_enable_observer': [
+                                                                'features.0.0.weight_fake_quant',
+                                                                'features.1.block.0.0.weight_fake_quant',
+                                                                'features.1.block.1.fc1.weight_fake_quant',
+                                                                'features.1.block.1.fc2.weight_fake_quant',
+                                                                'features.1.block.2.0.weight_fake_quant',
+                                                                'features.2.block.0.0.weight_fake_quant',
+                                                                'features.2.block.1.0.weight_fake_quant',
+                                                                'features.2.block.2.0.weight_fake_quant',
 
-                                                                    'x_post_act_fake_quantizer',
-                                                                    'features_0_0_post_act_fake_quantizer',
-                                                                    'features_0_2_post_act_fake_quantizer',
-                                                                    'features_1_block_0_0_post_act_fake_quantizer',
-                                                                    'features_1_block_1_avgpool_post_act_fake_quantizer',
-                                                                    'features_1_block_1_fc1_post_act_fake_quantizer',
-                                                                    'features_1_block_1_fc2_post_act_fake_quantizer',
-                                                                    'features_1_block_1_scale_activation_post_act_fake_quantizer',
-                                                                    'mul_post_act_fake_quantizer',
-                                                                    'features_1_block_2_0_post_act_fake_quantizer',
-                                                                    'features_2_block_0_0_post_act_fake_quantizer',
-                                                                    'features_2_block_1_0_post_act_fake_quantizer',
-                                                                    ]
-                                                                }
-    else:
-        extra_prepare_dict = {}
-    return prepare_by_platform(
-        model, backend_type, prepare_custom_config_dict=extra_prepare_dict)
+                                                                'x_post_act_fake_quantizer',
+                                                                'features_0_0_post_act_fake_quantizer',
+                                                                'features_0_2_post_act_fake_quantizer',
+                                                                'features_1_block_0_0_post_act_fake_quantizer',
+                                                                'features_1_block_1_avgpool_post_act_fake_quantizer',
+                                                                'features_1_block_1_fc1_post_act_fake_quantizer',
+                                                                'features_1_block_1_fc2_post_act_fake_quantizer',
+                                                                'features_1_block_1_scale_activation_post_act_fake_quantizer',
+                                                                'mul_post_act_fake_quantizer',
+                                                                'features_1_block_2_0_post_act_fake_quantizer',
+                                                                'features_2_block_0_0_post_act_fake_quantizer',
+                                                                'features_2_block_1_0_post_act_fake_quantizer',
+                                                                ]
+                                                            }
 
+    return prepare_by_platform(model, prepare_custom_config_dict=extra_prepare_dict)
 
 def deploy(model, args):
-    backend_type = BackendType.Academic if not hasattr(
-        args, 'backend') else BackendMap[args.backend]
+    net_type = 'CNN'
     output_path = './' if not hasattr(
         args, 'output_path') else args.output_path
     model_name = args.arch
     deploy_to_qlinear = False if not hasattr(
         args, 'deploy_to_qlinear') else args.deploy_to_qlinear
 
-    convert_deploy(model, backend_type, {
+    convert_deploy(model, net_type, {
                    'input': [1, 3, 224, 224]}, output_path=output_path, model_name=model_name, deploy_to_qlinear=deploy_to_qlinear)
-
-layer_names = []
-features_out_hook = {}
-i = 0
-def hook(module, fea_in, fea_out):
-    global i
-    if i >= len(layer_names):
-        return None
-    name = layer_names[i]
-    i += 1
-    global features_out_hook
-    features_out_hook[name] = fea_out.cpu().numpy()
-    return None
-
-def gen_test_ref_data(cali_loader, model, args):
-    # return
-    model.eval()
-    global layer_names
-    hook_handles = []
-    input_data = {}
-    # exclude_module = ['fake_quantize', 'observer', 'torch.fx', 'batchnorm', 'torch.nn.modules.module.Module']
-    for name, child in model.named_modules():
-        # if not any([i in str(type(child)) for i in exclude_module]):
-        if name.endswith('_act_fake_quantizer'):
-            # if '_dup' in name:
-            #     name = name[:-5]
-            # layer_names.append(name.replace('.','_'))
-            # output = get_node_name_by_module_name(name, model)
-            # input = get_node_input_by_module_name(name, model)
-            # print(f'name:{name}, output:{output}, input:{input}')
-            # if input != '':
-            layer_names.append(name)
-            print(f"add hook on {name} for {str(type(child))}")
-            hd = child.register_forward_hook(hook=hook)
-            hook_handles.append(hd)
-    print('layer_names:', layer_names)
-    if args.cpu:
-        model = model.cpu()
-    with torch.no_grad():
-        # for i, (images, target) in enumerate(cali_loader):
-        for i, images in enumerate(cali_loader):
-            if args.cpu:
-                images = images.cpu()
-            else:
-                images = images.cuda()
-            # if args.gpu is not None:
-            #     images = images.cuda(args.gpu, non_blocking=True)
-            # else:
-            #     images = images.cpu()
-            output = model(images)
-            print("gen_test_ref_data ==> ", i+1)
-            if i == 0:
-                input_data['data'] = images.cpu().numpy()
-                np.savez(os.path.join(args.output_path, 'input_data.npz'), **input_data)
-                global features_out_hook
-                features_out_hook['data'] = images.cpu().numpy()
-                np.savez(os.path.join(args.output_path, 'layer_outputs.npz'), **features_out_hook)
-                for hd in hook_handles:
-                    hd.remove()
-                break
-    print("End gen_test_ref_data.")
-    return
-
 
 def main():
     time_start = time.time()

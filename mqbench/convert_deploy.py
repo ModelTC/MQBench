@@ -8,13 +8,12 @@ import onnx
 from onnxsim import simplify
 import mqbench.custom_symbolic_opset  # noqa: F401
 import mqbench.fusion_method          # noqa: F401
-from mqbench.prepare_by_platform import BackendType
 from mqbench.utils import deepcopy_graphmodule
 from mqbench.utils.logger import logger
 from mqbench.utils.registry import (
-    BACKEND_DEPLOY_FUNCTION,
-    register_deploy_function,
-    FUSED_MODULE_CONVERT_FUNCTION
+    NET_DEPLOY_FUNCTION,
+    FUSED_MODULE_CONVERT_FUNCTION,
+    register_deploy_function
 )
 from mqbench.deploy import (
     remove_fakequantize_and_collect_params_nnie,
@@ -22,7 +21,6 @@ from mqbench.deploy import (
     remove_fakequantize_and_collect_params_flt,
     replace_fakequantize_and_collect_params_openvino,
     remove_fakequantize_and_collect_params_sophgo,
-    # remove_fakequantize_and_collect_params_academic,
     ONNXQLinearPass, ONNXQNNPass
 )
 from mqbench.fake_quantize import (
@@ -50,15 +48,7 @@ INT_FAKEQUANTIZER = [LearnableFakeQuantize, NNIEFakeQuantize, FixedFakeQuantize,
 
 __all__ = ['convert_deploy']
 
-@register_deploy_function(BackendType.PPLCUDA)
-@register_deploy_function(BackendType.ONNX_QNN)
-@register_deploy_function(BackendType.SNPE)
-@register_deploy_function(BackendType.PPLW8A16)
-@register_deploy_function(BackendType.Tensorrt)
-@register_deploy_function(BackendType.NNIE)
-@register_deploy_function(BackendType.Vitis)
-@register_deploy_function(BackendType.OPENVINO)
-@register_deploy_function(BackendType.Sophgo_TPU)
+@register_deploy_function("CNN")
 def convert_merge_bn(model: GraphModule, **kwargs):
     # print('wlog before convert_merge_bn, model.named_modules:', dict(model.named_modules())[''])
     # print('wlog before convert_merge_bn, model.graph:', model.graph)
@@ -72,18 +62,8 @@ def convert_merge_bn(model: GraphModule, **kwargs):
     # print('wlog after convert_merge_bn, model.named_modules:', dict(model.named_modules())[''])
     # print('wlog after convert_merge_bn, model.graph:', model.graph)
 
-@register_deploy_function(BackendType.Academic_NLP)
-@register_deploy_function(BackendType.Tensorrt_NLP)
-@register_deploy_function(BackendType.PPLCUDA)
-@register_deploy_function(BackendType.ONNX_QNN)
-@register_deploy_function(BackendType.Academic)
-@register_deploy_function(BackendType.SNPE)
-@register_deploy_function(BackendType.PPLW8A16)
-@register_deploy_function(BackendType.Tensorrt)
-@register_deploy_function(BackendType.NNIE)
-@register_deploy_function(BackendType.Vitis)
-@register_deploy_function(BackendType.OPENVINO)
-@register_deploy_function(BackendType.Sophgo_TPU)
+@register_deploy_function("Transformer")
+@register_deploy_function("CNN")
 def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_path, **kwargs):
     pt_file_name = onnx_model_path.split('.')
     pt_file_name[-1] = 'pt'
@@ -102,6 +82,7 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
     opset_version = 13 if kwargs.get('deploy_to_qlinear', False) else 11
     # opset_version = 18
 
+    quant_mode = 'INT8'
     # open all fake quant node to export
     if isinstance(model, torch.fx.graph_module.GraphModule):
         print(">>>>> print graphmodule before export", model)
@@ -149,30 +130,6 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
     os.system(f"rm -f {onnx_model_path}")
     onnx.save(model_onnx, onnx_model_path)
 
-@register_deploy_function(BackendType.Tensorrt)
-def convert_onnx_qlinear(model: GraphModule, onnx_model_path, model_name, **kwargs):
-    if kwargs.get('deploy_to_qlinear', False):
-        logger.info("Convert to ONNX QLinear.")
-        ONNXQLinearPass(onnx_model_path).run()
-
-
-@register_deploy_function(BackendType.NNIE)
-def deploy_qparams_nnie(model: GraphModule, onnx_model_path, model_name, **kwargs):
-    logger.info("Extract qparams for NNIE.")
-    remove_fakequantize_and_collect_params_nnie(onnx_model_path, model_name)
-
-
-@register_deploy_function(BackendType.OPENVINO)
-def deploy_qparams_openvino(model: GraphModule, onnx_model_path, model_name, **kwargs):
-    logger.info("Extract qparams for OPENVINO.")
-    replace_fakequantize_and_collect_params_openvino(onnx_model_path, model_name)
-
-
-@register_deploy_function(BackendType.Tensorrt)
-def deploy_qparams_tensorrt(model: GraphModule, onnx_model_path, model_name, **kwargs):
-    logger.info("Extract qparams for TensorRT.")
-    remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='tensorrt')
-
 def export_qtable(context_filename, model_name, output_path, quant_mode):
         print("导出qtable")
         file_h = open(context_filename, "r")
@@ -199,10 +156,11 @@ def export_qtable(context_filename, model_name, output_path, quant_mode):
                     f.write("{} {}\n".format(name[:-2], dtype))
                 else:
                     f.write("{} {}\n".format(name, dtype))
-#2023.7.27修改
-@register_deploy_function(BackendType.Academic_NLP)
+
+@register_deploy_function("Transformer")
 def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name, **kwargs):
     logger.info("Extract qparams for Academic_NLP.")
+    quant_mode = "INT8"
     for name, submodule in model.named_modules():
         class_of_submodule = submodule.__class__
         if class_of_submodule in FP8_FAKEQUANTIZER:
@@ -283,10 +241,11 @@ def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name,
                 f.write(i)
         export_qtable(context_filename, model_name, output_path, cali_mode)
 
-@register_deploy_function(BackendType.Sophgo_TPU)
+@register_deploy_function("CNN")
 def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, quant_type_dict, **kwargs):
     logger.info("Extract qparams for sophgo_tpu.")
     quant_values_list = list(quant_type_dict.values())
+    quant_mode = "INT8"
     if 'FP8' in quant_values_list:
         quant_mode = "FP8"
     cali_mode = "sophgo_tpu"
@@ -324,7 +283,7 @@ def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, q
         cali_mode_new = cali_mode + "_Float"
         export_qtable(context_filename, model_name, output_path, cali_mode_new)
     else:
-        remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='sophgo_tpu')
+        remove_fakequantize_and_collect_params_sophgo(onnx_model_path, model_name, quant_type_dict)
         print("导出calitable")
         output_path = osp.dirname(onnx_model_path)
         context_filename = osp.join(output_path, '{}_clip_ranges.json'.format(model_name))
@@ -365,36 +324,6 @@ def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, q
                 f.write(i)
         export_qtable(context_filename, model_name, output_path, cali_mode)
 
-
-@register_deploy_function(BackendType.Vitis)
-def deploy_qparams_vitis(model: GraphModule, onnx_model_path, model_name, **kwargs):
-    logger.info("Extract qparams for Vitis-DPU.")
-    remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='vitis')
-
-
-@register_deploy_function(BackendType.SNPE)
-def deploy_qparams_snpe(model: GraphModule, onnx_model_path, model_name, **kwargs):
-    logger.info("Extract qparams for SNPE.")
-    remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='snpe')
-
-
-@register_deploy_function(BackendType.PPLW8A16)
-def deploy_qparams_pplw8a16(model: GraphModule, onnx_model_path, model_name, **kwargs):
-    logger.info("Extract qparams for PPLW8A16.")
-    remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='ppl')
-
-
-@register_deploy_function(BackendType.ONNX_QNN)
-def deploy_qparams_tvm(model: GraphModule, onnx_model_path, model_name, **kwargs):
-    logger.info("Convert to ONNX QNN.")
-    ONNXQNNPass(onnx_model_path).run(model_name)
-
-
-@register_deploy_function(BackendType.PPLCUDA)
-def deploy_qparams_ppl_cuda(model: GraphModule, onnx_model_path, model_name, **kwargs):
-    logger.info("Extract qparams for PPL-CUDA.")
-    remove_fakequantize_and_collect_params(onnx_model_path, model_name, backend='ppl-cuda')
-
 def get_quant_type_from_fakequant_type(model: GraphModule):
     r"""
     Given GraphModule, Traverse each fakequant node within it,
@@ -426,7 +355,7 @@ def get_quant_type_from_fakequant_type(model: GraphModule):
 
     return quant_type_dict
 
-def convert_deploy(model: GraphModule, backend_type: BackendType,
+def convert_deploy(model: GraphModule, net_type='CNN',
                    input_shape_dict=None, dummy_input=None, output_path='./',
                    model_name='mqbench_qmodel', deploy_to_qlinear=False, **extra_kwargs):
     r"""Convert model to onnx model and quantization params depends on backend.
@@ -459,10 +388,10 @@ def convert_deploy(model: GraphModule, backend_type: BackendType,
     }
     kwargs.update(extra_kwargs)
     deploy_model = deepcopy_graphmodule(model)
-    for convert_function in BACKEND_DEPLOY_FUNCTION[backend_type]:
+    for convert_function in NET_DEPLOY_FUNCTION[net_type]:
         convert_function(deploy_model, **kwargs)
 
-def export_onnx_with_fakequant_node(model: GraphModule, backend_type: BackendType,
+def export_onnx_with_fakequant_node(model: GraphModule, net_type='CNN',
                    input_shape_dict=None, dummy_input=None, output_path='./',
                    model_name='mqbench_qmodel', deploy_to_qlinear=False, **extra_kwargs):
     r"""Convert GraphModule with fakequant node to onnx

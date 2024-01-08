@@ -11,11 +11,11 @@ from mqbench.utils import get_flattened_qconfig_dict
 from mqbench.utils import is_symmetric_quant, getitem2node
 from mqbench.utils.logger import logger
 from mqbench.utils.registry import register_model_quantizer
-from mqbench.prepare_by_platform import BackendType
 from mqbench.custom_quantizer import ModelQuantizer
 
 
-@register_model_quantizer(BackendType.Academic)
+@register_model_quantizer("CNN")
+@register_model_quantizer("Transformer")
 class AcademicQuantizer(ModelQuantizer):
     """Academic setting mostly do not merge BN and leave the first and last layer to higher bits.
     """

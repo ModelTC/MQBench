@@ -10,11 +10,13 @@ quant:
         observer: MinMaxObserver
         bit: 8
         symmetric: True
-        per_channel: False # per-channel需要更长的训练时间
+        per_channel: True # per-channel需要更长的训练时间
     scaling_method: no_scaling # 在这个地方选取一种scale获取的手段（max/mean/no_scaling，具体的获取流程可以阅读E4/E5的fake quant）
     calibrate: 64
     pot_scale: False
-    backend: academic
+    chip: SG2260
+    quantmode: weight_only
+
 data:
     task_name: mrpc
     dataset_name: mrpc

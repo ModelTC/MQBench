@@ -19,15 +19,10 @@ from transformers import (
 from transformers.utils.fx import HFTracer
 from transformers.onnx.features import FeaturesManager
 from itertools import chain
-from mqbench.prepare_by_platform import prepare_by_platform, BackendType
+from mqbench.prepare_by_platform import prepare_by_platform
 from mqbench.convert_deploy import convert_deploy
 from mqbench.utils.state import enable_quantization, enable_calibration_woquantization
 
-backends = {
-    'academic': BackendType.Academic_NLP,
-    'tensorrt': BackendType.Tensorrt_NLP,
-    'sophgo_tpu': BackendType.Sophgo_TPU
-}
 
 logger = logging.getLogger("transformer")
 
@@ -65,8 +60,8 @@ def evaluate(trainer, eval_datasets, num_samples=-1):
 
 
 def quantize_model(model, config_quant):
-    if not hasattr(config_quant, 'backend'):
-        config_quant.backend = 'academic'
+    if not hasattr(config_quant, 'chip'):
+        config_quant.chip = 'SG2260'
     sig = inspect.signature(model.forward)
     input_names = ['input_ids', 'attention_mask', 'token_type_ids']
     concrete_args = {p.name: p.default for p in sig.parameters.values() if p.name not in input_names}
@@ -90,11 +85,17 @@ def quantize_model(model, config_quant):
                     'per_channel': config_quant.a_qconfig.per_channel,
                     'pot_scale': config_quant.pot_scale
                 }
-            }
+            },
+        'extra_quantizer_dict':{
+            'exclude_module_name':['bert.pooler.dense', 'bert.embeddings.word_embeddings', 'bert.embeddings.token_type_embeddings', 'bert.embeddings.position_embeddings']
+        },
+        'quant_dict': {
+                       'chip': config_quant.chip,
+                       'quantmode': config_quant.quantmode,
+                       'strategy': 'Transformer',
+                       }
     }
-
-    backend = backends[config_quant.backend] 
-    model = prepare_by_platform(model, backend, prepare_custom_config_dict=prepare_custom_config_dict, custom_tracer=HFTracer())
+    model = prepare_by_platform(model, prepare_custom_config_dict=prepare_custom_config_dict, custom_tracer=HFTracer())
     return model
 
 
@@ -184,11 +185,13 @@ def main(config_path):
     model_kind, model_onnx_config = FeaturesManager.check_supported_model_or_raise(model, feature='default')
     onnx_config = model_onnx_config(model.config)
     export_inputs = {}
-    export_inputs['input_ids'] = torch.tensor(eval_datasets[0]['input_ids']).unsqueeze(0)#.cuda()
-    export_inputs['token_type_ids'] = torch.tensor(eval_datasets[0]['token_type_ids']).unsqueeze(0)#.cuda()
-    export_inputs['attention_mask'] = torch.tensor(eval_datasets[0]['attention_mask']).unsqueeze(0)#.cuda()
+    export_inputs['input_ids'] = torch.tensor(eval_datasets[0]['input_ids']).unsqueeze(0)
+    export_inputs['token_type_ids'] = torch.tensor(eval_datasets[0]['token_type_ids']).unsqueeze(0)
+    export_inputs['attention_mask'] = torch.tensor(eval_datasets[0]['attention_mask']).unsqueeze(0)
+
+    net_type = 'Transformer'
     convert_deploy(model,
-                backends[config.quant.backend],
+                net_type,
                 dummy_input=(export_inputs,),
                 output_path=config.train.output_dir,
                 model_name='bert-base-uncased',
@@ -196,7 +199,6 @@ def main(config_path):
                 output_names=list(onnx_config.outputs.keys()),
                 dynamic_axes={name: axes for name, axes in chain(onnx_config.inputs.items(), onnx_config.outputs.items())}
     )
-
 
 
 if __name__ == '__main__':

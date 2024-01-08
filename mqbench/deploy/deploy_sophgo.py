@@ -312,7 +312,7 @@ class LinearQuantizer_process(object):
                     tensor_name, scale, zero_point, qmin, qmax, dtype, quant_type = self.parse_qparams(node, name2data, quant_type_dict)
                     nodes_to_be_removed.extend(redundant_nodes)
                     self.clip_weight(node, name2data, inp2node, named_initializer, quant_type_dict)
-                    assert next_nodes[0][0].op_type == 'Gemm'
+                    assert next_nodes[0][0].op_type in ['Gemm', 'Conv']
                     tensor_name_new = '{}_{}_weight'.format(next_nodes[0][0].output[0], next_nodes[0][0].op_type)
                     clip_ranges[tensor_name_new] = {'step': [float(x) for x in scale],
                                                 'zero_point': [int(x) for x in zero_point],
