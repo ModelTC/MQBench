@@ -8,16 +8,6 @@ parser = argparse.ArgumentParser(description='auto_cali_test params.')
 parser.add_argument('--debug_cmd', type=str, default='onnx,sym', help='exclude')
 opt = parser.parse_args()
 
-# model_list_all=[
-#   # "--arch=shufflenet_v2_x0_5 --batch-size=320 --lr=1e-2",
-#   # "--arch=mobilenet_v2 --batch-size=128 --lr=1e-3",
-#   # "--arch=resnet18 --batch-size=256 --lr=1e-2",
-#   # "--arch=vgg11_bn --batch-size=32 --lr=1e-3",
-#   # "--arch=resnet50 --batch-size=32 --lr=1e-2",
-#   # "--arch=squeezenet1_1 --batch-size=128 --lr=1e-3",
-#   # "--arch=mobilenet_v3_small  --batch-size=128 --lr=1e-2"
-# ]
-
 model_list_all=[
   # "--arch=mobilenet_v2 --batch-size=64 --lr=1e-4",
   # "--arch=resnet50 --batch-size=32 --lr=1e-4",
@@ -37,7 +27,7 @@ fast_test = '--fast_test'
 # pre_eval_and_export = '--pre_eval_and_export'
 pre_eval_and_export = ''
 
-cmd_str = f"--epochs={epochs} --deploy_batch_size=10 --cuda=0 --pretrained --evaluate --backend=sophgo_tpu --optim=sgd \
+cmd_str = f"--epochs={epochs} --deploy_batch_size=10 --cuda=0 --pretrained --evaluate --chip=SG2260 --quantmode=weight_activation --optim=sgd \
            --train_data=/sea/data/imagenet/for_train_val --val_data=/sea/data/imagenet/for_train_val --output_path={output_path} {fast_test} {pre_eval_and_export}"
 # cmd_str = f"--epochs={epochs} --deploy_batch_size=10 --cpu --pretrained --evaluate --backend=sophgo_tpu --optim=sgd \
 #            --train_data=/data/imagenet --val_data=/data/imagenet --output_path={output_path} {fast_test} {pre_eval_and_export}"
@@ -57,7 +47,6 @@ if __name__ == "__main__":
     os.system(f'mkdir -p {output_path}/{arch}')
 
     cmd_line = f'cd {wp};python3 application/imagenet_example/main.py  {model} {cmd_str} > {output_path}/{arch}/{i}_log_train_{arch} 2>&1'
-    # cmd_line = f'cd {wp};python3 application/imagenet_example/main.py  {model} {cmd_str}'
 
     print('start', model)
     po.apply_async(worker, (cmd_line,))

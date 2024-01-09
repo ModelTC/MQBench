@@ -73,7 +73,7 @@ ParamsTable = {
                                  default_act_quantize=LearnableFakeQuantize,
                                  default_weight_observer=MinMaxObserver,
                                  default_act_observer=EMAMinMaxObserver),
-    'academic':               dict(qtype='affine',
+    'Academic':               dict(qtype='affine',
                                  w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8),
                                  a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
                                  default_weight_quantize=E4M3FakeQuantize,
@@ -404,6 +404,7 @@ def prepare_by_platform(
     # Get Qconfig
     extra_qconfig_dict = prepare_custom_config_dict.get('extra_qconfig_dict', {})
     quant_dict = prepare_custom_config_dict.get('quant_dict')
+    chip=quant_dict['chip']
     strategy=quant_dict['strategy']
     logger.info("Quantize model Scheme: {} Mode: {}".format(quant_dict['strategy'], model_mode))
     qconfig = get_qconfig_by_platform(quant_dict, extra_qconfig_dict)
@@ -450,7 +451,7 @@ def prepare_by_platform(
     # Prepare
     import mqbench.custom_quantizer  # noqa: F401
     extra_quantizer_dict = prepare_custom_config_dict.get('extra_quantizer_dict', {})
-    quantizer = DEFAULT_MODEL_QUANTIZER[strategy](extra_quantizer_dict, extra_fuse_dict,quant_dict)
+    quantizer = DEFAULT_MODEL_QUANTIZER[chip](extra_quantizer_dict, extra_fuse_dict,quant_dict)
     prepared = quantizer.prepare(graph_module, qconfig)
     # Restore attr.
     if 'preserve_attr' in prepare_custom_config_dict:

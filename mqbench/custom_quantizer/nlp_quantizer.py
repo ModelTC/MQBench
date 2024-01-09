@@ -3,8 +3,6 @@ from mqbench.utils.registry import register_model_quantizer
 from mqbench.custom_quantizer import ModelQuantizer
 
 
-@register_model_quantizer('CNN')
-@register_model_quantizer('Transformer')
 class AcademicNLPQuantizer(ModelQuantizer):
     """
     NLP model quantizer for Academic settings. Should not de 8bit for

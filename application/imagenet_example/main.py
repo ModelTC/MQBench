@@ -26,7 +26,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
 from mqbench.convert_deploy import convert_deploy, convert_onnx, export_onnx_with_fakequant_node
-from mqbench.prepare_by_platform import prepare_by_platform, BackendType
+from mqbench.prepare_by_platform import prepare_by_platform
 from mqbench.utils.state import enable_calibration, enable_quantization, disable_all
 
 model_names = sorted(name for name in models.__dict__
@@ -87,10 +87,10 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'N processes per node, which has N GPUs. This is the '
                          'fastest way to use PyTorch for either single node or '
                          'multi node data parallel training')
-
 parser.add_argument('--model_path', type=str, default=None)
 parser.add_argument('--output_path', type=str, default=None)
-parser.add_argument('--backend', type=str, choices=['tensorrt', 'nnie', 'ppl', 'snpe', 'sophgo_tpu', 'openvino', 'tensorrt_nlp'], default='sophgo_tpu')
+parser.add_argument('--chip', type=str, choices=['A2', 'BM1684X', 'SG2260', 'academic'], default='SG2260')
+parser.add_argument('--quantmode', type=str, choices=['weight_activation', 'weight_only'], default='weight_activation')
 parser.add_argument('--optim', type=str, default='sgd')
 parser.add_argument('--not-quant', action='store_true')
 parser.add_argument('--deploy', action='store_true')
@@ -100,15 +100,6 @@ parser.add_argument('--pre_eval_and_export', action='store_true')
 parser.add_argument('--deploy_batch_size', default=1, type=int, help='deploy_batch_size.')
 parser.add_argument('--fp8', action='store_true')
 parser.add_argument('--export_onnx_before_training', action='store_true')
-
-BackendMap = {'tensorrt': BackendType.Tensorrt,
-               'sophgo_tpu': BackendType.Sophgo_TPU,
-               'nnie': BackendType.NNIE,
-               'tensorrt_nlp': BackendType.Tensorrt_NLP,
-               'ppl': BackendType.PPLW8A16,
-               'openvino': BackendType.OPENVINO,
-               'snpe': BackendType.SNPE,
-               'vitis': BackendType.Vitis}
 
 best_acc1 = 0
 
@@ -125,7 +116,6 @@ def main():
     os.system('mkdir -p {}'.format(args.output_path))
 
     args.quant = not args.not_quant
-    args.backend = BackendMap[args.backend]
 
     if args.seed is not None:
         random.seed(args.seed)
@@ -186,10 +176,6 @@ def main_worker(gpu, ngpus_per_node, args):
         print(args.arch)
         print(f"=> creating model '{args.arch}'")
         model = models.__dict__[args.arch]()
-    # print('ori module:', model)
-
-    # model = models._utils.IntermediateLayerGetter(model,{'layer1': 'feat1', 'layer3': 'feat2'})
-    # print(model(out_put))
 
     # for internal cluster
     if args.model_path:
@@ -223,9 +209,15 @@ def main_worker(gpu, ngpus_per_node, args):
 
     # quantize model
     if args.quant:
+        extra_prepare_dict = {
+            'quant_dict': {
+                        'chip': args.chip,
+                        'quantmode': args.quantmode,
+                        'strategy': 'CNN',
+                       },
+        }
         if args.fp8:
-            extra_prepare_dict = {
-            "extra_qconfig_dict": {
+            extra_prepare_dict["extra_qconfig_dict"] = {
                                     'w_observer': 'MinMaxObserver',
                                     'a_observer': 'EMAMinMaxObserver',
                                     "w_fakequantize": "E5M2FakeQuantize",
@@ -239,10 +231,6 @@ def main_worker(gpu, ngpus_per_node, args):
                                                     'per_channel': False,
                                                     'pot_scale': False }
                                 }
-        }
-        else:
-            extra_prepare_dict = {}
-
         if "mobilenet_v3" in args.arch:
             extra_prepare_dict["extra_quantizer_dict"] = {'module_only_enable_observer': [
                                                                     'features.0.0.weight_fake_quant',
@@ -268,15 +256,8 @@ def main_worker(gpu, ngpus_per_node, args):
                                                                     'features_2_block_1_0_post_act_fake_quantizer',
                                                                     ]
                                                                 }
-        model = prepare_by_platform(model, args.backend, input_shape_dict = {'data': [args.deploy_batch_size, 3, 224, 224]}, prepare_custom_config_dict=extra_prepare_dict)
+        model = prepare_by_platform(model, input_shape_dict = {'data': [args.deploy_batch_size, 3, 224, 224]}, prepare_custom_config_dict=extra_prepare_dict)
         print('>>>>>prepared module:', model)
-
-        # if args.fast_test:
-        #     convert_deploy(model.eval(), args.backend, input_shape_dict=
-        #         {'data': [args.deploy_batch_size, 3, 224, 224]},
-        #         model_name='{}_mqmoble'.format(args.arch),
-        #         # work_mode ='int4_and_int8_mix',
-        #         output_path=args.output_path)
 
     if not torch.cuda.is_available():
         print('using CPU, this will be slow')
@@ -330,7 +311,7 @@ def main_worker(gpu, ngpus_per_node, args):
         # export graphmodule with fakequant node to onnx, so we can clearly see the positions of each fakequant node.
         if args.export_onnx_before_training:
             os.system('mkdir -p {}'.format(args.output_path+'_export_onnx_before_training'))
-            export_onnx_with_fakequant_node(model.eval(), args.backend, input_shape_dict=
+            export_onnx_with_fakequant_node(model.eval(), args.chip, input_shape_dict=
                 {'data': [args.deploy_batch_size, 3, 224, 224]},
                 model_name='{}_with_fakequant_node'.format(args.arch),
                 output_path=args.output_path+'_export_onnx_before_training')
@@ -382,7 +363,7 @@ def main_worker(gpu, ngpus_per_node, args):
             validate(val_loader, module_tmp2, criterion, args)
             del module_tmp2
             gen_test_ref_data(cali_loader, model, args)
-            convert_deploy(model.eval(), args.backend, input_shape_dict={'data': [args.deploy_batch_size, 3, 224, 224]}, 
+            convert_deploy(model.eval(), args.chip, input_shape_dict={'data': [args.deploy_batch_size, 3, 224, 224]}, 
                 model_name='{}_mqmoble'.format(args.arch), output_path=args.output_path)
         exit(0)
 
@@ -403,42 +384,16 @@ def main_worker(gpu, ngpus_per_node, args):
             print(f'epoch{epoch}训练后eval精度:')
         acc1 = validate(val_loader, model, criterion, args)
 
-        # # remember best acc@1 and save checkpoint
-        # is_best = acc1 > best_acc1
-        # best_acc1 = max(acc1, best_acc1)
-
-        # if not args.multiprocessing_distributed or (args.multiprocessing_distributed
-        #         and args.rank % ngpus_per_node == 0):
-        #     save_checkpoint({
-        #         'epoch': epoch + 1,
-        #         'arch': args.arch,
-        #         'state_dict': model.state_dict(),
-        #         'best_acc1': best_acc1,
-        #         'optimizer' : optimizer.state_dict(),
-        #     }, is_best, filename=os.path.join(args.output_path, 'checkpoint.pth.tar'))
-
     print('disable_all后测试精度:')
     disable_all(model)
     validate(val_loader, model, criterion, args)
     enable_quantization(model)
 
-    gen_test_ref_data(cali_loader, model, args)
-    convert_deploy(model.eval(), args.backend, input_shape_dict=
+    net_type = 'CNN'
+    convert_deploy(model.eval(), net_type, input_shape_dict=
         {'data': [args.deploy_batch_size, 3, 224, 224]}, 
         model_name='{}_mqmoble'.format(args.arch), 
-        # work_mode ='int4_and_int8_mix',
         output_path=args.output_path)
-
-    '''model_path = os.path.join(args.output_path, '{}.pt'.format('{}_mqmoble'.format(args.arch)))
-    model_pt = torch.load(model_path)
-    if args.cuda is not None:
-        model_pt = model_pt.cuda(args.cuda)
-    else:
-        model_pt = model_pt.cpu() 
-    print('load fused bn pt后测试精度:')
-    validate(val_loader, model_pt, criterion, args)
-
-    validate_onnx(criterion, args)'''
 
 def prepare_dataloader(args):
     traindir = os.path.join(args.train_data, 'train')
@@ -498,7 +453,6 @@ def prepare_dataloader_batch(args, batch_size):
 
     return val_loader
 
-
 def calibrate(cali_loader, model, args):
     model.eval()
     print("Start calibration ...")
@@ -544,63 +498,6 @@ def get_node_input_by_module_name(qname, model):
         return scale_name[:len(scale_name)-len(post_str)]
     else:
         return ''
-
-layer_names = []
-features_out_hook = {}
-i = 0
-def hook(module, fea_in, fea_out):
-    global i
-    if i >= len(layer_names):
-        return None
-    name = layer_names[i]
-    i += 1
-    global features_out_hook
-    features_out_hook[name] = fea_out.cpu().numpy()
-    return None
-
-def gen_test_ref_data(cali_loader, model, args):
-    return
-    model.eval()
-    global layer_names
-    hook_handles = []
-    input_data = {}
-    # exclude_module = ['fake_quantize', 'observer', 'torch.fx', 'batchnorm', 'torch.nn.modules.module.Module']
-    for name, child in model.named_modules():
-        # if not any([i in str(type(child)) for i in exclude_module]):
-        if name.endswith('_act_fake_quantizer'):
-            # if '_dup' in name:
-            #     name = name[:-5]
-            # layer_names.append(name.replace('.','_'))
-            # output = get_node_name_by_module_name(name, model)
-            # input = get_node_input_by_module_name(name, model)
-            # print(f'name:{name}, output:{output}, input:{input}')
-            # if input != '':
-            layer_names.append(name)
-            print(f"add hook on {name} for {str(type(child))}")
-            hd = child.register_forward_hook(hook=hook)
-            hook_handles.append(hd)
-    print('layer_names:', layer_names)
-    if args.cpu:
-        model = model.cpu()
-    with torch.no_grad():
-        for i, (images, target) in enumerate(cali_loader):
-            if args.cuda is not None:
-                images = images.cuda(args.cuda, non_blocking=True)
-            else:
-                images = images.cpu()
-            output = model(images)
-            print("gen_test_ref_data ==> ", i+1)
-            if i == 0:
-                input_data['data'] = images.cpu().numpy()
-                np.savez(os.path.join(args.output_path, 'input_data.npz'), **input_data)
-                global features_out_hook
-                features_out_hook['data'] = images.cpu().numpy()
-                np.savez(os.path.join(args.output_path, 'layer_outputs.npz'), **features_out_hook)
-                for hd in hook_handles:
-                    hd.remove()
-                break
-    print("End gen_test_ref_data.")
-    return
 
 def train(train_loader, model, criterion, optimizer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')

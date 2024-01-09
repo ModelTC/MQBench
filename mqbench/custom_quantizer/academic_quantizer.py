@@ -14,8 +14,7 @@ from mqbench.utils.registry import register_model_quantizer
 from mqbench.custom_quantizer import ModelQuantizer
 
 
-@register_model_quantizer("CNN")
-@register_model_quantizer("Transformer")
+@register_model_quantizer("Academic")
 class AcademicQuantizer(ModelQuantizer):
     """Academic setting mostly do not merge BN and leave the first and last layer to higher bits.
     """

@@ -15,11 +15,12 @@ from mqbench.utils.logger import logger
 from typing import (
     List, Dict, Any, Callable
 )
-
 from mqbench.utils import get_flattened_qconfig_dict
 
-@register_model_quantizer("Transformer")
-@register_model_quantizer("CNN")
+
+@register_model_quantizer("A2")
+@register_model_quantizer("SG2260")
+@register_model_quantizer("BM1684X")
 class SophgoTpuQuantizer(ModelQuantizer):
     """
     We quantize the input tensors and output tensors of all layers,
