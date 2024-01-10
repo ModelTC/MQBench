@@ -16,7 +16,7 @@ from transformers.onnx.features import FeaturesManager
 from datasets import load_dataset
 import torch.optim as optim
 from mqbench.convert_deploy import convert_deploy, convert_onnx
-from mqbench.prepare_by_platform import prepare_by_platform, BackendType
+from mqbench.prepare_by_platform import prepare_by_platform
 from mqbench.utils.state import enable_calibration, enable_quantization, disable_all
 from transformers import logging
 import matplotlib.pyplot as plt
@@ -172,13 +172,19 @@ extra_qconfig_dict={
             }
         }
 preserve_attr={'': ['config']}
+quant_dict={
+            'chip': 'A2',
+            'quantmode': 'weight_only',
+            'strategy': 'Transformer',
+            }
 prepare_custom_config_dict = {
     'concrete_args': concrete_args,
     'preserve_attr': preserve_attr,
-    #'work_mode':'all_int4_qat',
-    'extra_qconfig_dict':extra_qconfig_dict}
+    'extra_qconfig_dict':extra_qconfig_dict,
+    'quant_dict': quant_dict
+    }
 #插入量化节点
-model_prepared= prepare_by_platform(model1, BackendType.Academic_NLP,prepare_custom_config_dict=prepare_custom_config_dict, custom_tracer=HFTracer())
+model_prepared= prepare_by_platform(model1, prepare_custom_config_dict=prepare_custom_config_dict, custom_tracer=HFTracer())
 #后处理
 class NeuralNetwork2(nn.Module):
     def __init__(self):
@@ -251,8 +257,9 @@ batch_X1, batch_y1 = next(iter(train_dataloader1))
 model_prepared.eval()
 model_kind, model_onnx_config = FeaturesManager.check_supported_model_or_raise(model_prepared, feature='default')
 onnx_config = model_onnx_config(model_prepared.config)
+net_type = 'Transformer'
 convert_deploy(model_prepared,
-            BackendType.Academic_NLP,
+            net_type,
             dummy_input=(dict(batch_X1),),
             model_name='bert-base-uncased-mqbench'
-            ) 
+            )
