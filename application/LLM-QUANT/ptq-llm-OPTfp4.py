@@ -32,12 +32,12 @@ from transformers import default_data_collator
 from transformers.onnx.features import FeaturesManager
 from datasets import load_dataset,load_metric
 import torch.optim as optim
-from mqbench.convert_deploy import convert_deploy, convert_onnx
-from mqbench.prepare_by_platform import prepare_by_platform, BackendType
-from mqbench.utils.state import enable_calibration, enable_quantization, disable_all
+# from mqbench.convert_deploy import convert_deploy, convert_onnx
+from mqbench.prepare_by_platform1 import prepare_by_platform
+from mqbench.utils.state import enable_calibration, enable_quantization, disable_all,enable_only_observer
 from transformers import logging
 import torch.onnx 
-import logging
+from mqbench.utils.logger import logger
 import os
 import collections
 import torch.nn.functional as F
@@ -54,7 +54,7 @@ import deepspeed
 from mqbench.fake_quantize import global_var
 import copy
 import ipdb
-
+from mqbench.fake_quantize import global_var
 parser = argparse.ArgumentParser(description='MQBench LLM')
 
 parser.add_argument('--epochs', default=1, type=int, metavar='N', 
@@ -67,7 +67,7 @@ parser.add_argument('--lr', '--learning-rate', default=2e-5, type=float,
 parser.add_argument('--wd', '--weight-decay', default=1e-2, type=float,
                     metavar='W', help='weight decay (default: 1e-4)',
                     dest='wd')
-parser.add_argument('--wbit', default=4, type=int,
+parser.add_argument('--wbit', default=8, type=int,
                     metavar='wbit', help='weight bit')
 parser.add_argument('--abit', default=8, type=int,
                     metavar='abit', help='active bit')
@@ -75,9 +75,9 @@ parser.add_argument('--wob', default='MinMaxObserver', type=str,
                     metavar='wob', help='weight observer')
 parser.add_argument('--aob', default='MinMaxObserver', type=str,
                     metavar='aob', help='active observer')
-parser.add_argument('--wfq', default='FP4FakeQuantize', type=str,
+parser.add_argument('--wfq', default='FixedFakeQuantize', type=str,
                     metavar='wfq', help='weight fakequantize')
-parser.add_argument('--afq', default='E5M2FakeQuantize', type=str,
+parser.add_argument('--afq', default='FixedFakeQuantize', type=str,
                     metavar='afq', help='active fakequantize')  
 #train
 def train(model,epochs,optimizer,scheduler,train_dataloader,validation_dataloader,total_steps):
@@ -166,6 +166,78 @@ def train(model,epochs,optimizer,scheduler,train_dataloader,validation_dataloade
     print("Training complete!")
     print("Total training took {:} (h:mm:ss)".format(format_time(time.time()-total_t0)))
     return model,training_stats
+inp_out_hooks = []
+def insert_model_info(model, valid_layers=(torch.nn.Conv2d, torch.nn.Linear, transformers.Conv1D,torch.ao.nn.intrinsic.qat.modules.linear_relu.LinearReLU)):
+    print('>'*6, 'Start Insert Info')
+    for name, module in model.named_modules():
+        try:
+            items = module._modules.items()
+            assert(len(items))
+        except:
+            # print(name)
+            if('.weight_fake_quant' in name):
+                layer_name = name.split('.weight_fake_quant')[0]
+                layer_names = layer_name.split('.')
+                upper_layer = model
+                for l in layer_names:
+                    upper_layer = getattr(upper_layer, l)
+                
+                if isinstance(upper_layer, valid_layers):
+                    print('>'*8, 'Insert', layer_name, type(upper_layer))
+                    def get_inp_out(layer_name):
+                        def tmp(_, inp, out):
+                            # print(inp[0].data, out)
+                            global_var.set_value(layer_name+'.weight_fake_quant.inp', inp[0].data)
+                            global_var.set_value(layer_name+'.weight_fake_quant.out', out.data)
+                        return tmp
+                    inp_out_hooks.append(upper_layer.register_forward_hook(get_inp_out(layer_name)))
+                    layer_module = copy.deepcopy(upper_layer)
+                    layer_module.weight_fake_quant = torch.nn.Sequential()
+                    layer_module.requires_grad = False
+                    setattr(upper_layer.weight_fake_quant, 'layer_module', layer_module)
+                    setattr(upper_layer.weight_fake_quant, 'layer_type', type(layer_module))
+                    setattr(upper_layer.weight_fake_quant, 'layer_name', layer_name+'.weight_fake_quant')
+                    setattr(upper_layer.weight_fake_quant, 'quant_min', -8)
+                    setattr(upper_layer.weight_fake_quant, 'quant_max', 7)
+                    # setattr(upper_layer.weight_fake_quant, 'weight',layer_module.weight.data)#layer_module.weight.data
+                    # setattr(upper_layer.weight_fake_quant, 'weight',torch.zeros([layer_module.weight.data.shape[0],layer_module.weight.data.shape[1]],dtype=torch.float16))#layer_module.weight.data
+                    # setattr(upper_layer.weight_fake_quant, 'H', torch.zeros([layer_module.weight.data.shape[1], layer_module.weight.data.shape[1]],dtype=torch.float16))
+                else:
+                    print('>'*8, 'Not support', layer_name, type(upper_layer))
+                    setattr(upper_layer.weight_fake_quant, 'layer_name', layer_name+'.weight_fake_quant')
+    print('>'*6, 'End Insert Info')
+def remove_model_info(model, valid_layers=(torch.nn.Conv2d, torch.nn.Linear, transformers.Conv1D)):
+    print('>'*6, 'Start Remove Info')
+    print('>'*4, 'Remove hooks')
+    for hook in inp_out_hooks:
+        hook.remove()
+    print('>'*4, 'Set GPTQ Done')
+    layer_modules = []
+    for name, module in model.named_modules():
+        try:
+            items = module._modules.items()
+            assert(len(items))
+        except:
+            # print(name)
+            if('.weight_fake_quant' in name):
+                layer_name = name.split('.weight_fake_quant')[0]
+                layer_names = layer_name.split('.')
+                upper_layer = model
+                for l in layer_names:
+                    upper_layer = getattr(upper_layer, l)
+                
+                if isinstance(upper_layer, valid_layers):
+                    if hasattr(upper_layer.weight_fake_quant, 'layer_module'):
+                        layer_modules.append(upper_layer.weight_fake_quant)
+                
+                #     print('>'*8, 'Remove', layer_name, type(upper_layer))
+                #     inp_out_hooks[name].remove()
+            # else:
+            #     setattr(upper_layer.weight_fake_quant, 'is_gptq_valid', False)
+    for lm in layer_modules:
+        if hasattr(lm, 'layer_module'):
+             del lm.layer_module
+    print('>'*6, 'End Remove Info')
 def cal_ppl(model,test_dataloader):
     total_ppl=0
     count=0
@@ -238,6 +310,7 @@ def cal_ppl_2(model,test_dataloader):
     total_loss=0
     count=0
     model.eval()
+    t0 = time.time()
     with torch.no_grad():
         for step, batch in enumerate(test_dataloader):
             b_input_ids = torch.tensor(batch['input_ids']).to(device)
@@ -262,10 +335,16 @@ def cal_ppl_2(model,test_dataloader):
                 else:
                     batch_loss=loss[i,:shift_attentions.sum(1)[i]].sum() 
                     total_loss+=batch_loss
+                    total_loss=total_loss.to(torch.float32)
                     count+=shift_attentions.sum(1)[i]
-        print(total_loss)
+                    count=count.to(torch.float32)
+        # print(total_loss)
+        logger.info("total_loss: {} ".format(total_loss))
         avg_loss=total_loss/count
+        t_time = format_time(time.time() - t0)
         ppl = torch.exp(avg_loss).cpu()
+        # print("time:{}".format(t_time))
+        logger.info("time: {} ".format(t_time))
         return ppl
 def calibrate(cali_loader, model):
     model.eval()
@@ -290,7 +369,7 @@ def preprocess_function(examples):
 def format_time(elapsed):
     return str(datetime.timedelta(seconds=int(round((elapsed)))))
 ######################################################################################################################
-
+global_var._init()
 args = parser.parse_args()
 checkpoint = "Aalaa/opt-125m-wikitext2"
 #load parameters
@@ -308,7 +387,7 @@ wikitext_test = load_dataset("wikitext","wikitext-2-raw-v1",split="test")
 # wikitext_validation = load_dataset("zhengxuanzenwu/wikitext-2-split-128",split="validation")
 # wikitext_test = load_dataset("zhengxuanzenwu/wikitext-2-split-128",split="test")
 
-random_indices = random.sample(range(len(wikitext_train)),10)
+random_indices = [1,2,3,4,5,6,7,8,9,10]#random.sample(range(len(wikitext_train)),10)
 wikitext_cali= [wikitext_train[i] for i in random_indices]
 random_samples_dict = {'text': [sample['text'] for sample in wikitext_cali]}
 wikitext_cali = datasets.Dataset.from_dict(random_samples_dict)
@@ -333,7 +412,7 @@ train_dataloader = DataLoader(
 validation_dataloader = DataLoader(
             tokenized_validation, # The validation samples.
             shuffle=False,  
-            batch_size = 2, # Evaluate with this batch size.
+            batch_size = 10, # Evaluate with this batch size.
             collate_fn=data_collator
         )
 cali_loader = DataLoader(
@@ -350,7 +429,7 @@ test_dataloader = DataLoader(
         )
 #load model
 configuration = AutoConfig.from_pretrained(checkpoint)
-model =AutoModelForCausalLM.from_pretrained(checkpoint, config=configuration)
+model =AutoModelForCausalLM.from_pretrained(checkpoint, config=configuration,torch_dtype=torch.float)
 model.resize_token_embeddings(len(tokenizer))
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 model=model.to(device)
@@ -384,6 +463,11 @@ torch.cuda.manual_seed_all(seed_val)
 sig = inspect.signature(model.forward)
 input_names =['input_ids','attention_mask']
 concrete_args = {p.name: p.default for p in sig.parameters.values() if p.name not in input_names}
+quant_dict={
+    'strategy':"Transformer", # ["Transformer","CNN"]
+    'chip':"A2", #["A2","BM1684X","SG2260","academic"]
+    'quantmode':"weight_activation"#["weight_only","weight_activation"]
+}
 extra_qconfig_dict={
             'w_observer': args.wob,#'MinMaxObserver',
             'a_observer': args.aob,#'EMAMinMaxObserver',
@@ -400,16 +484,35 @@ extra_qconfig_dict={
                 'symmetry': True,
                 'per_channel': False,
                 'pot_scale': False
+            },
+            'object_type':{
+                torch.nn.Linear:{
+                    'mode':"weight",
+                    'bit':4,
+                    'wfakequantize':'LearnableFakeQuantize',
+                    'wobserver':'MinMaxObserver'
+                }
+            },
+            'module_name':{
+                'model_decoder_embed_tokens':{
+                    'mode':"activation",
+                    'bit':4,
+                    'afakequantize':'LearnableFakeQuantize',
+                    'aobserver':'MinMaxObserver'
+                }
             }
         }
 preserve_attr={'': ['config']}
+extra_quantizer_dict= {'exclude_module_name': ['model.decoder.embed_tokens','lm_head',],}#'model.decoder.embed_tokens''transformer.word_embeddings'
 prepare_custom_config_dict = {
+    'quant_dict':quant_dict,
     'concrete_args': concrete_args,
     'preserve_attr': preserve_attr,
     #'work_mode':'all_int4_qat',
+    'extra_quantizer_dict':extra_quantizer_dict,
     'extra_qconfig_dict':extra_qconfig_dict}
 #Insert quantization node
-model_prepared= prepare_by_platform(model, BackendType.Academic_NLP,prepare_custom_config_dict=prepare_custom_config_dict, custom_tracer=HFTracer())
+model_prepared= prepare_by_platform(model,prepare_custom_config_dict=prepare_custom_config_dict, custom_tracer=HFTracer())
 class Quantizemodel(nn.Module):
     """
     用于建模类似SQuAD这样的问答数据集
@@ -439,8 +542,10 @@ disable_all(model_prepared1)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 avg_ppl1=cal_ppl_2(model_prepared1,validation_dataloader)
 print("原始模型PPL:{}".format(avg_ppl1))
+logger.info("Origin model PPL: {} ".format(avg_ppl1))
 
 #校准
+# insert_model_info(model_prepared)
 model_prepared1.eval()
 enable_calibration(model_prepared1)
 model_prepared1=model_prepared1.to(device)
@@ -449,4 +554,6 @@ calibrate(cali_loader, model_prepared1)
 #量化模型PPL
 enable_quantization(model_prepared1)
 avg_ppl2=cal_ppl_2(model_prepared1,validation_dataloader)
-print("量化模型PPL:{}".format(avg_ppl2))
+# print("量化模型PPL:{}".format(avg_ppl2))
+logger.info("Quantize model PPL: {} ".format(avg_ppl2))
+# remove_model_info(model_prepared1)
