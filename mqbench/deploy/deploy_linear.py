@@ -64,7 +64,7 @@ class LinearQuantizer_process(object):
         next_nodes = inp2node[node.output[0]]
         assert len(next_nodes) == 1
         next_node, idx = next_nodes[0]
-        assert next_node.op_type in ['Conv', 'Gemm', 'ConvTranspose']
+        assert next_node.op_type in ['Conv', 'Gemm', 'ConvTranspose','Transpose']
         redundant_nodes = []
         if node.input[0] not in named_initializer:
             node.input[0], redundant_nodes = \

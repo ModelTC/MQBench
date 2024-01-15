@@ -242,8 +242,11 @@ class ModelQuantizer(object):
                 if not all([isinstance(_node, torch.fx.node.Node) for _node in input_node_list]):
                     continue
                 for _node in input_node_list:
-                    if _node.target in ["type_as","long","to","expand"] or "getitem" in _node.name or _node.name in 'arange' :#,"expand","to","long"]:
+                    if _node.target in ["type_as","long","to","expand"] or _node.name in ['arange','pixel_values'] or _node.target in [operator.mod,operator.floordiv]:#,"expand","to","long"]:
                         continue
+                    if _node.op == 'call_function' and 'getitem' in _node.name:
+                        if _node.args[0].target=="size":
+                            continue   
                     if self._is_implicit_merge(modules, (node, _node)):
                         logger.info("Implicit merge: {} + {}".format(_node.name, node.name))
                         continue

@@ -103,6 +103,7 @@ class SophgoTpuQuantizer(ModelQuantizer):
     def module_type_to_quant_input_transformer(self) -> tuple:
         return (
             # Linear
+            qnnqat.Conv2d_sophgo,
             qnniqat.LinearReLU_sophgo,
             qnniqat.Linear_sophgo,
             torch.nn.qat.modules.linear.Linear,
@@ -158,6 +159,7 @@ class SophgoTpuQuantizer(ModelQuantizer):
         quantizer_prefix = "_post_act_fake_quantizer"
         node_to_quantize_output = self._find_act_quants(model)
         self.node_to_quantize_output_transformer=self._find_act_quants_transformer(model)
+        node_to_quantize_output.extend(node for node in self.node_to_quantize_output_transformer if node not in node_to_quantize_output)
         node_to_quantize_output = OrderedDict.fromkeys(node_to_quantize_output).keys()
         flattened_qconfig_dict = get_flattened_qconfig_dict(qconfig)
         logger.info('node_to_quantize_output:{}'.format(node_to_quantize_output))

@@ -87,7 +87,7 @@ def quantize_model(model, config_quant):
                 }
             },
         'extra_quantizer_dict':{
-            'exclude_module_name':['bert.pooler.dense', 'bert.embeddings.word_embeddings', 'bert.embeddings.token_type_embeddings', 'bert.embeddings.position_embeddings']
+            'exclude_module_name':['bert.embeddings.word_embeddings', 'bert.embeddings.token_type_embeddings', 'bert.embeddings.position_embeddings']
         },
         'quant_dict': {
                        'chip': config_quant.chip,
@@ -97,7 +97,7 @@ def quantize_model(model, config_quant):
     }
     model = prepare_by_platform(model, prepare_custom_config_dict=prepare_custom_config_dict, custom_tracer=HFTracer())
     return model
-
+#'bert.pooler.dense'
 
 def main(config_path):
     config = glue_utils.parse_config(config_path)
