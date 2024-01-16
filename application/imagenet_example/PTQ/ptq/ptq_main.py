@@ -66,6 +66,23 @@ def get_quantize_model(model, args):
                        },
     }
 
+    if args.fp8:
+        extra_prepare_dict["extra_qconfig_dict"] = {
+                                'w_observer': 'MinMaxObserver',
+                                'a_observer': 'EMAMinMaxObserver',
+                                "w_fakequantize": 'E5M2FakeQuantize',
+                                "a_fakequantize": 'E5M2FakeQuantize',
+                                # "a_fakequantize": 'LearnableFakeQuantize',
+                                'w_qscheme': {  'bit': 8,
+                                                'symmetry': True,
+                                                'per_channel': False,
+                                                'pot_scale': False },
+                                'a_qscheme': {  'bit': 8,
+                                                'symmetry': True,
+                                                'per_channel': False,
+                                                'pot_scale': False }
+                            }
+
     # For mobilenet_v3_small, we set some fakequant node only observe
     if "mobilenet_v3" in args.arch:
         extra_prepare_dict["extra_quantizer_dict"] = {'module_only_enable_observer': [

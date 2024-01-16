@@ -20,11 +20,13 @@ from mqbench.deploy.common import (
 
 PERCHANNEL_FAKEQUANTIZER = ['FakeQuantizeLearnablePerchannelAffine', 
                             'FixedPerChannelAffine',
-                            'FakeQuantizeDSQPerchannel']
+                            'FakeQuantizeDSQPerchannel',
+                            'FPEmuOp_per_channel']
 PERTENSOR_FAKEQUANTIZER = ['LearnablePerTensorAffine', 
                            'FixedPerTensorAffine',
                            'FakeQuantizeDSQPertensor',
-                           'FakeQuantizeTqtAffine']
+                           'FakeQuantizeTqtAffine',
+                           'FPEmuOp_per_tensor']
 ALL_FAKEQUANTIZER = PERCHANNEL_FAKEQUANTIZER + PERTENSOR_FAKEQUANTIZER
 
 
@@ -90,7 +92,8 @@ class LinearQuantizer_process(object):
         scale_name = node.input[1]
         module_name = scale_name.rsplit('.scale', 1)[0]
         quant_type = 'None'
-        quant_type = quant_type_dict[module_name]
+        if module_name in quant_type_dict.keys():
+            quant_type = quant_type_dict[module_name]
 
         if len(node.input) > 3:
             qmin, qmax = node.input[-2:]
@@ -107,6 +110,9 @@ class LinearQuantizer_process(object):
             dtype = qparams['dtype']
         else:
             logger.info(f'qmin and qmax are not found for <{node.name}>!')
+
+        if qmax == float(448.0) or qmax == float(57344.0):
+            quant_type = 'FP8'
         if dtype == 'None' or dtype == 'biased':
             bit = int(np.log2(qmax-qmin+1))
             if (bit == 8 and qmin < 0) or (bit == 4):
