@@ -31,7 +31,7 @@ import yaml
 from torch.optim import lr_scheduler
 from tqdm import tqdm
 from mqbench.convert_deploy import convert_deploy, convert_onnx
-from mqbench.prepare_by_platform import prepare_by_platform, BackendType
+from mqbench.prepare_by_platform import prepare_by_platform
 from mqbench.utils.state import enable_calibration, enable_quantization, disable_all
 
 
@@ -297,19 +297,19 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         model = model.train() #prepare前一定要是train模式！！
         # exit(0)
 
-    backend = BackendType.Sophgo_TPU
     if opt.quantize:
         prepare_custom_config_dict= {
-            # 'work_mode':'int4_and_int8_mix',
-            # 'extra_qconfig_dict':{'w_fakequantize':'PACTFakeQuantize'}
-            # 'concrete_args':{'augment':False, 'profile':False, 'visualize':False}
+            'quant_dict': {
+                            'chip': 'SG2260',
+                            'quantmode': 'weight_activation',
+                            'strategy': 'CNN',
+                        },
+            'concrete_args':{'augment':False, 'profile':False, 'visualize':False}
         }
-
-        # print('named_modules:', dict(model.named_modules())[''])
         model.train()
         model = model.to(device)
-        model = prepare_by_platform(model, backend, prepare_custom_config_dict=prepare_custom_config_dict)
-        # print('prepared module:', model)
+        model = prepare_by_platform(model, prepare_custom_config_dict=prepare_custom_config_dict)
+        print('prepared module:', model)
         enable_calibration(model)
         calibration_flag = True
         model = model.to(device)
@@ -484,7 +484,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             output_dir = os.path.join(output_dir, model_name)
             os.system('mkdir -p {}'.format(output_dir))
             model2 = deepcopy(model)
-            convert_deploy(model2.eval(), backend, input_shape_dict={'data': [1, 3, opt.imgsz, opt.imgsz]}, 
+            net_type = 'CNN'
+            convert_deploy(model2.eval(), net_type, input_shape_dict={'data': [1, 3, opt.imgsz, opt.imgsz]},
                 model_name='{}_mqmoble'.format(model_name), output_path=output_dir)
             del model2
                 
@@ -521,7 +522,8 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         model_name = opt.cfg.split('/')[-1].split('.')[0]
         output_dir = os.path.join(opt.output_path, model_name)
         os.system('mkdir -p {}'.format(output_dir))
-        convert_deploy(model.eval(), backend, input_shape_dict={'data': [1, 3, opt.imgsz, opt.imgsz]}, 
+        net_type = 'CNN'
+        convert_deploy(model.eval(), net_type, input_shape_dict={'data': [1, 3, opt.imgsz, opt.imgsz]},
             model_name='{}_mqmoble'.format(model_name), output_path=output_dir)
 
     torch.cuda.empty_cache()
