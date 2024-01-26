@@ -4,9 +4,11 @@ import os
 import yaml
 from easydict import EasyDict
 import torch
- 
+from mqbench.utils import is_symmetric_quant
 from .quantize_base import QuantizeBase
 from ..utils.hook import PerChannelLoadHook
+from FP8_Emulator.pytquant.cpp import fpemu_cpp
+from FP8_Emulator.pytquant.cuda import fpemu_cuda
 
 _version_under_1100 = int(torch.__version__.split('.')[1]) < 10
 # List the supported rounding method for E4M3:
@@ -71,18 +73,20 @@ def quantize_to_integer(tensor, mode, inplace=False):
     
     return dqtensor
 
-# The function below excuted the FP8 quantization
-def fpemu_device_fn(tensor, mode, inplace=True, scale=1.0):
+def fpemu_device_fn(tensor, mode, inplace=True, scale=1.0, zero_point=0.0, quant_min=float(1.5258789E-05), quant_max=float(57344.0), is_per_channel=True):
     if "INT8" in mode or "INT4" in mode:
         return quantize_to_integer(tensor, mode.split("_")[0], inplace=inplace)
 
-    if tensor.is_cuda : 
-        from FP8_Emulator.pytquant.cuda import fpemu_cuda
-        X = fpemu_cuda.FPEmuOp.apply(tensor, mode, inplace, scale)
-
-    else : 
-        from FP8_Emulator.pytquant.cpp import fpemu_cpp
-        X = fpemu_cpp.FPEmuOp.apply(tensor, mode, inplace, scale)
+    if is_per_channel:
+        if tensor.is_cuda :
+            X = fpemu_cuda.FPEmuOp_cuda_per_channel.apply(tensor, mode, inplace, scale, zero_point, quant_min, quant_max)
+        else :
+            X = fpemu_cpp.FPEmuOp_cpp_per_channel.apply(tensor, mode, inplace, scale, zero_point, quant_min, quant_max)
+    else:
+        if tensor.is_cuda :
+            X = fpemu_cuda.FPEmuOp_cuda_per_tensor.apply(tensor, mode, inplace, scale, zero_point, quant_min, quant_max)
+        else :
+            X = fpemu_cpp.FPEmuOp_cpp_per_tensor.apply(tensor, mode, inplace, scale, zero_point, quant_min, quant_max)
 
     return X
 
@@ -122,43 +126,31 @@ class E4M3FakeQuantize(QuantizeBase):
             self.zero_point.copy_(_zero_point)
 
         if self.fake_quant_enabled[0] == 1: # enable fake quantize
+            if is_symmetric_quant(self.qscheme):
+                self.zero_point.data.zero_()
+            else:
+                self.zero_point.data.clamp_(self.quant_min, self.quant_max).float()
             work_mode = 'E4M3_RNE'
+            quant_min=get_flt_min("e4m3")
+            quant_max=get_flt_max("e4m3")
+            if scaling_method.lower() == "mean":
+                mean = torch.mean(abs(torch.flatten(X.detach())))
+                mean = abs(mean) if abs(mean) > 1e-5 else get_flt_min("e4m3")
+                if abs(mean) > 0.0:
+                    _scale = torch.tensor(get_flt_min("e4m3")) / abs(mean)
+            elif scaling_method.lower() == "max":
+                vmax = torch.max(abs(torch.flatten(X.detach())))
+                _scale = vmax / get_flt_max("e4m3")
+                _scale = torch.tensor(6.55e+04) if _scale.item() > 3.275e+04 else _scale
+            else:
+                _scale = torch.tensor(1.0)
+            _scale = _scale.to(self.scale.device)
+            self.scale.copy_(_scale)
+            scale_fixed = torch.ones_like(self.zero_point).to(X.device).float()
             if self.is_per_channel: # per-channel
-                channels = X.shape[1]
-                for c in range(channels):
-                    sub_tensor = X.select(1, c).detach()
-                    if scaling_method.lower() == "mean":
-                        mean = torch.mean(abs(torch.flatten(X.detach())))
-                        mean = abs(mean) if abs(mean) > 1e-5 else get_flt_min("e4m3")
-                        if abs(mean) > 0.0:
-                             _scale = get_flt_min("e4m3") / abs(mean)
-                    elif scaling_method.lower() == "max":
-                        vmax = torch.max(abs(torch.flatten(X.detach())))
-                        _scale = vmax / get_flt_max("e4m3")
-                        _scale = torch.tensor(6.55e+04) if _scale.item() > 3.275e+04 else _scale
-                    else:
-                        _scale = torch.tensor(1.0)
-                    self.scale.copy_(_scale)
-                    sub_tensor = fpemu_device_fn(sub_tensor, mode=work_mode, inplace=False, scale=1/self.scale.item())
-                    tensor_q.select(1, c).data.copy_(sub_tensor)
-                X = tensor_q 
+                X = fpemu_device_fn(X, mode=work_mode, inplace=False, scale=scale_fixed, zero_point=self.zero_point, quant_min=quant_min, quant_max=quant_max, is_per_channel=True)
             else: # per-tensor
-                if scaling_method.lower() == "mean":
-                    mean = torch.mean(abs(torch.flatten(X.detach())))
-                    mean = abs(mean) if abs(mean) > 1e-5 else get_flt_min("e4m3")
-                    if abs(mean) > 0.0:
-                        _scale = get_flt_min("e4m3") / abs(mean)
-                elif scaling_method.lower() == "max":
-                    vmax = torch.max(torch.flatten(X.detach()))
-                    _scale = vmax / get_flt_max("e4m3")
-                    _scale = torch.tensor(6.55e+04) if _scale.item() > 3.275e+04 else _scale
-                    if _scale == 0:
-                        _scale = torch.tensor(1.0)
-                else:
-                    _scale = torch.tensor(1.0)
-                _scale = _scale.to(self.scale.device)
-                self.scale.copy_(_scale)
-                X = fpemu_device_fn(X, mode=work_mode, inplace=False, scale=1/self.scale.item())
+                X = fpemu_device_fn(X, mode=work_mode, inplace=False, scale=scale_fixed, zero_point=self.zero_point, quant_min=quant_min, quant_max=quant_max, is_per_channel=False)
         return X
  
     @torch.jit.export
