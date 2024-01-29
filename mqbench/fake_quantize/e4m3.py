@@ -8,7 +8,8 @@ from mqbench.utils import is_symmetric_quant
 from .quantize_base import QuantizeBase
 from ..utils.hook import PerChannelLoadHook
 from FP8_Emulator.pytquant.cpp import fpemu_cpp
-from FP8_Emulator.pytquant.cuda import fpemu_cuda
+if torch.cuda.is_available():
+    from FP8_Emulator.pytquant.cuda import fpemu_cuda
 
 _version_under_1100 = int(torch.__version__.split('.')[1]) < 10
 # List the supported rounding method for E4M3:

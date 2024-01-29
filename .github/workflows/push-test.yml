@@ -1,0 +1,34 @@
+name: Push Test
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v2
+
+    - name: Cache Docker images
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/.docker
+        key: ${{ runner.os }}-docker-${{ hashFiles('**/Dockerfile*') }}
+
+    - name: Run Tests in Docker
+      run: |
+        pwd
+        ls
+        docker run -v  "$(pwd):/workspace" bernardxu6034/sgmq_base:v1 bash -c \
+        "
+        pwd
+        ls
+        pip show MQBench
+        python setup.py install
+        cd test
+        bash run_test_demo.sh
+        "
