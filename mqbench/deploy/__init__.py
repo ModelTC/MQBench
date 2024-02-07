@@ -5,4 +5,5 @@ from .deploy_onnx_qnn import ONNXQNNPass
 from .deploy_openvino import replace_fakequantize_and_collect_params_openvino
 from .deploy_sophgo import remove_fakequantize_and_collect_params_sophgo
 from .deploy_float import remove_fakequantize_and_collect_params_flt
+from .deploy_transformer import remove_fakequantize_and_collect_params_tf
 #from .deploy_academicnlp import remove_fakequantize_and_collect_params_academic

@@ -13,8 +13,15 @@ class FixedFakeQuantize(QuantizeBase):
         self.register_buffer('scale', torch.tensor([1.0], dtype=torch.float))
         self.register_buffer('zero_point', torch.tensor([0], dtype=torch.int))
         self.load_state_dict_hook = PerChannelLoadHook(self)
+        self.flag=0
 
     def forward(self, X):
+        # if type(X)==int:
+        #     print(type(X))
+        #     self.flag=1
+        #     print(X)
+        #     X=torch.tensor(X)
+        # import ipdb;ipdb.set_trace()
         if self.observer_enabled[0] == 1:
             self.activation_post_process(X.detach())
             _scale, _zero_point = self.calculate_qparams()
@@ -32,9 +39,14 @@ class FixedFakeQuantize(QuantizeBase):
                     self.zero_point.long() if _version_under_1100 else self.zero_point,
                     self.ch_axis, self.quant_min, self.quant_max)
             else:
+                if X.dtype==torch.long:
+                    X=X.float()
+                    self.flag=1
                 X = torch.fake_quantize_per_tensor_affine(
                     X, self.scale.item(), int(self.zero_point.item()),
                     self.quant_min, self.quant_max)
+                if self.flag==1:
+                    X=X.long()
         return X
 
     @torch.jit.export

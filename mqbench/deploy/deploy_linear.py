@@ -187,7 +187,8 @@ class LinearQuantizer_process(object):
                 # if not finded:
                 #     print(f'Waring:{node.name}\'s clip_ranges not exist, maybe have some error')
         return clip_ranges
-
+    
+        
     def remove_fakequantize_and_collect_params(self, onnx_path, model_name, backend):
         model = onnx.load(onnx_path)
         graph = model.graph
@@ -202,10 +203,9 @@ class LinearQuantizer_process(object):
         clip_ranges = {}
         nodes_to_be_removed = []
         for node in graph.node:
-            if node.op_type in ALL_FAKEQUANTIZER:
+            if node.op_type in ALL_FAKEQUANTIZER:  
                 nodes_to_be_removed.append(node)
                 nodes_to_be_removed.extend(get_constant_inputs(node, out2node))
-
             if node.output[0] not in inp2node:
                 assert node.output[0] in [l.name for l in graph.output]
                 inp2node[node.output[0]] = []
@@ -216,18 +216,9 @@ class LinearQuantizer_process(object):
                 nodes_to_be_removed.extend(redundant_nodes)
                 self.clip_weight(node, name2data, inp2node, named_initializer)
                 tensor_name, scale, zero_point, qmin, qmax,dtype1 = self.parse_qparams(node, name2data)
-                if backend == 'ppl':
-                    clip_ranges[tensor_name] = {'step': [float(x) for x in scale],
-                                                'zero_point': [int(x) for x in zero_point],
-                                                'min': [float(x) for x in scale * (qmin - zero_point)],
-                                                'max': [float(x) for x in scale * (qmax - zero_point)],
-                                                'bit': int(np.log2(qmax - qmin + 1)),
-                                                'type': "biased",
-                                                }
-                elif backend == 'vitis':
-                    logger.info("Vitis-DPU does not support per-channel quatization.")
-                    raise NotImplementedError("Vitis-DPU does not support per-channel quatization.")
-                elif backend == 'sophgo_tpu':
+
+                
+                if backend == 'sophgo_tpu':
                     #卷积权重per-channel量化参数，bias的per-chan量化参数没有去调优
                     if len(next_nodes) == 1 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:#当前伪量化节点只有1个后继，且第1个后继节点为conv类型
                         next_node_output = next_nodes[0][0].output[0]
@@ -241,8 +232,25 @@ class LinearQuantizer_process(object):
                         clip_ranges[tensor_name] = {'step': [float(x) for x in scale],
                                                     'zero_point': [int(x) for x in zero_point]
                                                     }
+                elif backend == 'Academic_NLP':
+                        #卷积权重per-channel量化参数，bias的per-chan量化参数没有去调优
+                    if len(next_nodes) == 1 and next_nodes[0][0].op_type in ['Gemm', 'Conv','Transpose']:#当前伪量化节点只有1个后继，且第1个后继节点为conv类型
+                        next_node_output = next_nodes[0][0].output[0]
+                        if next_node_output in inp2node:
+                            if inp2node[next_node_output][0][0].op_type == 'Relu':##伪量化节点的第1个后继conv节点的第1个后继节点为Relu(fake->conv->relu)
+                                #若是fake->conv->relu,因为relu会融合到前面conv，故用relu的输出tensor名+Relu作为量化参数保存tensor名
+                                tensor_name = '{}_{}'.format(inp2node[next_node_output][0][0].output[0], 'Relu')
+                            else:
+                                #若是fake->conv->not_relu_type,直接用conv的输出tensor名+conv作为量化参数保存tensor名
+                                tensor_name = '{}_{}'.format(next_node_output, next_nodes[0][0].op_type)
+                        else:
+                            tensor_name = '{}_{}'.format(next_node_output, next_nodes[0][0].op_type)
+                        tensor_name += '_{}'.format('weight' if next_nodes[0][1] == 1 else 'bias'  )
+                        clip_ranges[tensor_name] = {'step': [float(x) for x in scale],
+                                                    'zero_point': [int(x) for x in zero_point]
+                                                    }
             elif node.op_type in PERTENSOR_FAKEQUANTIZER:
-                if len(next_nodes) == 1 and next_nodes[0][1] == 1 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:
+                if len(next_nodes) == 1 and next_nodes[0][1] == 1 and next_nodes[0][0].op_type in ['Gemm', 'Conv','Transpose']:
                     # fake quantize for weights
                     redundant_nodes = self.deal_with_weight_fakequant(node, out2node, inp2node, named_initializer)
                     tensor_name, scale, zero_point, qmin, qmax,dtype = self.parse_qparams(node, name2data)
@@ -258,7 +266,7 @@ class LinearQuantizer_process(object):
                                                     'type': "int" if int(np.log2(qmax - qmin + 1))==4 else dtype,
                                                     'ori_name': 'none'} 
                     if backend == 'Academic_NLP':
-                        assert next_nodes[0][0].op_type == 'Gemm'
+                        assert next_nodes[0][0].op_type in ['Gemm', 'Conv','Transpose']
                         tensor_name += '{}_{}_weight'.format(inp2node[node.output[0]][0][0].output[0], inp2node[node.output[0]][0][0].op_type)
                         clip_ranges[tensor_name] = {'threshold':float(scale * max(-qmin, qmax)), #对称量化时这个参数生效
                                                     'min': float(scale * (qmin - zero_point)),
@@ -266,9 +274,8 @@ class LinearQuantizer_process(object):
                                                     'bit': int(np.log2(qmax - qmin + 1)),
                                                     'type': "int" if int(np.log2(qmax - qmin + 1))==4 else dtype,
                                                     'ori_name': 'none'}                      
-                elif len(next_nodes) == 1 and next_nodes[0][1] == 2 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:
+                elif len(next_nodes) == 1 and next_nodes[0][1] == 2 and next_nodes[0][0].op_type in ['Gemm', 'Conv','Transpose']:
                     # fake quantize for bias 
-                    assert backend == 'vitis'
                     redundant_nodes = self.deal_with_weight_fakequant(node, out2node, inp2node, named_initializer)
                     tensor_name, scale, zero_point, qmin, qmax,dtype1 = self.parse_qparams(node, name2data)
                     nodes_to_be_removed.extend(redundant_nodes)
@@ -281,15 +288,8 @@ class LinearQuantizer_process(object):
                         if out.name == node.output[0]:
                             out.name = tensor_name
 
-                    if backend == 'tensorrt':
-                        clip_ranges[tensor_name] = float(scale * max(-qmin, qmax))
-                    elif backend == 'snpe':
-                        clip_ranges[tensor_name] = [
-                            {'bitwidth': int(np.log2(qmax - qmin + 1)),
-                             'min': float(scale * (qmin - zero_point)),
-                             'max': float(scale * (qmax - zero_point))}
-                        ]
-                    elif backend == 'sophgo_tpu':
+                        
+                    if backend == 'sophgo_tpu':
                         scale_name = node.input[1]
                         post_str = '_post_act_fake_quantizer.scale'
                         if tensor_name in out2node:
@@ -309,18 +309,6 @@ class LinearQuantizer_process(object):
                                                     'bit': int(np.log2(qmax - qmin + 1)),
                                                     'type': "int" if int(np.log2(qmax - qmin + 1))==4 else dtype1,
                                                     'ori_name': scale_name[:len(scale_name)-len(post_str)] if scale_name.endswith(post_str) else 'none'}
-                if backend == 'ppl':
-                    clip_ranges[tensor_name] = {'step': float(scale),
-                                                'zero_point': int(zero_point),
-                                                'min': float(scale * (qmin - zero_point)),
-                                                'max': float(scale * (qmax - zero_point)),
-                                                'bit': int(np.log2(qmax - qmin + 1)),
-                                                'type': "biased",
-                                                }
-                elif backend == 'vitis':
-                    clip_ranges[tensor_name] = {'scale': float(scale)}
-                elif backend == 'ppl-cuda':
-                    clip_ranges[tensor_name] = float(max(-scale * (qmin - zero_point), scale * (qmax - zero_point)))
 
         for node in nodes_to_be_removed:
             graph.node.remove(node)
@@ -333,17 +321,7 @@ class LinearQuantizer_process(object):
             graph.initializer.remove(initial_data)
         
         clip_ranges = self.post_process_clip_ranges(clip_ranges, graph, inp2node, out2node)
-        if backend == 'tensorrt':
-            context = {"tensorrt": {"blob_range": clip_ranges}}
-        elif backend == 'snpe':
-            context = {'activation_encodings': clip_ranges, 'param_encodings': {}}
-        elif backend == 'ppl':
-            context = {"ppl": clip_ranges}
-        elif backend == 'vitis':
-            context = {'vitis': clip_ranges}
-        elif backend == 'ppl-cuda':
-            context = {'ppl-cuda': clip_ranges}
-        elif backend == 'sophgo_tpu':
+        if backend == 'sophgo_tpu':
             clip_ranges = self.post_process_clip_ranges2(clip_ranges, graph, inp2node, out2node)
             context = {'sophgo_tpu': clip_ranges}
             context['w_qscheme'] = ''
@@ -352,19 +330,11 @@ class LinearQuantizer_process(object):
             clip_ranges = self.post_process_clip_ranges2(clip_ranges, graph, inp2node, out2node)
             context = {'Academic_NLP': clip_ranges}  
         output_path = os.path.dirname(onnx_path)
-        context_filename = os.path.join(output_path, '{}_clip_ranges.json'.format(model_name))
-        with open(context_filename, 'w') as f:
-            json.dump(context, f, indent=4)
+        # context_filename = os.path.join(output_path, '{}_clip_ranges.json'.format(model_name))
+        # with open(context_filename, 'w') as f:
+        #     json.dump(context, f, indent=4)
         onnx_filename = os.path.join(output_path, '{}_deploy_model.onnx'.format(model_name))
         onnx.save(model, onnx_filename)
-        if backend == 'ppl-cuda':
-            with open(context_filename, 'w') as f:
-                for k, v in clip_ranges.items():
-                    f.write('{}: {}\n'.format(k, v))
-        if backend == 'vitis':
-            logger.info(f"To finish xmodel converting process, call \
-                $ mqbench.deploy.convert_xir -Q {onnx_filename} -C {onnx_path} -N <name> \
-                    in the mqbench docker built from Dockerfile")
         logger.info("Finish deploy process.")
 
 

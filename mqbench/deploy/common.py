@@ -206,7 +206,7 @@ def update_inp2node_out2node(graph):
     return out2node, inp2node
 
 
-def prepare_data(graph):
+def prepare_data(graph): 
     params = {}
     for init in graph.initializer:
         params[init.name] = numpy_helper.to_array(init)
