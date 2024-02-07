@@ -63,6 +63,7 @@ class SophgoTpuQuantizer(ModelQuantizer):
             torch.nn.Softplus,
             torch.nn.ELU,
             torch.nn.CELU,
+            torch.nn.LayerNorm,
             torch.nn.qat.modules.linear.Linear,
         ) + super().module_type_to_quant_input + self._layers_need_scale_form_input_fake_quantizer
 
@@ -75,6 +76,8 @@ class SophgoTpuQuantizer(ModelQuantizer):
             torch.sub,
             torch.clamp,
             torch.matmul,
+            operator.add,
+            operator.truediv,
             torch.nn.functional.hardswish,
             torch.nn.functional.sigmoid,
             torch.nn.functional.silu,
@@ -90,6 +93,7 @@ class SophgoTpuQuantizer(ModelQuantizer):
             torch.nn.functional.softplus,
             torch.nn.functional.elu,
             torch.nn.functional.celu,
+            torch.nn.functional.layer_norm,
         ]
 
     @property
@@ -198,6 +202,10 @@ class SophgoTpuQuantizer(ModelQuantizer):
         modules = dict(model.named_modules())
         node_need_to_quantize_output = super()._find_act_quants(model)
         self.only_enable_ob = []
+        if self.strategy == 'Transformer':
+            for node in nodes:
+                if node.name in ['qa_outputs','squeeze','squeeze_1']:
+                    node_need_to_quantize_output.append(node)
         if self.strategy == 'CNN':
             for node in nodes:
                 if (node.op == "call_module" and node.target in self.exclude_module_name) or \
@@ -220,21 +228,21 @@ class SophgoTpuQuantizer(ModelQuantizer):
                                 node_need_to_quantize_output.append(node)
                                 print(">>>>> append node ", node)
                                 self.only_enable_ob.append(node.name)
-            for node in nodes:
-                if node.target in modules and (type(modules[node.target]) in self.exclude_module_name or node.target in self.exclude_module_name) and (node in node_need_to_quantize_output):
-                    print(f'{type(modules[node.target])} is excluded')
-                    node_need_to_quantize_output.remove(node)
-                if node.op == "placeholder" and (node.name not in self.exclude_node_name):
-                    if 'tensor_meta' in node.meta:
-                        if len(node.meta['tensor_meta'].shape) > 1:
-                            print(f'add placeholder {node.target} to node_need_to_quantize_output by tensor_meta')
-                            node_need_to_quantize_output.append(node)
-                            print(">>>>> append node ", node)
-                    else:
-                        print(f'no tensor_meta, add placeholder {node.target} to node_need_to_quantize_output')
+        for node in nodes:
+            # if node.target in modules and (type(modules[node.target]) in self.exclude_module_name or node.target in self.exclude_module_name) and (node in node_need_to_quantize_output):
+            #     print(f'{type(modules[node.target])} is excluded')
+            #     node_need_to_quantize_output.remove(node)
+            if node.op == "placeholder" and (node.name not in self.exclude_node_name):
+                if 'tensor_meta' in node.meta:
+                    if len(node.meta['tensor_meta'].shape) > 1:
+                        print(f'add placeholder {node.target} to node_need_to_quantize_output by tensor_meta')
                         node_need_to_quantize_output.append(node)
                         print(">>>>> append node ", node)
-
+                else:
+                    print(f'no tensor_meta, add placeholder {node.target} to node_need_to_quantize_output')
+                    node_need_to_quantize_output.append(node)
+                    print(">>>>> append node ", node)
+        
         return node_need_to_quantize_output
 
     def _find_act_quants_transformer(self, model: GraphModule) -> List:

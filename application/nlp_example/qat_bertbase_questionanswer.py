@@ -4,6 +4,7 @@ import transformers
 import torch
 import torch.nn as nn
 import inspect
+import random
 import unittest
 import copy
 from itertools import chain
@@ -17,18 +18,14 @@ from transformers import default_data_collator
 from transformers.onnx.features import FeaturesManager
 from datasets import load_dataset,load_metric
 import torch.optim as optim
-from mqbench.convert_deploy import convert_deploy, convert_onnx
-from mqbench.prepare_by_platform import prepare_by_platform, BackendType
+from mqbench.convert_deploy import convert_deploy
+from mqbench.prepare_by_platform import prepare_by_platform
 from mqbench.utils.state import enable_calibration, enable_quantization, disable_all
 from transformers import logging
 import matplotlib.pyplot as plt
 import torch.onnx 
 import pandas as pd
-import json
-import logging
-import os
 import collections
-import six
 from transformers import DistilBertConfig
 from transformers import AutoModelForQuestionAnswering, TrainingArguments, Trainer
 from transformers import BertTokenizer, BertModel
@@ -37,9 +34,9 @@ from transformers import Trainer, TrainingArguments, PreTrainedModel
 
 parser = argparse.ArgumentParser(description='MQBench bertbase Training')
 
-parser.add_argument('--epochs', default=1, type=int, metavar='N',
+parser.add_argument('--epochs', default=2, type=int, metavar='N',
                     help='number of total epochs to run')
-parser.add_argument('--b', '--batch-size', default=16, type=int,
+parser.add_argument('--b', '--batch-size', default=18, type=int,
                     metavar='N',
                     help='mini-batch size (default: 16), this is the total ')
 parser.add_argument('--lr', '--learning-rate', default=2e-5, type=float,
@@ -47,7 +44,7 @@ parser.add_argument('--lr', '--learning-rate', default=2e-5, type=float,
 parser.add_argument('--wd', '--weight-decay', default=1e-2, type=float,
                     metavar='W', help='weight decay (default: 1e-4)',
                     dest='wd')
-parser.add_argument('--wbit', default=4, type=int,
+parser.add_argument('--wbit', default=8, type=int,
                     metavar='wbit', help='weight bit')
 parser.add_argument('--abit', default=8, type=int,
                     metavar='abit', help='active bit')
@@ -55,9 +52,9 @@ parser.add_argument('--wob', default='LSQObserver', type=str,
                     metavar='wob', help='weight observer')
 parser.add_argument('--aob', default='EMAQuantileObserver', type=str,
                     metavar='aob', help='active observer')
-parser.add_argument('--wfq', default='AdaRoundFakeQuantize', type=str,
+parser.add_argument('--wfq', default='FixedFakeQuantize', type=str,
                     metavar='wfq', help='weight fakequantize')
-parser.add_argument('--afq', default='LearnableFakeQuantize', type=str,
+parser.add_argument('--afq', default='FixedFakeQuantize', type=str,
                     metavar='afq', help='active fakequantize')                                         
 parser.add_argument('--backend', type=str, choices=['Academic_NLP', 'Tensorrt_NLP'], default='Academic_NLP')
 
@@ -82,7 +79,6 @@ def prepare_train_features(examples):
         return_offsets_mapping=True,
         padding="max_length",
     )
-
     # Since one example might give us several features if it has a long context, we need a map from a feature to
     # its corresponding example. This key gives us just that.
     sample_mapping = tokenized_examples.pop("overflow_to_sample_mapping")
@@ -137,7 +133,7 @@ def prepare_train_features(examples):
                 while offsets[token_end_index][1] >= end_char:
                     token_end_index -= 1
                 tokenized_examples["end_positions"].append(token_end_index + 1)
-
+   
     return tokenized_examples
 
 def prepare_validation_features(examples):
@@ -184,6 +180,8 @@ def prepare_validation_features(examples):
         ]
 
     return tokenized_examples
+
+
 def postprocess_qa_predictions(examples, features, raw_predictions, n_best_size = 20, max_answer_length = 30):
     all_start_logits, all_end_logits = raw_predictions
     # Build a map example to its corresponding features.
@@ -221,7 +219,7 @@ def postprocess_qa_predictions(examples, features, raw_predictions, n_best_size 
             feature_null_score = start_logits[cls_index] + end_logits[cls_index]
             if min_null_score is None or min_null_score < feature_null_score:
                 min_null_score = feature_null_score
-
+           
             # Go through all possibilities for the `n_best_size` greater start and end logits.
             start_indexes = np.argsort(start_logits)[-1 : -n_best_size - 1 : -1].tolist()
             end_indexes = np.argsort(end_logits)[-1 : -n_best_size - 1 : -1].tolist()
@@ -248,7 +246,6 @@ def postprocess_qa_predictions(examples, features, raw_predictions, n_best_size 
                             "text": context[start_char: end_char]
                         }
                     )
-        
         if len(valid_answers) > 0:
             best_answer = sorted(valid_answers, key=lambda x: x["score"], reverse=True)[0]
         else:
@@ -264,6 +261,8 @@ def postprocess_qa_predictions(examples, features, raw_predictions, n_best_size 
             predictions[example["id"]] = answer
 
     return predictions
+
+
 def calibrate(cali_loader, model):
     model.eval()
     print("Start calibration ...")
@@ -273,11 +272,12 @@ def calibrate(cali_loader, model):
             X= next(iter(cali_loader))
             batch_input =X['input_ids'].to(device)  
             batch_seg = X['attention_mask'].to(device)
-            start_logits, end_logits = model(input_ids=batch_input,
-                                                attention_mask=batch_seg)
+            batch_token=X['token_type_ids'].to(device)
+            start_logits, end_logits = model(input_ids=batch_input,attention_mask=batch_seg,token_type_ids=batch_token)
             print("Calibration ==> ", i+1)
     print("End calibration.")
     return
+
 
 def prec(datasets,trainer):
     validation_features1 = datasets["validation"].map(
@@ -310,11 +310,12 @@ def prec(datasets,trainer):
 #输入参数
 args = parser.parse_args()
 squad_v2 = False
-model_checkpoint = "distilbert-base-uncased"
+model_checkpoint = "csarron/bert-base-uncased-squad-v1"
 batch_size = args.b
 
 #导入数据
 datasets = load_dataset("squad_v2" if squad_v2 else "squad")
+
 #快速分词
 tokenizer = AutoTokenizer.from_pretrained(model_checkpoint)
 assert isinstance(tokenizer, transformers.PreTrainedTokenizerFast)
@@ -335,7 +336,18 @@ args1 = TrainingArguments(
     per_device_train_batch_size=batch_size,
     per_device_eval_batch_size=batch_size,
     num_train_epochs=1,
-    weight_decay=args.wd
+    weight_decay=args.wd,
+    save_strategy="no",
+)
+args2 = TrainingArguments(
+    f"{model_name}-finetuned-squad",
+    evaluation_strategy = "epoch",
+    learning_rate=args.lr,
+    per_device_train_batch_size=batch_size,
+    per_device_eval_batch_size=batch_size,
+    num_train_epochs=2,
+    weight_decay=args.wd,
+    save_strategy="no",
 )
 data_collator = default_data_collator
 
@@ -369,38 +381,49 @@ prepare_custom_config_dict = {
     'concrete_args': concrete_args,
     'preserve_attr': preserve_attr,
     #'work_mode':'all_int4_qat',
+    'extra_quantizer_dict':{
+            'exclude_module_name':['bert.embeddings.word_embeddings', 'bert.embeddings.token_type_embeddings', 'bert.embeddings.position_embeddings']
+    },
+    'quant_dict': {
+                    'chip':'SG2260',
+                    'quantmode': 'weight_activation',
+                    'strategy': 'Transformer',
+                },
     'extra_qconfig_dict':extra_qconfig_dict}
 #插入量化节点
-model_prepared= prepare_by_platform(model, BackendType.Academic_NLP,prepare_custom_config_dict=prepare_custom_config_dict, custom_tracer=HFTracer())
+model_prepared= prepare_by_platform(model,prepare_custom_config_dict=prepare_custom_config_dict, custom_tracer=HFTracer())
 
-#校准
+# 校准
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-cali =[]
-for i in range(64):
-    text=tokenized_datasets["train"][i]
-    cali.append(text)
+random_indices =random.sample(range(len(tokenized_datasets["train"])),160)
+cali= [tokenized_datasets["train"][i] for i in random_indices]
+# cali =[]
+# for i in range(64):
+#     text=tokenized_datasets["train"][i]
+#     cali.append(text)
 cali_loader = DataLoader(cali, batch_size=16, shuffle=True, collate_fn= default_data_collator)
 enable_calibration(model_prepared)
 model_prepared=model_prepared.to(device)
 calibrate(cali_loader, model_prepared)
 
-#模型后处理
+# #模型后处理
 enable_quantization(model_prepared)
 model_prepared.train()
-class BertForQuestionAnswering(PreTrainedModel):
-    """
-    用于建模类似SQuAD这样的问答数据集
-    """
-    def __init__(self,config):
-        super(BertForQuestionAnswering, self).__init__(config)
-        self.bert = model_prepared
 
+class BertForQuestionAnswering(nn.Module):
+    def __init__(self,  model_prepared):
+        super().__init__()
+        self.bert = model_prepared
+        self.config = model_prepared.config
+        
     def forward(self, input_ids,
+                token_type_ids=None,
                 attention_mask=None,
                 start_positions=None,
                 end_positions=None):
         bert_output= self.bert(
             input_ids=input_ids,
+            token_type_ids=token_type_ids,
             attention_mask=attention_mask)
         start_logits=bert_output['start_logits']
         end_logits=bert_output['end_logits']
@@ -426,31 +449,29 @@ class BertForQuestionAnswering(PreTrainedModel):
             return (start_loss + end_loss) / 2, start_logits, end_logits
         else:
             return start_logits, end_logits
-config1 = DistilBertConfig.from_pretrained('distilbert-base-uncased')
-# 创建自定义配置对象
-model_prepared2=BertForQuestionAnswering(config1)
+model_prepared2=BertForQuestionAnswering(model_prepared)        
 # 原始模型训练
-model_prepared22=copy.deepcopy(model_prepared2)
-disable_all(model_prepared22)
-model_prepared22=model_prepared22.train()
-trainer1 = Trainer(
-    model_prepared22,
-    args1,
-    train_dataset=tokenized_datasets["train"],
-    eval_dataset=tokenized_datasets["validation"],
-    data_collator=data_collator,
-    tokenizer=tokenizer,
-)
-trainer1.train()
-print("原始模型精度：")
-prec(datasets,trainer1)
+# model_prepared22=copy.deepcopy(model_prepared2)
+# disable_all(model_prepared22)
+# model_prepared22=model_prepared22.train()
+# trainer1 = Trainer(
+#     model_prepared22,
+#     args1,
+#     train_dataset=tokenized_datasets["train"],
+#     eval_dataset=tokenized_datasets["validation"],
+#     data_collator=data_collator,
+#     tokenizer=tokenizer,
+# )
+# trainer1.train()
+# print("原始模型精度：")
+# prec(datasets,trainer1)
 print("**************************************************")
 # 量化模型训练
 enable_quantization(model_prepared2)
 model_prepared2.train()
 trainer2 = Trainer(
     model_prepared2,
-    args1,
+    args2,
     train_dataset=tokenized_datasets["train"],
     eval_dataset=tokenized_datasets["validation"],
     data_collator=data_collator,
@@ -462,18 +483,36 @@ prec(datasets,trainer2)
 print("**************************************************")
 
 #模型部署
-keys_to_copy = ['input_ids', 'attention_mask']
-copied_cali=[]
-for i in range(len(cali)):
-    text= {key: cali[i][key] for key in keys_to_copy}
-    copied_cali.append(text)
-cali_loader1 = DataLoader(copied_cali, batch_size=1, shuffle=True, collate_fn= default_data_collator)
-X=next(iter(cali_loader1))
-model_prepared.eval()
+# keys_to_copy = ['input_ids', 'attention_mask']
+# copied_cali=[]
+# for i in range(len(cali)):
+#     text= {key: cali[i][key] for key in keys_to_copy}
+#     copied_cali.append(text)
+# cali_loader1 = DataLoader(copied_cali, batch_size=1, shuffle=True, collate_fn= default_data_collator)
+# X=next(iter(cali_loader1))
+# model_prepared.eval()
+# model_kind, model_onnx_config = FeaturesManager.check_supported_model_or_raise(model_prepared, feature='default')
+# onnx_config = model_onnx_config(model_prepared.config)
+# convert_deploy(model_prepared,
+#             BackendType.Academic_NLP,
+#             dummy_input=((dict(X)),),
+#             model_name='bert-base-uncased-mqbench-squad'
+#             ) 
+
 model_kind, model_onnx_config = FeaturesManager.check_supported_model_or_raise(model_prepared, feature='default')
 onnx_config = model_onnx_config(model_prepared.config)
+export_inputs = {}
+export_inputs['input_ids'] = torch.tensor(tokenized_datasets["validation"][0]['input_ids']).unsqueeze(0)
+export_inputs['token_type_ids'] = torch.tensor(tokenized_datasets["validation"][0]['token_type_ids']).unsqueeze(0)
+export_inputs['attention_mask'] = torch.tensor(tokenized_datasets["validation"][0]['attention_mask']).unsqueeze(0)
+
+net_type = 'Transformer'
 convert_deploy(model_prepared,
-            BackendType.Academic_NLP,
-            dummy_input=((dict(X)),),
-            model_name='bert-base-uncased-mqbench-squad'
-            ) 
+            net_type,
+            dummy_input=(export_inputs,),
+            output_path="output_dir1",
+            model_name='bert-base-uncased',
+            input_names=list(onnx_config.inputs.keys()),
+            output_names=list(onnx_config.outputs.keys()),
+            dynamic_axes={name: axes for name, axes in chain(onnx_config.inputs.items(), onnx_config.outputs.items())}
+)

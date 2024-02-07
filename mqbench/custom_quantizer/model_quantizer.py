@@ -225,6 +225,8 @@ class ModelQuantizer(object):
         node_need_to_quantize_output = []
         g2node = getitem2node(model)
         for node in nodes:
+            if node.name=="bert_encoder_layer_11_output_layer_norm":
+                node_need_to_quantize_output.append(node)
             if ((node.op == "call_module" and node.target in self.exclude_module_name) or
                 ((node.op == 'call_function' or node.op == 'call_method') and
                  node.target in self.exclude_function_type) or
@@ -242,7 +244,7 @@ class ModelQuantizer(object):
                 if not all([isinstance(_node, torch.fx.node.Node) for _node in input_node_list]):
                     continue
                 for _node in input_node_list:
-                    if _node.target in ["type_as","long","to","expand"] or _node.name in ['arange','pixel_values'] or _node.target in [operator.mod,operator.floordiv]:#,"expand","to","long"]:
+                    if _node.target in ["type_as","long"] or _node.name in ['arange','pixel_values'] or _node.target in [operator.mod,operator.floordiv]:#,"expand","to","long"]:
                         continue
                     if _node.op == 'call_function' and 'getitem' in _node.name:
                         if _node.args[0].target=="size":
