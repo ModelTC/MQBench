@@ -17,13 +17,10 @@ from mqbench.utils.registry import (
     register_deploy_function
 )
 from mqbench.deploy import (
-    remove_fakequantize_and_collect_params_nnie,
     remove_fakequantize_and_collect_params,
     remove_fakequantize_and_collect_params_tf,
     remove_fakequantize_and_collect_params_flt,
-    replace_fakequantize_and_collect_params_openvino,
     remove_fakequantize_and_collect_params_sophgo,
-    ONNXQLinearPass, ONNXQNNPass
 )
 
 from mqbench.fake_quantize import (

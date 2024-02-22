@@ -261,5 +261,6 @@ net_type = 'Transformer'
 convert_deploy(model_prepared,
             net_type,
             dummy_input=(dict(batch_X1),),
-            model_name='bert-base-uncased-mqbench'
+            output_path="./",
+            model_name='bert-base-uncased'
             )

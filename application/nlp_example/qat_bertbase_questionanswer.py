@@ -510,7 +510,7 @@ net_type = 'Transformer'
 convert_deploy(model_prepared,
             net_type,
             dummy_input=(export_inputs,),
-            output_path="output_dir1",
+            output_path="./",
             model_name='bert-base-uncased',
             input_names=list(onnx_config.inputs.keys()),
             output_names=list(onnx_config.outputs.keys()),
