@@ -356,85 +356,47 @@ def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name,
 @register_deploy_function("CNN")
 def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, quant_type_dict, **kwargs):
     logger.info("Extract qparams for sophgo_tpu.")
-    quant_values_list = list(quant_type_dict.values())
-    quant_mode = "INT8"
-    if 'FP8' in quant_values_list:
-        quant_mode = "FP8"
     cali_mode = "sophgo_tpu"
-    if quant_mode == "FP8":
-        remove_fakequantize_and_collect_params_flt(onnx_model_path, model_name, backend='sophgo_tpu')
-        print("导出calitable")
-        output_path = osp.dirname(onnx_model_path)
-        context_filename = osp.join(output_path, '{}_clip_ranges.json'.format(model_name))
-        file_h = open(context_filename, "r")
-        blob_range = json.loads(file_h.read())[cali_mode+"_Float"]
-        file_h.close()
-        cali_table = osp.join(output_path, '{}_float_cali_table_from_mqbench_sophgo_tpu'.format(model_name))
-        fp8_header = "mqbench-fp8"
-        with open(cali_table, 'w') as f:
-            f.write(f"# work_mode:{fp8_header} #Automatically generated, do not modify, work_mode choice:[E4ME_RNE, E5M2_RNE]\n")
-            f.write("#       op_name        threshold        min        max\n")
-            weight_scale_fp8 = []
-            for name,value in blob_range.items():
-                if 'threshold' in value:
-                    tmpstr = "{}     {:.7f}     {:.7f}     {:.7f}\n".format(name[:-2], value['threshold'], value['min'], value['max'])
-                    if name.endswith('_fp8'):
-                        f.write(tmpstr)
-                    else:
-                        f.write("{}     {:.7f}     {:.7f}     {:.7f}\n".format(name, value['threshold'], value['min'], value['max']))
+    remove_fakequantize_and_collect_params_sophgo(onnx_model_path, model_name, quant_type_dict)
+    print("导出calitable")
+    output_path = osp.dirname(onnx_model_path)
+    context_filename = osp.join(output_path, '{}_clip_ranges.json'.format(model_name))
+    file_h = open(context_filename, "r")
+    blob_range = json.loads(file_h.read())["sophgo_tpu"]
+    file_h.close()
+    cali_table = osp.join(output_path, '{}_cali_table_from_mqbench_sophgo_tpu'.format(model_name))
+    work_mode = kwargs.get('work_mode', 'QAT_all_int8')
+    if work_mode not in  ['QAT_all_int8', 'int4_and_int8_mix', 'int4_and_int8_mix_no_fc']:
+        print('QAT_all_int8 not in [QAT_all_int8, int4_and_int8_mix, int4_and_int8_mix_no_fc],set to QAT_all_int8')
+        work_mode = 'QAT_all_int8'
+    with open(cali_table, 'w') as f:
+        f.write(f"# work_mode:{work_mode} #Automatically generated, do not modify, work_mode choice:[QAT_all_int8, int4_and_int8_mix, int4_and_int8_mix_no_fc]\n")
+        f.write("# op_name    threshold    min    max\n")
+        weight_scale = []
+        int4_th = []
+        for name,value in blob_range.items():
+            if 'threshold' in value:
+                tmpstr = "{} {:.7f} {:.7f} {:.7f}\n".format(name[:-2], value['threshold'], value['min'], value['max'])
+                if name.endswith('_4'):
+                    int4_th.append(tmpstr)
+                elif name.endswith('_8'):
+                    f.write(tmpstr)
                 else:
-                    tmpstr = "{} {} {} {} {}\n".format(name, len(value['step']), ' '.join([str(i) for i in value['step']]), 
-                            len(value['zero_point']), ' '.join([str(i) for i in value['zero_point']]))
-                    if name.endswith('_weight_fp8') or name.endswith('_bias_fp8'):
-                        weight_scale_fp8.append(tmpstr)
-                    else:
-                        f.write(tmpstr)
-            f.write('#weight_scale_fp8\n')
-            for i in weight_scale_fp8:
-                f.write(i)
-        cali_mode_new = cali_mode + "_Float"
-        export_qtable(context_filename, model_name, output_path, cali_mode_new)
-    else:
-        remove_fakequantize_and_collect_params_sophgo(onnx_model_path, model_name, quant_type_dict)
-        print("导出calitable")
-        output_path = osp.dirname(onnx_model_path)
-        context_filename = osp.join(output_path, '{}_clip_ranges.json'.format(model_name))
-        file_h = open(context_filename, "r")
-        blob_range = json.loads(file_h.read())["sophgo_tpu"]
-        file_h.close()
-        cali_table = osp.join(output_path, '{}_cali_table_from_mqbench_sophgo_tpu'.format(model_name))
-        work_mode = kwargs.get('work_mode', 'QAT_all_int8')
-        if work_mode not in  ['QAT_all_int8', 'int4_and_int8_mix', 'int4_and_int8_mix_no_fc']:
-            print('QAT_all_int8 not in [QAT_all_int8, int4_and_int8_mix, int4_and_int8_mix_no_fc],set to QAT_all_int8')
-            work_mode = 'QAT_all_int8'
-        with open(cali_table, 'w') as f:
-            f.write(f"# work_mode:{work_mode} #Automatically generated, do not modify, work_mode choice:[QAT_all_int8, int4_and_int8_mix, int4_and_int8_mix_no_fc]\n")
-            f.write("# op_name    threshold    min    max\n")
-            weight_scale = []
-            int4_th = []
-            for name,value in blob_range.items():
-                if 'threshold' in value:
-                    tmpstr = "{} {:.7f} {:.7f} {:.7f}\n".format(name[:-2], value['threshold'], value['min'], value['max'])
-                    if name.endswith('_4'):
-                        int4_th.append(tmpstr)
-                    elif name.endswith('_8'):
-                        f.write(tmpstr)
-                    else:
-                        f.write("{} {:.7f} {:.7f} {:.7f}\n".format(name, value['threshold'], value['min'], value['max']))
+                    f.write("{} {:.7f} {:.7f} {:.7f}\n".format(name, value['threshold'], value['min'], value['max']))
+            else:
+                tmpstr = "{} {} {} {} {}\n".format(name, len(value['step']), ' '.join([str(i) for i in value['step']]),
+                        len(value['zero_point']), ' '.join([str(i) for i in value['zero_point']]))
+                if name.endswith('_weight') or name.endswith('_bias'):
+                    weight_scale.append(tmpstr)
                 else:
-                    tmpstr = "{} {} {} {} {}\n".format(name, len(value['step']), ' '.join([str(i) for i in value['step']]), 
-                            len(value['zero_point']), ' '.join([str(i) for i in value['zero_point']]))
-                    if name.endswith('_weight') or name.endswith('_bias'):
-                        weight_scale.append(tmpstr)
-                    else:
-                        f.write(tmpstr)
-            f.write('#int4_th\n')
-            for i in int4_th:
-                f.write(i)
-            f.write('#weight_scale\n')
-            for i in weight_scale:
-                f.write(i)
-        export_qtable(context_filename, model_name, output_path, cali_mode)
+                    f.write(tmpstr)
+        f.write('#int4_th\n')
+        for i in int4_th:
+            f.write(i)
+        f.write('#weight_scale\n')
+        for i in weight_scale:
+            f.write(i)
+    export_qtable(context_filename, model_name, output_path, cali_mode)
 
 def get_quant_type_from_fakequant_type(model: GraphModule):
     r"""

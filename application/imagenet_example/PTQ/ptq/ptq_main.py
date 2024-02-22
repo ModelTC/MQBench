@@ -46,7 +46,8 @@ parser.add_argument('--quantize_type', metavar='DIR',
 parser.add_argument('--deploy', action='store_true')
 parser.add_argument('--cpu', action='store_true',
                     help='use cpu to quant')
-parser.add_argument('--fp8', action='store_true')
+parser.add_argument('--fp8_e5m2', action='store_true')
+parser.add_argument('--fp8_e4m3', action='store_true')
 
 def load_calibrate_data(train_loader, cali_batchsize):
     cali_data = []
@@ -66,13 +67,27 @@ def get_quantize_model(model, args):
                        },
     }
 
-    if args.fp8:
+    if args.fp8_e4m3:
+        extra_prepare_dict["extra_qconfig_dict"] = {
+                                'w_observer': 'MinMaxObserver',
+                                'a_observer': 'EMAMinMaxObserver',
+                                "w_fakequantize": 'E4M3FakeQuantize',
+                                "a_fakequantize": 'E4M3FakeQuantize',
+                                'w_qscheme': {  'bit': 8,
+                                                'symmetry': True,
+                                                'per_channel': False,
+                                                'pot_scale': False },
+                                'a_qscheme': {  'bit': 8,
+                                                'symmetry': True,
+                                                'per_channel': False,
+                                                'pot_scale': False }
+                            }
+    if args.fp8_e5m2:
         extra_prepare_dict["extra_qconfig_dict"] = {
                                 'w_observer': 'MinMaxObserver',
                                 'a_observer': 'EMAMinMaxObserver',
                                 "w_fakequantize": 'E5M2FakeQuantize',
                                 "a_fakequantize": 'E5M2FakeQuantize',
-                                # "a_fakequantize": 'LearnableFakeQuantize',
                                 'w_qscheme': {  'bit': 8,
                                                 'symmetry': True,
                                                 'per_channel': False,
@@ -130,8 +145,10 @@ def main():
     # set output path
     if args.output_path is None:
         args.output_path = './'
-    if args.fp8:
-        args.output_path=os.path.join(args.output_path, args.arch+'_fp8')
+    if args.fp8_e4m3:
+        args.output_path=os.path.join(args.output_path, args.arch+'_fp8_e4m3')
+    elif args.fp8_e5m2:
+        args.output_path=os.path.join(args.output_path, args.arch+'_fp8_e5m2')
     else:
         args.output_path=os.path.join(args.output_path, args.arch)
     os.system('mkdir -p {}'.format(args.output_path))

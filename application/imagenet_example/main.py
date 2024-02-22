@@ -98,7 +98,8 @@ parser.add_argument('--fast_test', action='store_true')
 parser.add_argument('--cpu', action='store_true')
 parser.add_argument('--pre_eval_and_export', action='store_true')
 parser.add_argument('--deploy_batch_size', default=1, type=int, help='deploy_batch_size.')
-parser.add_argument('--fp8', action='store_true')
+parser.add_argument('--fp8_e4m3', action='store_true')
+parser.add_argument('--fp8_e5m2', action='store_true')
 parser.add_argument('--export_onnx_before_training', action='store_true')
 
 best_acc1 = 0
@@ -109,8 +110,10 @@ def main():
 
     if args.output_path is None:
         args.output_path = './'
-    if args.fp8:
-        args.output_path=os.path.join(args.output_path, args.arch+'_fp8')
+    if args.fp8_e4m3:
+        args.output_path=os.path.join(args.output_path, args.arch+'_fp8_e4m3')
+    elif args.fp8_e5m2:
+        args.output_path=os.path.join(args.output_path, args.arch+'_fp8_e5m2')
     else:
         args.output_path=os.path.join(args.output_path, args.arch)
     os.system('mkdir -p {}'.format(args.output_path))
@@ -216,12 +219,12 @@ def main_worker(gpu, ngpus_per_node, args):
                         'strategy': 'CNN',
                        },
         }
-        if args.fp8:
+        if args.fp8_e4m3:
             extra_prepare_dict["extra_qconfig_dict"] = {
                                     'w_observer': 'MinMaxObserver',
                                     'a_observer': 'EMAMinMaxObserver',
-                                    "w_fakequantize": "E5M2FakeQuantize",
-                                    "a_fakequantize": "LearnableFakeQuantize",
+                                    "w_fakequantize": 'E4M3FakeQuantize',
+                                    "a_fakequantize": 'E4M3FakeQuantize',
                                     'w_qscheme': {  'bit': 8,
                                                     'symmetry': True,
                                                     'per_channel': False,
@@ -231,6 +234,22 @@ def main_worker(gpu, ngpus_per_node, args):
                                                     'per_channel': False,
                                                     'pot_scale': False }
                                 }
+        if args.fp8_e5m2:
+            extra_prepare_dict["extra_qconfig_dict"] = {
+                                    'w_observer': 'MinMaxObserver',
+                                    'a_observer': 'EMAMinMaxObserver',
+                                    "w_fakequantize": "E5M2FakeQuantize",
+                                    "a_fakequantize": 'E5M2FakeQuantize',
+                                    'w_qscheme': {  'bit': 8,
+                                                    'symmetry': True,
+                                                    'per_channel': False,
+                                                    'pot_scale': False },
+                                    'a_qscheme': {  'bit': 8,
+                                                    'symmetry': True,
+                                                    'per_channel': False,
+                                                    'pot_scale': False }
+                                }
+
         if "mobilenet_v3" in args.arch:
             extra_prepare_dict["extra_quantizer_dict"] = {'module_only_enable_observer': [
                                                                     'features.0.0.weight_fake_quant',
