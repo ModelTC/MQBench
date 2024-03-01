@@ -11,9 +11,9 @@ import argparse
 from data.imagenet import load_data
 from models import load_model
 from utils import parse_config, seed_all, evaluate
-from mqbench.prepare_by_platform import prepare_by_platform
-from mqbench.advanced_ptq import ptq_reconstruction
-from mqbench.convert_deploy import convert_deploy
+from sophgo_mq.prepare_by_platform import prepare_by_platform
+from sophgo_mq.advanced_ptq import ptq_reconstruction
+from sophgo_mq.convert_deploy import convert_deploy
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -183,7 +183,7 @@ def main():
     if args.quantize_type == 'advanced_ptq':
         print('begin calibration now!')
         cali_data = load_calibrate_data(train_loader, cali_batchsize=args.cali_batch_num)
-        from mqbench.utils.state import enable_quantization, enable_calibration_woquantization
+        from sophgo_mq.utils.state import enable_quantization, enable_calibration_woquantization
         # do activation and weight calibration seperately for quick MSE per-channel for weight one
         model.eval()
         import torch
@@ -210,7 +210,7 @@ def main():
     elif args.quantize_type == 'naive_ptq':
         print('begin calibration now!')
         cali_data = load_calibrate_data(train_loader, cali_batchsize=args.cali_batch_num)
-        from mqbench.utils.state import enable_quantization, enable_calibration
+        from sophgo_mq.utils.state import enable_quantization, enable_calibration
         model.eval()
         enable_calibration(model)
         for batch in cali_data:

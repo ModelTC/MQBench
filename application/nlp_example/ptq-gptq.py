@@ -19,11 +19,11 @@ from transformers import (
 from transformers.utils.fx import HFTracer
 from transformers.onnx.features import FeaturesManager
 from itertools import chain
-from mqbench.prepare_by_platform import prepare_by_platform, BackendType
-from mqbench.convert_deploy import convert_deploy, convert_onnx
-from mqbench.utils.state import enable_quantization, enable_calibration_woquantization, enable_calibration
+from sophgo_mq.prepare_by_platform import prepare_by_platform, BackendType
+from sophgo_mq.convert_deploy import convert_deploy, convert_onnx
+from sophgo_mq.utils.state import enable_quantization, enable_calibration_woquantization, enable_calibration
 import re
-from mqbench.fake_quantize import global_var
+from sophgo_mq.fake_quantize import global_var
 import copy
 
 backends = {

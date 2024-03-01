@@ -25,9 +25,9 @@ import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
-from mqbench.convert_deploy import convert_deploy, convert_onnx, export_onnx_with_fakequant_node
-from mqbench.prepare_by_platform import prepare_by_platform
-from mqbench.utils.state import enable_calibration, enable_quantization, disable_all
+from sophgo_mq.convert_deploy import convert_deploy, convert_onnx, export_onnx_with_fakequant_node
+from sophgo_mq.prepare_by_platform import prepare_by_platform
+from sophgo_mq.utils.state import enable_calibration, enable_quantization, disable_all
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
@@ -376,7 +376,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
         if args.evaluate:
             print('resume模型精度')
-            from mqbench.convert_deploy import convert_merge_bn
+            from sophgo_mq.convert_deploy import convert_merge_bn
             module_tmp2 = copy.deepcopy(model)
             convert_merge_bn(module_tmp2.eval())
             validate(val_loader, module_tmp2, criterion, args)

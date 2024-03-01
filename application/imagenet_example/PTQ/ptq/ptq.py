@@ -3,9 +3,9 @@ import argparse
 from data.imagenet import load_data
 from models import load_model
 from utils import parse_config, seed_all, evaluate
-from mqbench.prepare_by_platform import prepare_by_platform, BackendType
-from mqbench.advanced_ptq import ptq_reconstruction
-from mqbench.convert_deploy import convert_deploy
+from sophgo_mq.prepare_by_platform import prepare_by_platform, BackendType
+from sophgo_mq.advanced_ptq import ptq_reconstruction
+from sophgo_mq.convert_deploy import convert_deploy
 
 backend_dict = {
     'Academic': BackendType.Academic,
@@ -70,7 +70,7 @@ if __name__ == '__main__':
     elif config.quantize.quantize_type == 'advanced_ptq':
         print('begin calibration now!')
         cali_data = load_calibrate_data(train_loader, cali_batchsize=config.quantize.cali_batchsize)
-        from mqbench.utils.state import enable_quantization, enable_calibration_woquantization
+        from sophgo_mq.utils.state import enable_quantization, enable_calibration_woquantization
         # do activation and weight calibration seperately for quick MSE per-channel for weight one
         model.eval()
         import torch
@@ -91,7 +91,7 @@ if __name__ == '__main__':
     elif config.quantize.quantize_type == 'naive_ptq':
         print('begin calibration now!')
         cali_data = load_calibrate_data(train_loader, cali_batchsize=config.quantize.cali_batchsize)
-        from mqbench.utils.state import enable_quantization, enable_calibration_woquantization
+        from sophgo_mq.utils.state import enable_quantization, enable_calibration_woquantization
         # do activation and weight calibration seperately for quick MSE per-channel for weight one
         model.eval()
         enable_calibration_woquantization(model, quantizer_type='act_fake_quant')

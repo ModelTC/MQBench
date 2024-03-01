@@ -30,9 +30,9 @@ import torch.nn as nn
 import yaml
 from torch.optim import lr_scheduler
 from tqdm import tqdm
-from mqbench.convert_deploy import convert_deploy, convert_onnx
-from mqbench.prepare_by_platform import prepare_by_platform
-from mqbench.utils.state import enable_calibration, enable_quantization, disable_all
+from sophgo_mq.convert_deploy import convert_deploy, convert_onnx
+from sophgo_mq.prepare_by_platform import prepare_by_platform
+from sophgo_mq.utils.state import enable_calibration, enable_quantization, disable_all
 
 
 FILE = Path(__file__).resolve()

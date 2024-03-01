@@ -15,9 +15,9 @@ from transformers.utils.fx import HFTracer
 from transformers.onnx.features import FeaturesManager
 from datasets import load_dataset
 import torch.optim as optim
-from mqbench.convert_deploy import convert_deploy, convert_onnx
-from mqbench.prepare_by_platform import prepare_by_platform
-from mqbench.utils.state import enable_calibration, enable_quantization, disable_all
+from sophgo_mq.convert_deploy import convert_deploy, convert_onnx
+from sophgo_mq.prepare_by_platform import prepare_by_platform
+from sophgo_mq.utils.state import enable_calibration, enable_quantization, disable_all
 from transformers import logging
 import matplotlib.pyplot as plt
 import torch.onnx 

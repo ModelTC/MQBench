@@ -2,8 +2,8 @@ import inspect
 import unittest
 from itertools import chain
 
-from mqbench.prepare_by_platform import prepare_by_platform, BackendType
-from mqbench.convert_deploy import convert_deploy
+from sophgo_mq.prepare_by_platform import prepare_by_platform, BackendType
+from sophgo_mq.convert_deploy import convert_deploy
 
 
 class TestQuantizeNLPModel(unittest.TestCase):

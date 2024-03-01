@@ -33,11 +33,11 @@ from transformers.onnx.features import FeaturesManager
 from datasets import load_dataset,load_metric
 import torch.optim as optim
 # from mqbench.convert_deploy import convert_deploy, convert_onnx
-from mqbench.prepare_by_platform1 import prepare_by_platform
-from mqbench.utils.state import enable_calibration, enable_quantization, disable_all,enable_only_observer
+from sophgo_mq.prepare_by_platform1 import prepare_by_platform
+from sophgo_mq.utils.state import enable_calibration, enable_quantization, disable_all,enable_only_observer
 from transformers import logging
 import torch.onnx 
-from mqbench.utils.logger import logger
+from sophgo_mq.utils.logger import logger
 import os
 import collections
 import torch.nn.functional as F
@@ -51,10 +51,10 @@ from transformers import BertTokenizer, BertModel
 from transformers.utils.fx import HFTracer
 from deepspeed.module_inject import HFBertLayerPolicy
 import deepspeed
-from mqbench.fake_quantize import global_var
+from sophgo_mq.fake_quantize import global_var
 import copy
 import ipdb
-from mqbench.fake_quantize import global_var
+from sophgo_mq.fake_quantize import global_var
 parser = argparse.ArgumentParser(description='MQBench LLM')
 
 parser.add_argument('--epochs', default=1, type=int, metavar='N', 

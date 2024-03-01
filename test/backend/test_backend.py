@@ -1,9 +1,9 @@
 import torch
 import unittest
 
-from mqbench.prepare_by_platform import prepare_by_platform, BackendType
-from mqbench.convert_deploy import convert_deploy
-from mqbench.utils.state import enable_calibration, enable_quantization
+from sophgo_mq.prepare_by_platform import prepare_by_platform, BackendType
+from sophgo_mq.convert_deploy import convert_deploy
+from sophgo_mq.utils.state import enable_calibration, enable_quantization
 
 from .test_model.unet import UNet
 from ..version import GITHUB_RES

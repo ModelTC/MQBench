@@ -31,9 +31,9 @@ from transformers import default_data_collator
 from transformers.onnx.features import FeaturesManager
 from datasets import load_dataset,load_metric
 import torch.optim as optim
-from mqbench.convert_deploy import convert_deploy, convert_onnx
-from mqbench.prepare_by_platform import prepare_by_platform, BackendType
-from mqbench.utils.state import enable_calibration, enable_quantization, disable_all
+from sophgo_mq.convert_deploy import convert_deploy, convert_onnx
+from sophgo_mq.prepare_by_platform import prepare_by_platform, BackendType
+from sophgo_mq.utils.state import enable_calibration, enable_quantization, disable_all
 from transformers import logging
 import torch.onnx 
 import logging

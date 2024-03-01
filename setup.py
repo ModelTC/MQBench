@@ -1,7 +1,7 @@
 import os
 import torch
 import setuptools
-from mqbench import __version__
+from sophgo_mq import __version__
 from torch.utils.cpp_extension import BuildExtension, CppExtension
 
 
@@ -31,9 +31,9 @@ if torch.cuda.is_available():
 cmdclass['build_ext'] = BuildExtension
 
 setuptools.setup(
-    name="MQBench",
+    name="sophgo_mq",
     version=__version__,
-    author="The Great Cold",
+    author="Sophgo Technology",
     author_email="",
     description=("Quantization aware training."),
     ext_modules=ext_modules,

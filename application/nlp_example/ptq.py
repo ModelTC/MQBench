@@ -19,9 +19,9 @@ from transformers import (
 from transformers.utils.fx import HFTracer
 from transformers.onnx.features import FeaturesManager
 from itertools import chain
-from mqbench.prepare_by_platform import prepare_by_platform
-from mqbench.convert_deploy import convert_deploy
-from mqbench.utils.state import enable_quantization, enable_calibration_woquantization
+from sophgo_mq.prepare_by_platform import prepare_by_platform
+from sophgo_mq.convert_deploy import convert_deploy
+from sophgo_mq.utils.state import enable_quantization, enable_calibration_woquantization
 
 
 logger = logging.getLogger("transformer")
