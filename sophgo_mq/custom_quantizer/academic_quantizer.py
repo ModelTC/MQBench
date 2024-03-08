@@ -1,8 +1,5 @@
 import copy
-from collections import OrderedDict
 from typing import List
-
-
 import torch
 from torch.fx import GraphModule
 from torch.quantization import propagate_qconfig_
@@ -13,8 +10,6 @@ from sophgo_mq.utils.logger import logger
 from sophgo_mq.utils.registry import register_model_quantizer
 from sophgo_mq.custom_quantizer import ModelQuantizer
 
-
-@register_model_quantizer("Academic")
 class AcademicQuantizer(ModelQuantizer):
     """Academic setting mostly do not merge BN and leave the first and last layer to higher bits.
     """
