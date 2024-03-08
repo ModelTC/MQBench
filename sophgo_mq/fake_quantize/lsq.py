@@ -122,7 +122,7 @@ class FakeQuantizeLearnablePerchannelAffine(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, x, scale, zero_point, ch_axis, quant_min, quant_max, grad_factor):
-        output = g.op("MQBench_custom::FakeQuantizeLearnablePerchannelAffine", x, scale, zero_point, quant_min_i=quant_min, quant_max_i=quant_max)
+        output = g.op("Sophgo_custom::FakeQuantizeLearnablePerchannelAffine", x, scale, zero_point, quant_min_i=quant_min, quant_max_i=quant_max)
 
         input_shape = symbolic_helper._get_tensor_sizes(x)
         if input_shape is not None and hasattr(x.type(), 'with_sizes'):

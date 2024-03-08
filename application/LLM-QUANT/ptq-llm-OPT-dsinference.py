@@ -55,7 +55,7 @@ from sophgo_mq.fake_quantize import global_var
 import copy
 import ipdb
 
-parser = argparse.ArgumentParser(description='MQBench LLM')
+parser = argparse.ArgumentParser(description='sophgo_mq LLM')
 
 parser.add_argument('--epochs', default=1, type=int, metavar='N', 
                     help='number of total epochs to run')

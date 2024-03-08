@@ -75,7 +75,7 @@ class FPEmuOp_cuda_per_tensor(Function):
     @staticmethod
     def symbolic(g, input, mode='NONE', inplace=False, scale=torch.tensor([1.0]), zero_point=torch.tensor([0.0]), quant_min=float(1.5258789E-05), quant_max=float(57344.0), blocknorm=False, blocksize=1):
 
-        output = g.op("MQBench_custom::FPEmuOp_per_tensor", input, scale, zero_point, quant_min_f=quant_min, quant_max_f=quant_max)
+        output = g.op("Sophgo_custom::FPEmuOp_per_tensor", input, scale, zero_point, quant_min_f=quant_min, quant_max_f=quant_max)
 
         input_shape = symbolic_helper._get_tensor_sizes(input)
         if input_shape is not None and hasattr(input.type(), 'with_sizes'):
@@ -158,7 +158,7 @@ class FPEmuOp_cuda_per_channel(Function):
 
     @staticmethod
     def symbolic(g, input, mode='NONE', inplace=False, scale=torch.tensor([1.0]), zero_point=torch.tensor([0.0]), quant_min=float(1.5258789E-05), quant_max=float(57344.0), blocknorm=False, blocksize=1):
-        output = g.op("MQBench_custom::FPEmuOp_per_channel", input, scale, zero_point, quant_min_f=quant_min, quant_max_f=quant_max)
+        output = g.op("Sophgo_custom::FPEmuOp_per_channel", input, scale, zero_point, quant_min_f=quant_min, quant_max_f=quant_max)
 
         input_shape = symbolic_helper._get_tensor_sizes(input)
         if input_shape is not None and hasattr(input.type(), 'with_sizes'):

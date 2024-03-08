@@ -27,7 +27,7 @@ jobs:
         "
         pwd
         ls
-        pip show MQBench
+        pip show sophgo_mq
         python setup.py install
         cd test
         bash run_test_demo.sh

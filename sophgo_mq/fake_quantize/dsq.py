@@ -84,7 +84,7 @@ class FakeQuantizeDSQPerchannel(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, x, scale, zero_point, quant_min, quant_max, ch_axis, alpha):
-        output = g.op("MQBench_custom::FakeQuantizeDSQPerchannel", x, scale, zero_point, quant_min_i=quant_min, quant_max_i=quant_max, alpha_f=alpha)
+        output = g.op("Sophgo_custom::FakeQuantizeDSQPerchannel", x, scale, zero_point, quant_min_i=quant_min, quant_max_i=quant_max, alpha_f=alpha)
 
         input_shape = symbolic_helper._get_tensor_sizes(x)
         if input_shape is not None and hasattr(x.type(), 'with_sizes'):
@@ -100,7 +100,7 @@ class FakeQuantizeDSQPertensor(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, x, scale, zero_point, quant_min, quant_max, alpha):
-        output = g.op("MQBench_custom::FakeQuantizeDSQPertensor", x, scale, zero_point, quant_min_i=quant_min, quant_max_i=quant_max, alpha_f=alpha)
+        output = g.op("Sophgo_custom::FakeQuantizeDSQPertensor", x, scale, zero_point, quant_min_i=quant_min, quant_max_i=quant_max, alpha_f=alpha)
 
         input_shape = symbolic_helper._get_tensor_sizes(x)
         if input_shape is not None and hasattr(x.type(), 'with_sizes'):

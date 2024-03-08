@@ -32,7 +32,7 @@ from transformers import BertTokenizer, BertModel
 from transformers.utils.fx import HFTracer
 from transformers import Trainer, TrainingArguments, PreTrainedModel
 
-parser = argparse.ArgumentParser(description='MQBench bertbase Training')
+parser = argparse.ArgumentParser(description='sophgo_mq bertbase Training')
 
 parser.add_argument('--epochs', default=2, type=int, metavar='N',
                     help='number of total epochs to run')
@@ -496,7 +496,7 @@ print("**************************************************")
 # convert_deploy(model_prepared,
 #             BackendType.Academic_NLP,
 #             dummy_input=((dict(X)),),
-#             model_name='bert-base-uncased-mqbench-squad'
+#             model_name='bert-base-uncased-sophgo_mq-squad'
 #             ) 
 
 model_kind, model_onnx_config = FeaturesManager.check_supported_model_or_raise(model_prepared, feature='default')

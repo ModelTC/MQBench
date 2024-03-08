@@ -223,7 +223,7 @@ def main(config_path):
     
     if hasattr(config, 'quant'):
         model = quantize_model(model, config.quant)
-        print("MQBench Model:")
+        print("sophgo_mq Model:")
         print(model)
 
     def compute_metrics(p: EvalPrediction):
@@ -327,16 +327,16 @@ def main(config_path):
     # kwargs = {
     #     'input_shape_dict': {'input_ids': [1, 128], 'token_type_ids': [1, 128], 'attention_mask': [1, 128]},
     #     'output_path': './',
-    #     'model_name':  'mqbench_model_gptq',
+    #     'model_name':  'sophgo_mq_model_gptq',
     #     'dummy_input': export_inputs, 
-    #     'onnx_model_path':  './mqbench_model_gptq.onnx',
+    #     'onnx_model_path':  './sophgo_mq_model_gptq.onnx',
     # }
     # convert_onnx(model, **kwargs)
 
     convert_deploy(model,
                 backends[config.quant.backend],
                 dummy_input=(export_inputs,),
-                model_name='mqbench_model_gptq',
+                model_name='sophgo_mq_model_gptq',
                 input_names=list(onnx_config.inputs.keys()),
                 output_names=list(onnx_config.outputs.keys()),
                 dynamic_axes={name: axes for name, axes in chain(onnx_config.inputs.items(), onnx_config.outputs.items())}
@@ -349,6 +349,6 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='configuration',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--config', default='/home/zhang/Projects/quantization/MQBench/application/nlp_example/config-gptq.yaml', type=str)
+    parser.add_argument('--config', default='/home/zhang/Projects/quantization/sophgo_mq/application/nlp_example/config-gptq.yaml', type=str)
     args = parser.parse_args()
     main(args.config)

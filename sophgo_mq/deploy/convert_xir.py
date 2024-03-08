@@ -1022,4 +1022,4 @@ if __name__ == '__main__':
     qmodel = onnx.load(args.qmodel)
     cmodel = onnx.load(args.cmodel)
     xir_compiler.do_compile(qmodel, cmodel, args.name)
-    print('MQBench has converted the model into xmodel.')
+    print('sophgo_mq has converted the model into xmodel.')

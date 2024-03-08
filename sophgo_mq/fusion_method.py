@@ -341,7 +341,7 @@ def convert_qnniqat_deconvbnrelu(model, fused_node):
 
 @register_convert_function(qnniqat.ConvBn2d)
 def convert_qnniqat_convbn(model, fused_node):
-    """mqbench.nn.intrinsic.qat module add bias quant.
+    """sophgo_mq.nn.intrinsic.qat module add bias quant.
     That is the difference between torch.nn.intrinsic.qat module.
     """
     modules = dict(model.named_modules())
@@ -370,7 +370,7 @@ def convert_qnniqat_convbn(model, fused_node):
 
 @register_convert_function(qnniqat.ConvBnReLU2d)
 def convert_qnniqat_convbnrelu(model, fused_node):
-    """mqbench.nn.intrinsic.qat module add bias quant.
+    """sophgo_mq.nn.intrinsic.qat module add bias quant.
     That is the difference between torch.nn.intrinsic.qat module.
     """
     convert_qnniqat_convbn(model, fused_node)

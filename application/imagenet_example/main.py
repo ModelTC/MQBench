@@ -383,7 +383,7 @@ def main_worker(gpu, ngpus_per_node, args):
             del module_tmp2
             gen_test_ref_data(cali_loader, model, args)
             convert_deploy(model.eval(), args.chip, input_shape_dict={'data': [args.deploy_batch_size, 3, 224, 224]}, 
-                model_name='{}_mqmoble'.format(args.arch), output_path=args.output_path)
+                model_name='{}'.format(args.arch), output_path=args.output_path)
         exit(0)
 
     if args.fast_test:
@@ -411,7 +411,7 @@ def main_worker(gpu, ngpus_per_node, args):
     net_type = 'CNN'
     convert_deploy(model.eval(), net_type, input_shape_dict=
         {'data': [args.deploy_batch_size, 3, 224, 224]}, 
-        model_name='{}_mqmoble'.format(args.arch), 
+        model_name='{}'.format(args.arch), 
         output_path=args.output_path)
 
 def prepare_dataloader(args):
@@ -632,7 +632,7 @@ def validate(val_loader, model, criterion, args):
 def validate_onnx(criterion, args):
     import onnxruntime as rt
     val_loader = prepare_dataloader_batch(args, args.deploy_batch_size)
-    model_path = os.path.join(args.output_path, '{}_deploy_model.onnx'.format('{}_mqmoble'.format(args.arch)))
+    model_path = os.path.join(args.output_path, '{}_deploy_model.onnx'.format('{}'.format(args.arch)))
     sess = rt.InferenceSession(model_path, providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'])
     input_name = sess.get_inputs()[0].name
 

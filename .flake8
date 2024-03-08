@@ -15,4 +15,4 @@ ignore =
     W292 
 per-file-ignores = __init__.py: F401
 
-exclude = application, test, mqbench/tools/proto/ppl_caffe_pb2.py
+exclude = application, test, sophgo_mq/tools/proto/ppl_caffe_pb2.py

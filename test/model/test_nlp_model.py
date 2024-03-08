@@ -56,7 +56,7 @@ class TestQuantizeNLPModel(unittest.TestCase):
         convert_deploy(quantized_model,
                     BackendType.Academic_NLP,
                     dummy_input=(dict(encoded_input),),
-                    model_name='bert-base-uncased-mqbench',
+                    model_name='bert-base-uncased-sophgo_mq',
                     input_names=list(encoded_input.keys()),
                     output_names=list(onnx_config.outputs.keys()),
                     dynamic_axes={name: axes for name, axes in chain(onnx_config.inputs.items(), onnx_config.outputs.items())}

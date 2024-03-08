@@ -264,7 +264,7 @@ def main(config_path):
         model,
         backends[config.quant.backend],
         dummy_input=(export_inputs,),
-        model_name='mqbench_model',
+        model_name='sophgo_mq_model',
         input_names=list(onnx_config.inputs.keys()),
         output_names=list(onnx_config.outputs.keys()),
         dynamic_axes={name: axes for name, axes in chain(onnx_config.inputs.items(), onnx_config.outputs.items())}

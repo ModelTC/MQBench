@@ -49,7 +49,7 @@ from transformers import GPT2Tokenizer, GPT2LMHeadModel, AdamW, get_linear_sched
 from transformers import BertTokenizer, BertModel
 from transformers.utils.fx import HFTracer
 
-parser = argparse.ArgumentParser(description='MQBench gpt2 Training')
+parser = argparse.ArgumentParser(description='sophgo_mq gpt2 Training')
 
 parser.add_argument('--epochs', default=3, type=int, metavar='N',
                     help='number of total epochs to run')

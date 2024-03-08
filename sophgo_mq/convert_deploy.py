@@ -107,7 +107,7 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
                                 opset_version=opset_version,
                                 dynamic_axes=dynamic_axes,
                                 do_constant_folding=True,
-                                custom_opsets={'MQBench_custom' : opset_version})
+                                custom_opsets={'Sophgo_custom' : opset_version})
             except ONNXCheckerError:
                 pass
         except ImportError:
@@ -117,7 +117,7 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
                                 output_names=output_names,
                                 opset_version=opset_version,
                                 do_constant_folding=True,
-                                custom_opsets={'MQBench_custom' : opset_version})
+                                custom_opsets={'Sophgo_custom' : opset_version})
             tmp_model = onnx.load(onnx_model_path)
             simplified_model, check = simplify(tmp_model)
             onnx.save_model(simplified_model, onnx_model_path)
@@ -173,7 +173,7 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
                                     opset_version=opset_version,
                                     dynamic_axes=dynamic_axes,
                                     do_constant_folding=True,
-                                    custom_opsets={'MQBench_custom' : opset_version})
+                                    custom_opsets={'Sophgo_custom' : opset_version})
                 except ONNXCheckerError:
                     pass
             except ImportError:
@@ -183,7 +183,7 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
                                     output_names=output_names,
                                     opset_version=opset_version,
                                     do_constant_folding=True,
-                                    custom_opsets={'MQBench_custom' : opset_version})
+                                    custom_opsets={'Sophgo_custom' : opset_version})
                 tmp_model = onnx.load(onnx_model_path)
                 simplified_model, check = simplify(tmp_model)
                 onnx.save_model(simplified_model, onnx_model_path)
@@ -200,9 +200,9 @@ def export_qtable_tf(context_filename, model_name, output_path, quant_mode):
         file_h = open(context_filename, "r")
         blob_range = json.loads(file_h.read())[quant_mode]
         file_h.close()
-        q_table = osp.join(output_path, '{}_q_table_from_mqbench_{}'.format(model_name, quant_mode))
+        q_table = osp.join(output_path, '{}_q_table_from_sophgo_mq_{}'.format(model_name, quant_mode))
         with open(q_table, 'w') as f:
-            f.write("# qtable from MQBench\n")
+            f.write("# qtable from sophgo_mq\n")
             f.write("# op_name  quantize_mode\n") # match the colnames of qtable in tpu-mlir
             for name,value in blob_range.items():
                 if 'quant_type' in value:
@@ -237,9 +237,9 @@ def export_qtable(context_filename, model_name, output_path, quant_mode):
         file_h = open(context_filename, "r")
         blob_range = json.loads(file_h.read())[quant_mode]
         file_h.close()
-        q_table = osp.join(output_path, '{}_q_table_from_mqbench_{}'.format(model_name, quant_mode))
+        q_table = osp.join(output_path, '{}_q_table_from_sophgo_mq_{}'.format(model_name, quant_mode))
         with open(q_table, 'w') as f:
-            f.write("# qtable from MQBench\n")
+            f.write("# qtable from sophgo_mq\n")
             f.write("# op_name  quantize_mode\n") # match the colnames of qtable in tpu-mlir
             for name,value in blob_range.items():
                 if 'quant_type' in value:
@@ -282,8 +282,8 @@ def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name,
         file_h = open(context_filename, "r")
         blob_range = json.loads(file_h.read())[cali_mode+"_Float"]
         file_h.close()
-        cali_table = osp.join(output_path, '{}_float_cali_table_from_mqbench_Academic_NLP'.format(model_name))
-        fp8_header = "mqbench-fp8"
+        cali_table = osp.join(output_path, '{}_float_cali_table_from_sophgo_mq_Academic_NLP'.format(model_name))
+        fp8_header = "sophgo_mq-fp8"
         with open(cali_table, 'w') as f:
             f.write(f"# work_mode:{fp8_header} #Automatically generated, do not modify, work_mode choice:[E4M3_RNE, E5M2_RNE]\n")
             f.write("#       op_name        threshold        min        max\n")
@@ -316,7 +316,7 @@ def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name,
         file_h = open(context_filename, "r")
         blob_range = json.loads(file_h.read())["Academic_NLP"]
         file_h.close()
-        cali_table = osp.join(output_path, '{}_cali_table_from_mqbench_Academic_NLP'.format(model_name))
+        cali_table = osp.join(output_path, '{}_cali_table_from_sophgo_mq_Academic_NLP'.format(model_name))
         work_mode = kwargs.get('work_mode', 'QAT_all_int8')
         if work_mode not in  ['QAT_all_int8', 'int4_and_int8_mix', 'int4_and_int8_mix_no_fc']:
             print('QAT_all_int8 not in [QAT_all_int8, int4_and_int8_mix, int4_and_int8_mix_no_fc],set to QAT_all_int8')
@@ -361,7 +361,7 @@ def deploy_qparams_sophgo_tpu(model: GraphModule, onnx_model_path, model_name, q
     file_h = open(context_filename, "r")
     blob_range = json.loads(file_h.read())["sophgo_tpu"]
     file_h.close()
-    cali_table = osp.join(output_path, '{}_cali_table_from_mqbench_sophgo_tpu'.format(model_name))
+    cali_table = osp.join(output_path, '{}_cali_table_from_sophgo_mq_sophgo_tpu'.format(model_name))
     work_mode = kwargs.get('work_mode', 'QAT_all_int8')
     if work_mode not in  ['QAT_all_int8', 'int4_and_int8_mix', 'int4_and_int8_mix_no_fc']:
         print('QAT_all_int8 not in [QAT_all_int8, int4_and_int8_mix, int4_and_int8_mix_no_fc],set to QAT_all_int8')
@@ -428,7 +428,7 @@ def get_quant_type_from_fakequant_type(model: GraphModule):
 
 def convert_deploy(model: GraphModule, net_type='CNN',
                    input_shape_dict=None, dummy_input=None, output_path='./',
-                   model_name='mqbench_qmodel', deploy_to_qlinear=False, **extra_kwargs):
+                   model_name='sophgo_mq_qmodel', deploy_to_qlinear=False, **extra_kwargs):
     r"""Convert model to onnx model and quantization params depends on backend.
 
     Args:
@@ -437,7 +437,7 @@ def convert_deploy(model: GraphModule, net_type='CNN',
         input_shape_dict (dict): keys are model input name(should be forward function
                                  params name, values are list of tensor dims)
         output_path (str, optional): path to save convert results. Defaults to './'.
-        model_name (str, optional): name of converted onnx model. Defaults to 'mqbench_qmodel'.
+        model_name (str, optional): name of converted onnx model. Defaults to 'sophgo_mq_qmodel'.
 
     >>> note on input_shape_dict:
         example: {'input_0': [1, 3, 224, 224]
@@ -464,7 +464,7 @@ def convert_deploy(model: GraphModule, net_type='CNN',
 
 def export_onnx_with_fakequant_node(model: GraphModule, net_type='CNN',
                    input_shape_dict=None, dummy_input=None, output_path='./',
-                   model_name='mqbench_qmodel', deploy_to_qlinear=False, **extra_kwargs):
+                   model_name='sophgo_mq_qmodel', deploy_to_qlinear=False, **extra_kwargs):
     r"""Convert GraphModule with fakequant node to onnx
 
     Args:
@@ -473,7 +473,7 @@ def export_onnx_with_fakequant_node(model: GraphModule, net_type='CNN',
         input_shape_dict (dict): keys are model input name(should be forward function
                                  params name, values are list of tensor dims)
         output_path (str, optional): path to save convert results. Defaults to './'.
-        model_name (str, optional): name of converted onnx model. Defaults to 'mqbench_qmodel'.
+        model_name (str, optional): name of converted onnx model. Defaults to 'sophgo_mq_qmodel'.
 
     >>> note on input_shape_dict:
         example: {'input_0': [1, 3, 224, 224]

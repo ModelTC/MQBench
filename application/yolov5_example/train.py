@@ -486,7 +486,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
             model2 = deepcopy(model)
             net_type = 'CNN'
             convert_deploy(model2.eval(), net_type, input_shape_dict={'data': [1, 3, opt.imgsz, opt.imgsz]},
-                model_name='{}_mqmoble'.format(model_name), output_path=output_dir)
+                model_name='{}'.format(model_name), output_path=output_dir)
             del model2
                 
         # end epoch ----------------------------------------------------------------------------------------------------
@@ -524,7 +524,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
         os.system('mkdir -p {}'.format(output_dir))
         net_type = 'CNN'
         convert_deploy(model.eval(), net_type, input_shape_dict={'data': [1, 3, opt.imgsz, opt.imgsz]},
-            model_name='{}_mqmoble'.format(model_name), output_path=output_dir)
+            model_name='{}'.format(model_name), output_path=output_dir)
 
     torch.cuda.empty_cache()
     return results

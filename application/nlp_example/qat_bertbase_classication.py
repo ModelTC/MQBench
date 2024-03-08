@@ -22,7 +22,7 @@ from transformers import logging
 import matplotlib.pyplot as plt
 import torch.onnx 
 
-parser = argparse.ArgumentParser(description='MQBench bertbase Training')
+parser = argparse.ArgumentParser(description='sophgo_mq bertbase Training')
 
 parser.add_argument('--epochs', default=1, type=int, metavar='N',
                     help='number of total epochs to run')

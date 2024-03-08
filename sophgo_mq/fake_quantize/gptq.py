@@ -92,7 +92,7 @@ def quantize(x, scale, zero, maxq):
 
 class GPTQFakeQuantize(QuantizeBase):
     '''
-    This is gptq method mqbench version.
+    This is gptq method sophgo_mq version.
     '''
 
     def __init__(self,observer, **observer_kwargs):

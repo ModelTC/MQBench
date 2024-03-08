@@ -32,7 +32,6 @@ from transformers import default_data_collator
 from transformers.onnx.features import FeaturesManager
 from datasets import load_dataset,load_metric
 import torch.optim as optim
-# from mqbench.convert_deploy import convert_deploy, convert_onnx
 from sophgo_mq.prepare_by_platform1 import prepare_by_platform
 from sophgo_mq.utils.state import enable_calibration, enable_quantization, disable_all,enable_only_observer
 from transformers import logging
@@ -55,7 +54,7 @@ from sophgo_mq.fake_quantize import global_var
 import copy
 import ipdb
 from sophgo_mq.fake_quantize import global_var
-parser = argparse.ArgumentParser(description='MQBench LLM')
+parser = argparse.ArgumentParser(description='sophgo_mq LLM')
 
 parser.add_argument('--epochs', default=1, type=int, metavar='N', 
                     help='number of total epochs to run')

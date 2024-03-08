@@ -32,7 +32,7 @@ jobs:
     - name: Install Protobuf
       run:
         conda install protobuf=3.20.1
-    - name: Install MQBench
+    - name: Install sophgo_mq
       run: |
         python setup.py develop
     - name: Test with pytest

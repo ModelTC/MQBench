@@ -14,7 +14,7 @@ from typing import TypeVar
 
 import sophgo_mq.nn.qat as qnnqat
 import torch.nn.qat.modules as nnqat
-# from mqbench.quantization.default_bias_fake_quant import bias_fake_quantizer
+# from sophgo_mq.quantization.default_bias_fake_quant import bias_fake_quantizer
 
 _BN_CLASS_MAP = {
     1: nn.BatchNorm1d,

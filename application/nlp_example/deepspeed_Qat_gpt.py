@@ -357,7 +357,7 @@ def main(args):
     print("量化模型PPL:{}".format(avg_ppl2))
 
 def add_argument():
-    parser = argparse.ArgumentParser(description='MQBench gpt2 Training')
+    parser = argparse.ArgumentParser(description='sophgo_mq gpt2 Training')
 
     parser.add_argument('--epochs', default=1, type=int, metavar='N',
                         help='number of total epochs to run')

@@ -394,8 +394,8 @@ class FloatQuantizer_process(object):
                     f.write('{}: {}\n'.format(k, v))
         if backend == 'vitis':
             logger.info(f"To finish xmodel converting process, call \
-                $ mqbench.deploy.convert_xir -Q {onnx_filename} -C {onnx_path} -N <name> \
-                    in the mqbench docker built from Dockerfile")
+                $ sophgo_mq.deploy.convert_xir -Q {onnx_filename} -C {onnx_path} -N <name> \
+                    in the sophgo_mq docker built from Dockerfile")
         logger.info("Finish deploy process.")
 
 
