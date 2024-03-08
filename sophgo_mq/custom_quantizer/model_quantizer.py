@@ -66,6 +66,86 @@ class ModelQuantizer(object):
         if self.quantmode=="weight_activation":
             model = self._insert_fake_quantize_for_act_quant(model, qconfig)
         return model
+    
+    def prepare_swint(self, model: GraphModule, qconfig):
+        model = _fuse_fx(model, self.extra_fuse_dict)
+        model = self._weight_quant(model, qconfig)
+        if self.quantmode=="weight_activation":
+            model = self._insert_fake_quantize_for_act_quant_swint(model, qconfig)
+        return model    
+    
+    def _insert_fake_quantize_for_act_quant_swint(
+            self,
+            model: GraphModule,
+            qconfig: Any):
+        graph = model.graph
+        nodes = list(model.graph.nodes)
+        quantizer_prefix = "_post_act_fake_quantizer"
+        node_to_quantize_output = self._find_act_quants_swint(model, qconfig)
+        node_to_quantize_output = OrderedDict.fromkeys(node_to_quantize_output).keys()
+        qconfig1 = qconfig['']
+        qconfig2 = {}
+
+        if 'module_name' in qconfig:
+            qconfig2 = qconfig['module_name']    
+        for node in node_to_quantize_output:
+            quantizer_name = node.name + quantizer_prefix
+            if quantizer_name in qconfig2:
+                fake_quantizer = qconfig2[str(quantizer_name)].activation()
+            else:
+                fake_quantizer = qconfig1.activation()
+            setattr(model, quantizer_name, fake_quantizer)
+            logger.info("Insert act quant {}".format(quantizer_name))
+            with graph.inserting_after(node):
+                inserted_node = graph.create_node("call_module", quantizer_name, (node,), {})
+                for _node in nodes:
+                    _node.args = self._fix_succ_recursivly(_node.args, node, inserted_node)
+        model.recompile()
+        model.graph.lint()
+        return model
+    
+    def _find_act_quants_swint(self, model: GraphModule, qconfig) -> List:
+        nodes = list(model.graph.nodes)
+        modules = dict(model.named_modules())
+        node_need_to_quantize_output = []
+        g2node = getitem2node(model)
+        for node in nodes:
+            if "matmul" in node.name:
+                node_need_to_quantize_output.append(node)
+            if ((node.op == "call_module" and node.target in self.exclude_module_name) or
+                ((node.op == 'call_function' or node.op == 'call_method') and
+                    node.target in self.exclude_function_type) or
+                    node.name in self.exclude_node_name) and node.name not in self.additional_node_name:
+                logger.info("Exclude skip: {}".format(node.name))
+                continue
+            if (node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_input)) or \
+                ((node.op == 'call_function' or node.op == 'call_method') and
+                    node.target in self.function_type_to_quant_input) or node.name in self.additional_node_name:
+                input_node_list = self._flatten_args(node.all_input_nodes)
+                # Means this is not Tensor + Tensor.
+                if not all([isinstance(_node, torch.fx.node.Node) for _node in input_node_list]):
+                    continue
+                for _node in input_node_list:
+                    if self._is_implicit_merge(modules, (node, _node)):
+                        logger.info("Implicit merge: {} + {}".format(_node.name, node.name))
+                        continue
+                    if _node.op == "placeholder" and 'tensor_meta' in node.meta:
+                        if len(_node.meta['tensor_meta'].shape) == 1:
+                            continue
+                    if _node in node_need_to_quantize_output:
+                        continue
+                    if _node in g2node:
+                        _node = g2node[_node]
+                    node_need_to_quantize_output.append(_node)
+        if "module_name" in qconfig:
+            additional_nodes = qconfig["module_name"]
+            additional_nodes_list = [str(node) for node in additional_nodes.keys()]
+            for _node in nodes:
+                _quantizer_name = _node.name + '_post_act_fake_quantizer'
+                if _quantizer_name in additional_nodes_list:
+                    node_need_to_quantize_output.append(_node)
+                    continue
+        return node_need_to_quantize_output
 
     def _insert_fake_quantize_for_act_quant(
             self,

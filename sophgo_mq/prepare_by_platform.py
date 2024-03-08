@@ -28,7 +28,9 @@ from sophgo_mq.fake_quantize import (
     FP4FakeQuantize,
     GPTQFP4FakeQuantize,
     FP4GROUPFakeQuantize,
-    FP4GROUPFakeQuantize1
+    FP4GROUPFakeQuantize1,
+    Fp16FakeQuantize,
+    BF16FakeQuantize
 )
 from sophgo_mq.observer import (
     ClipStdObserver,
@@ -111,7 +113,9 @@ FakeQuantizeDict = {
     'FP4FakeQuantize':       FP4FakeQuantize,
     'GPTQFP4FakeQuantize':   GPTQFP4FakeQuantize,
     'FP4GROUPFakeQuantize':  FP4GROUPFakeQuantize,
-    'FP4GROUPFakeQuantize1': FP4GROUPFakeQuantize1
+    'FP4GROUPFakeQuantize1': FP4GROUPFakeQuantize1,
+    'Fp16FakeQuantize':      Fp16FakeQuantize,
+    'BF16FakeQuantize':      BF16FakeQuantize,
 }
 
 FakeQuantizeDict_Chip = {
@@ -125,6 +129,8 @@ FakeQuantizeDict_Chip = {
     'QDropFakeQuantize':     QDropFakeQuantize,      # BRECQ & QDrop                # noqa: E241
     'E4M3FakeQuantize':      E4M3FakeQuantize,
     'E5M2FakeQuantize':      E5M2FakeQuantize,
+    'Fp16FakeQuantize':      Fp16FakeQuantize,
+    'BF16FakeQuantize':      BF16FakeQuantize,
 }
 
 def get_qconfig_by_platform(quant_dict:Dict,extra_qparams: Dict):
@@ -166,7 +172,7 @@ def get_qconfig_by_platform(quant_dict:Dict,extra_qparams: Dict):
         chip_params,w_observer,a_observer,w_fakequantize,a_fakequantize=chipparams(chip,extra_qparams,FakeQuantizeDict_Chip)
     elif chip=="SG2260":
         chip_params,w_observer,a_observer,w_fakequantize,a_fakequantize=chipparams(chip,extra_qparams,FakeQuantizeDict_Chip)
-    elif chip=="academic":
+    elif chip=="Academic":
         chip_params,w_observer,a_observer,w_fakequantize,a_fakequantize=chipparams(chip,extra_qparams,FakeQuantizeDict)
     else:
         logger.info("The chip is currently not supported")
@@ -275,6 +281,88 @@ def get_qconfig_by_platform(quant_dict:Dict,extra_qparams: Dict):
             else:
                 raise ValueError(f'无效的模式: {mode}。模式应该是 "activation" 或 "weight"。')
 
+    # Find INT4 op and set the config:
+    int4_cfg = extra_qparams.get('int4_op', None)
+    if int4_cfg:
+        if "module_name" not in qconfig:
+            qconfig["module_name"] = {}
+        w_fakequantize = 'LearnableFakeQuantize'
+        a_fakequantize = 'LearnableFakeQuantize'
+        w_observer = 'MinMaxObserver'
+        a_observer = 'EMAMinMaxObserver'
+        w_qscheme = {
+            'bit': 4,
+            'symmetry': True,
+            'per_channel': False,
+            'pot_scale': False
+        }
+        a_qscheme = {
+            'bit': 4,
+            'symmetry': True,
+            'per_channel': False,
+            'pot_scale': False
+        }
+        int4_qconfig = createQConfig(w_fakequantize=w_fakequantize,
+                                        a_fakequantize=a_fakequantize,
+                                        w_qscheme=w_qscheme, a_qscheme=a_qscheme)
+        for name in int4_cfg:
+            print('insert INT4 FakeQuantize::', name)
+            qconfig['module_name'][name] = int4_qconfig
+
+    # Find INT8 op and set the config:
+    int8_cfg = extra_qparams.get('int8_op', None)
+    if int8_cfg:
+        if "module_name" not in qconfig:
+            qconfig["module_name"] = {}
+        w_fakequantize = 'LearnableFakeQuantize'
+        a_fakequantize = 'LearnableFakeQuantize'
+        w_observer = 'MinMaxObserver'
+        a_observer = 'EMAMinMaxObserver'
+        w_qscheme = {
+            'bit': 8,
+            'symmetry': True,
+            'per_channel': False,
+            'pot_scale': False
+        }
+        a_qscheme = {
+            'bit': 8,
+            'symmetry': True,
+            'per_channel': False,
+            'pot_scale': False
+        }
+        int8_qconfig = createQConfig(w_fakequantize=w_fakequantize,
+                                        a_fakequantize=a_fakequantize,
+                                        w_qscheme=w_qscheme, a_qscheme=a_qscheme)
+        for name in int8_cfg:
+            print('insert INT8 FakeQuantize::', name)
+            qconfig['module_name'][name] = int8_qconfig
+
+    # Find F16 op and set the config
+    f16_cfg = extra_qparams.get('f16_op', None)
+    if f16_cfg:
+        if "module_name" not in qconfig:
+            qconfig["module_name"] = {}
+        w_fakequantize = 'Fp16FakeQuantize'
+        a_fakequantize = 'Fp16FakeQuantize'
+        w_observer = 'MinMaxObserver'
+        a_observer = 'EMAMinMaxObserver'
+        w_qscheme = {
+            'bit': 16,
+            'symmetry': True,
+            'per_channel': False,
+            'pot_scale': False
+        }
+        a_qscheme = {
+            'bit': 16,
+            'symmetry': True,
+            'per_channel': False,
+            'pot_scale': False
+        }    
+        f16_qconfig = createQConfig(w_fakequantize=w_fakequantize, a_fakequantize=a_fakequantize, 
+                                    w_qscheme=w_qscheme, a_qscheme=a_qscheme)    
+        for name in f16_cfg:
+            print('insert F16 FakeQuantize::', name)
+            qconfig["module_name"][name] = f16_qconfig
     return qconfig
 
 def chipparams(chip,extra_qparams,FakeQuantize):
@@ -496,7 +584,10 @@ def prepare_by_platform(
     import sophgo_mq.custom_quantizer  # noqa: F401
     extra_quantizer_dict = prepare_custom_config_dict.get('extra_quantizer_dict', {})
     quantizer = DEFAULT_MODEL_QUANTIZER[chip](extra_quantizer_dict, extra_fuse_dict,quant_dict)
-    prepared = quantizer.prepare(graph_module, qconfig)
+    if chip == "Academic":
+        prepared = quantizer.prepare_swint(graph_module, qconfig)
+    else:
+        prepared = quantizer.prepare(graph_module, qconfig)
     # Restore attr.
     if 'preserve_attr' in prepare_custom_config_dict:
         for submodule_name in prepare_custom_config_dict['preserve_attr']:
