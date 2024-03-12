@@ -105,18 +105,7 @@ def quantize_model(model, config_quant):
                 'pot_scale': False,
             },
             'int4_op': [
-                'swin_encoder_layers_0_blocks_0_attention_self_dropout_post_act_fake_quantizer', 'permute_2_post_act_fake_quantizer',
-                'swin_encoder_layers_0_blocks_1_attention_self_dropout_post_act_fake_quantizer', 'permute_10_post_act_fake_quantizer',
-                'swin_encoder_layers_1_blocks_0_attention_self_dropout_post_act_fake_quantizer', 'permute_17_post_act_fake_quantizer',
-                'swin_encoder_layers_1_blocks_1_attention_self_dropout_post_act_fake_quantizer', 'permute_25_post_act_fake_quantizer',
-                'swin_encoder_layers_2_blocks_0_attention_self_dropout_post_act_fake_quantizer', 'permute_32_post_act_fake_quantizer',
-                'swin_encoder_layers_2_blocks_1_attention_self_dropout_post_act_fake_quantizer', 'permute_40_post_act_fake_quantizer',
-                'swin_encoder_layers_2_blocks_2_attention_self_dropout_post_act_fake_quantizer', 'permute_47_post_act_fake_quantizer',
-                'swin_encoder_layers_2_blocks_3_attention_self_dropout_post_act_fake_quantizer', 'permute_55_post_act_fake_quantizer',
-                'swin_encoder_layers_2_blocks_4_attention_self_dropout_post_act_fake_quantizer', 'permute_62_post_act_fake_quantizer',
-                'swin_encoder_layers_2_blocks_5_attention_self_dropout_post_act_fake_quantizer', 'permute_70_post_act_fake_quantizer',
-                'swin_encoder_layers_3_blocks_0_attention_self_dropout_post_act_fake_quantizer', 'permute_77_post_act_fake_quantizer',
-                'swin_encoder_layers_3_blocks_1_attention_self_dropout_post_act_fake_quantizer', 'permute_84_post_act_fake_quantizer',
+ 
             ],
         },
         'concrete_args': get_concrete_args(model, input_names),
@@ -144,48 +133,75 @@ def calibrate(cali_loader, model):
     return
 
 def train_loop(dataloader, model, loss_fn, optimizer, lr_scheduler, epoch, total_loss):
-    progress_bar = tqdm(range(len(dataloader)))
-    progress_bar.set_description(f'loss: {0:>7f}')
-    finish_batch_num = (epoch-1)*len(dataloader)
+    batch_time = AverageMeter('Time', ':6.3f')
+    data_time = AverageMeter('Data', ':6.3f')
+    losses = AverageMeter('Loss', ':.4e')
+    top1 = AverageMeter('Acc@1', ':6.2f')
+    top5 = AverageMeter('Acc@5', ':6.2f')
+    progress = ProgressMeter(
+        len(dataloader),
+        [batch_time, data_time, losses, top1, top5],
+        prefix="Epoch: [{}]".format(epoch))
     
     model.cuda()
     model.train()
+
+    end = time.time()
     for batch, (images, target) in enumerate(dataloader, start=1):
+        data_time.update(time.time() - end)
         images, target = images.to(device), target.to(device)
         pred = model(images)
         loss = loss_fn(pred['logits'], target)
 
+        acc1, acc5 = accuracy(pred['logits'], target, topk=(1, 5))
+        losses.update(loss.item(), images.size(0))
+        top1.update(acc1[0], images.size(0))
+        top5.update(acc5[0], images.size(0))
+
         optimizer.zero_grad()
         loss.backward()
-        optimizer.step()
         lr_scheduler.step()
-
         total_loss += loss.item()
-        progress_bar.set_description(f'loss: {total_loss/(finish_batch_num + batch):>7f}')
-        progress_bar.update(1)
-        #losses.append(loss.item())
-        #print(f"Epoch [{epoch+1}/{epochs}], Loss: {loss.item()}")
-    return total_loss #losses
+
+        batch_time.update(time.time() - end)
+        end = time.time()
+
+        if batch % 1000 == 0:
+            progress.display(batch)
+
+    return total_loss
 
 def test_loop(dataloader, model, loss_fn, mode='Test'):
-    assert mode in ['Valid', 'Test']
+    batch_time = AverageMeter('Time', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')
     top5 = AverageMeter('Acc@5', ':6.2f')
-
-    model.cuda()
+    progress = ProgressMeter(
+        len(dataloader),
+        [batch_time, losses, top1, top5],
+        prefix='Test: ')    
+    
     model.eval()
     with torch.no_grad():
-        for i, (images, target) in enumerate(dataloader):
+        end = time.time()
+        for batch, (images, target) in enumerate(dataloader, start=1):
             images, target = images.to(device), target.to(device)
             pred = model(images)
             loss = loss_fn(pred['logits'], target)
-            acc1, acc5 = accuracy(pred['logits'], target, topk=(1,5))
+
+            acc1, acc5 = accuracy(pred['logits'], target, topk=(1, 5))
             losses.update(loss.item(), images.size(0))
             top1.update(acc1[0], images.size(0))
             top5.update(acc5[0], images.size(0))
+
+            batch_time.update(time.time() - end)
+            end = time.time()
+
+            if batch % 1000 == 0:
+                progress.display(batch)
         print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
             .format(top1=top1, top5=top5))
+        
     return top1.avg
 
 def accuracy(output, target, topk=(1,)):
