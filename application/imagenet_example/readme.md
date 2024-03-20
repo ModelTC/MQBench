@@ -1,4 +1,4 @@
-# MQBench Example with ImageNet
+# Sophgo-mq Example with ImageNet
 
 We follow the PyTorch [official example][https://github.com/pytorch/examples/tree/master/imagenet] to build the example of Model Quantization Benchmark for ImageNet classification task.
 
@@ -9,33 +9,6 @@ We follow the PyTorch [official example][https://github.com/pytorch/examples/tre
 - Download the ImageNet dataset from http://www.image-net.org/.
   - Then, and move validation images to labeled subfolders, using [the following shell script](https://raw.githubusercontent.com/soumith/imagenetloader.torch/master/valprep.sh).
 - Install TensorRT==7.2.1.6 https://developer.nvidia.com/tensorrt.
-
-## How to do QAT  with MQBench.
-
-```
-import torchvision.models as models
-from mqbench.convert_deploy import convert_deploy
-from mqbench.prepare_by_platform import prepare_by_platform, BackendType
-from mqbench.utils.state import enable_calibration, enable_quantization
-
-# first, initialize the FP32 model with pretrained parameters.
-model = models.__dict__[args.arch](pretrained=True)
-
-# then, we will trace the original model using torch.fx and \
-# insert fake quantize nodes according to different hardware backends.  
-model = prepare_by_platform(model, BackendType.Tensorrt)
-
-# before training, we recommend to do calibration and disable observer, but it is not necessary.
-enable_calibration(model)
-calibrate(cali_loader, model, args)
-enable_quantization(model)
-
-# training loop
-train(model.train())
-
-# deploy model, remove fake quantize nodes and dump quantization params like clip ranges.
-convert_deploy(model.eval(), BackendType.Tensorrt, input_shape_dict={'data': [10, 3, 224, 224]})
-```
 
 ## Usage
 
@@ -52,7 +25,7 @@ convert_deploy(model.eval(), BackendType.Tensorrt, input_shape_dict={'data': [10
   - [model_name] = resnet18 / resnet50 / mobilenet_v2 / ...
 
     ```
-    git clone https://github.com/TheGreatCold/MQBench.git
+    git clone https://github.com/sophgo/sophgo-mq.git
     cd application/imagenet_example
     python main.py -a [model_name] --epochs 1 --lr 1e-4 --b 128 --pretrained
     ```
@@ -80,7 +53,7 @@ convert_deploy(model.eval(), BackendType.Tensorrt, input_shape_dict={'data': [10
 
 ## Results
 
-| Model            | accuracy@fp32              | accuracy@int8<br>TensoRT Calibration | accuracy@int8<br/>MQBench QAT | accuracy@int8<br/>TensorRT SetRange |
+| Model            | accuracy@fp32              | accuracy@int8<br>TensoRT Calibration | accuracy@int8<br/>Sophgo-mq QAT | accuracy@int8<br/>TensorRT SetRange |
 | :--------------- | :------------------------- | :----------------------------------- | :---------------------------- | :---------------------------------- |
 | **ResNet18**     | Acc@1 69.758  Acc@5 89.078 | Acc@1 69.612 Acc@5 88.980            | Acc@1 69.912 Acc@5 89.150     | Acc@1 69.904 Acc@5 89.182           |
 | **ResNet50**     | Acc@1 76.130 Acc@5 92.862  | Acc@1 76.074 Acc@5 92.892            | Acc@1 76.114 Acc@5 92.946     | Acc@1 76.320 Acc@5 93.006           |

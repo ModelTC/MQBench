@@ -1,4 +1,4 @@
-# MQBench Example with ImageNet
+# Sophgo-mq Example with ImageNet
 
 We follow the Huggingface [official example](https://github.com/huggingface/transformers/blob/main/examples/pytorch/image-classification) to build the example of Model Quantization Benchmark for image classification task.
 
@@ -38,7 +38,7 @@ We follow the Huggingface [official example](https://github.com/huggingface/tran
   
   Steps:
     ```
-    git clone https://github.com/ModelTC/MQBench.git
+    git clone https://github.com/sophgo/sophgo-mq.git
     cd application/vit_example
     sh run.sh
     ```

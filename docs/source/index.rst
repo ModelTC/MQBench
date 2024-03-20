@@ -1,25 +1,37 @@
-.. MQBench documentation master file, created by
-   sphinx-quickstart on Mon Aug  9 15:27:41 2021.
+.. test documentation master file, created by
+   sphinx-quickstart on Mon Mar 18 15:23:43 2024.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to MQBench's documentation!
-===================================
+.. Welcome to test's documentation!
+.. ================================
+
+.. .. toctree::
+..    :maxdepth: 2
+..    :caption: Contents:
+
+
+
+.. Indices and tables
+.. ==================
+
+.. * :ref:`genindex`
+.. * :ref:`modindex`
+.. * :ref:`search`
+
+Welcome to sophgo-mq documentation!
+====================================================
 
 .. toctree::
-   :maxdepth: 2
+   :glob:
+   :maxdepth: 3
    :caption: Contents:
+   :name: mastertoc
+   :numbered:
 
-   get_started/index
-   user_guide/index
-   developer_guide/index
-   benchmark/index
-   api_reference/index
-
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+   00_introdution
+   01_env_config
+   02_quickstart
+   03_fine_grained_control
+   04_alternative_precision_formats
+   05_supported_cases

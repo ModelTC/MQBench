@@ -1,4 +1,4 @@
-# MQBench Example with Glue
+# Sophgo-mq Example with Glue
 
 We follow the Huggingface [official example][https://github.com/huggingface/transformers/tree/main/examples/pytorch/text-classification] to build the example of Model Quantization Benchmark for text classification task.
 
@@ -35,7 +35,7 @@ We follow the Huggingface [official example][https://github.com/huggingface/tran
   
   Steps:
     ```
-    git clone https://github.com/ModelTC/MQBench.git
+    git clone https://github.com/sophgo/sophgo-mq.git
     cd application/nlp_example
     sh run.sh 运行INT类型NLP PTQ
     sh run-fp8.sh 运行FP8 NLP PTQ
