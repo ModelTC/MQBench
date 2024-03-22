@@ -27,14 +27,14 @@ parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     help='model architecture: ' +
                         ' | '.join(model_names) +
                         ' (default: resnet18)')
-parser.add_argument('-b', '--batch-size', default=64, type=int,
+parser.add_argument('-b', '--batch_size', default=64, type=int,
                     metavar='N',
                     help='mini-batch size (default: 64), this is the total '
                          'batch size of all GPUs on the current node when '
                          'using Data Parallel or Distributed Data Parallel')
 parser.add_argument('--chip', type=str, choices=['A2', 'BM1684X', 'SG2260', 'academic'], default='SG2260')
 parser.add_argument('--quantmode', type=str, choices=['weight_activation', 'weight_only'], default='weight_activation')
-parser.add_argument('--cali-batch-num', default=16, type=int,
+parser.add_argument('--cali_batch_num', default=16, type=int,
                     metavar='N', help='set calibration batch num (default: 16)')
 parser.add_argument('--output_path', type=str, default=None)
 parser.add_argument('--seed', default=None, type=int,

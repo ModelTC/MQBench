@@ -538,7 +538,7 @@ def parse_opt(known=False):
     parser.add_argument('--data', type=str, default=ROOT / 'data/coco128.yaml', help='dataset.yaml path')
     parser.add_argument('--hyp', type=str, default=ROOT / 'data/hyps/hyp.scratch-low.yaml', help='hyperparameters path')
     parser.add_argument('--epochs', type=int, default=300)
-    parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs, -1 for autobatch')
+    parser.add_argument('--batch_size', type=int, default=16, help='total batch size for all GPUs, -1 for autobatch')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='train, val image size (pixels)')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
     parser.add_argument('--resume', nargs='?', const=True, default=False, help='resume most recent training')
@@ -619,8 +619,8 @@ def main(opt, callbacks=Callbacks()):
         msg = 'is not compatible with YOLOv5 Multi-GPU DDP training'
         assert not opt.image_weights, f'--image-weights {msg}'
         assert not opt.evolve, f'--evolve {msg}'
-        assert opt.batch_size != -1, f'AutoBatch with --batch-size -1 {msg}, please pass a valid --batch-size'
-        assert opt.batch_size % WORLD_SIZE == 0, f'--batch-size {opt.batch_size} must be multiple of WORLD_SIZE'
+        assert opt.batch_size != -1, f'AutoBatch with --batch_size -1 {msg}, please pass a valid --batch_size'
+        assert opt.batch_size % WORLD_SIZE == 0, f'--batch_size {opt.batch_size} must be multiple of WORLD_SIZE'
         assert torch.cuda.device_count() > LOCAL_RANK, 'insufficient CUDA devices for DDP command'
         torch.cuda.set_device(LOCAL_RANK)
         device = torch.device('cuda', LOCAL_RANK)

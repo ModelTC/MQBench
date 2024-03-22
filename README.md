@@ -102,8 +102,8 @@ We support PTQ quantization for common classification models such as ResNet, VGG
 ```Shell
 CUDA_VISIBLE_DEVICES=0 python application/imagenet_example/PTQ/ptq/ptq_main.py \
     --arch=resnet18 \
-    --batch-size=64 \
-    --cali-batch-num=16 \
+    --batch_size=64 \
+    --cali_batch_num=16 \
     --data_path=/home/data/imagenet \
     --chip=SG2260 \
     --quantmode=weight_activation \
@@ -119,7 +119,7 @@ Sophgo-mq supports QAT quantization for common classification models.
 ```Shell
 CUDA_VISIBLE_DEVICES=0 python application/imagenet_example/main.py \
     --arch=resnet18 \
-    --batch-size=128 \
+    --batch_size=128 \
     --lr=1e-4 \
     --epochs=1 \
     --optim=sgd \
@@ -145,7 +145,7 @@ CUDA_VISIBLE_DEVICES=0 python train.py \
     --data=coco.yaml \
     --epochs=5 \
     --output_path=./ \
-    --batch-size=8 \
+    --batch_size=8 \
     --quantize \
 ```
 
