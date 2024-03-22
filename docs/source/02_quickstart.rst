@@ -50,9 +50,9 @@ Define your dataloader and perform forward propagation.
 ---------------------------------------------------------------------------------------------
 
 The function **enable_calibration** serves to enable observer for gathering statistical distribution data of weights or activations, 
-and subsequently compute the quantization information.
+and subsequently computes the quantization information.
 
-The function **enable_quantization** disable observer and enables quantize. 
+The function **enable_quantization** disables observer and enables quantize. 
 When a model performs forward inference, the model's weights and activations will be quantized.
 
 In the following code, we first use the function **enable_calibration** to enable observer, 

@@ -132,12 +132,12 @@ The purpose of the below **extra_quantizer_dict** is to:
 
 - Specify that the fake quantization node named **features.0.0.weight_fake_quant** should only observe and not quantize.
 - Prevent quantization of the weights for **layer3.conv3**, and avoid inserting activation fake quantization node before this module.
-- Avoid inserting activation fake quantization node before the **torch.grelu** function.
+- Avoid inserting activation fake quantization node before the **torch.nn.functional.sigmoid** function.
 
 .. code-block:: python
 
   extra_quantizer_dict = {
                           'module_only_enable_observer': ['features.0.0.weight_fake_quant'],
                           'exclude_module_name': ['layer3.conv3'],
-                          'exclude_function_type': [torch.grelu],
+                          'exclude_function_type': [torch.nn.functional.sigmoid],
                         }
