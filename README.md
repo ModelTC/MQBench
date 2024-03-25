@@ -95,8 +95,26 @@ Let's take the PTQ quantization of ResNet18 as an example.
                     model_name='resnet18')
     ```
 
+## Supported model
+
+Classification model：
+- resnet18
+- vgg11_bn
+- shufflenet_v2_x0_5
+- squeezenet1_1
+- mobilenet_v2
+- mobilenet_v3_small
+
+Object detection model：
+- yolov5
+
+NLP model：
+- bert-base
+
+
 
 ## Usage
+
 ### CV PTQ
 We support PTQ quantization for common classification models such as ResNet, VGG, and MobileNet ...
 ```Shell
