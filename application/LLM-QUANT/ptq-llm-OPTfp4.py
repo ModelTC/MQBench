@@ -464,7 +464,7 @@ input_names =['input_ids','attention_mask']
 concrete_args = {p.name: p.default for p in sig.parameters.values() if p.name not in input_names}
 quant_dict={
     'strategy':"Transformer", # ["Transformer","CNN"]
-    'chip':"A2", #["A2","BM1684X","SG2260","academic"]
+    'chip':"BM1688", #["BM1688","BM1684X","SG2260","academic"]
     'quantmode':"weight_activation"#["weight_only","weight_activation"]
 }
 extra_qconfig_dict={

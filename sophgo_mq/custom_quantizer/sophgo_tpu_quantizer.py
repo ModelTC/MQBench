@@ -18,7 +18,7 @@ from typing import (
 from sophgo_mq.utils import get_flattened_qconfig_dict
 
 
-@register_model_quantizer("A2")
+@register_model_quantizer("BM1688")
 @register_model_quantizer("SG2260")
 @register_model_quantizer("BM1684X")
 class SophgoTpuQuantizer(ModelQuantizer):

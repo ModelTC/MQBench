@@ -54,7 +54,7 @@ import sophgo_mq.nn.intrinsic.qat as qnniqat
 __all__ = ['prepare_by_platform']
 
 ParamsTable = {
-    'A2':                     dict(qtype='affine',
+    'BM1688':                 dict(qtype='affine',
                                  w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8),
                                  a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
                                  default_weight_quantize=E4M3FakeQuantize,
@@ -165,8 +165,8 @@ def get_qconfig_by_platform(quant_dict:Dict,extra_qparams: Dict):
             ]
         }
     """
-    chip=quant_dict['chip'] #["A2","BM1684X","SG2260"]
-    if chip=="A2":
+    chip=quant_dict['chip'] #["BM1688","BM1684X","SG2260"]
+    if chip=="BM1688":
         chip_params,w_observer,a_observer,w_fakequantize,a_fakequantize=chipparams(chip,extra_qparams,FakeQuantizeDict_Chip)
     elif chip=="BM1684X":
         chip_params,w_observer,a_observer,w_fakequantize,a_fakequantize=chipparams(chip,extra_qparams,FakeQuantizeDict_Chip)
@@ -182,7 +182,7 @@ def get_qconfig_by_platform(quant_dict:Dict,extra_qparams: Dict):
     if w_qscheme is None:
         w_qscheme = chip_params['w_qscheme']
     else:
-        if chip=="A2":
+        if chip=="BM1688":
             assert (w_qscheme['bit']==4  or w_qscheme['bit']==8), 'unsupported data type'
         if chip=="BM1684X" or chip=="SG2260":
             assert (w_qscheme['bit']==8), 'unsupported data type'
@@ -192,7 +192,7 @@ def get_qconfig_by_platform(quant_dict:Dict,extra_qparams: Dict):
     if a_qscheme is None:
         a_qscheme = chip_params['a_qscheme']
     else:
-        if chip=="A2":
+        if chip=="BM1688":
             assert (a_qscheme['bit']==4  or a_qscheme['bit']==8),'unsupported data type'
         if chip=="BM1684X" or chip=="SG2260":
             assert (a_qscheme['bit']==8),'unsupported data type'

@@ -173,7 +173,7 @@ extra_qconfig_dict={
         }
 preserve_attr={'': ['config']}
 quant_dict={
-            'chip': 'A2',
+            'chip': 'BM1688',
             'quantmode': 'weight_only',
             'strategy': 'Transformer',
             }
