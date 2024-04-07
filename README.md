@@ -6,13 +6,13 @@
 
 ## Introduction
 
-Sophgo-mq is an open-source model quantization toolkit forked form [MQBench](https://github.com/ModelTC/MQBench). Sophgo-mq has made some customized modifications and added some features based on MQBench.
+SOPHGO-mq is an open-source model quantization toolkit forked form [MQBench](https://github.com/ModelTC/MQBench). SOPHGO-mq has made some customized modifications and added some features based on MQBench.
 
-Sophgo-mq is to provide:
+SOPHGO-mq is to provide:
 
 - **Quantitative Scheme**. Fake quantization nodes are inserted into the PyTorch model, and users can customize the insertion points of the nodes as well as the behavior of the fake quantization nodes. After the model training is completed, the corresponding Onnx file as well as calitable and qtable will be exported.
-- **Useful Algorithms**. Sophgo-mq supports a variety of quantization algorithms, including quantization algorithms for the CV  and NLP fields.
-- **Mixed Precision**. Sophgo-mq supports mixed-precision quantization, which can better ensure the performance of the model after quantization.
+- **Useful Algorithms**. SOPHGO-mq supports a variety of quantization algorithms, including quantization algorithms for the CV  and NLP fields.
+- **Mixed Precision**. SOPHGO-mq supports mixed-precision quantization, which can better ensure the performance of the model after quantization.
 
 
 ## Installation
@@ -133,7 +133,7 @@ CUDA_VISIBLE_DEVICES=0 python application/imagenet_example/PTQ/ptq/ptq_main.py \
 ```
 
 ### CV QAT
-Sophgo-mq supports QAT quantization for common classification models.
+SOPHGO-mq supports QAT quantization for common classification models.
 ```Shell
 CUDA_VISIBLE_DEVICES=0 python application/imagenet_example/main.py \
     --arch=resnet18 \
@@ -153,7 +153,7 @@ CUDA_VISIBLE_DEVICES=0 python application/imagenet_example/main.py \
     --export_onnx_before_training \
     --output_path=./
 ```
-Sophgo-mq also supports QAT quantization for Yolov5.
+SOPHGO-mq also supports QAT quantization for Yolov5.
 ```Shell
 cd ./application/yolov5_example
 export PYTHONPATH=../../:$PYTHONPATH
@@ -168,7 +168,7 @@ CUDA_VISIBLE_DEVICES=0 python train.py \
 ```
 
 ### NLP PTQ
-Sophgo-mq supports PTQ quantization for the BERT model on the MRPC dataset.
+SOPHGO-mq supports PTQ quantization for the BERT model on the MRPC dataset.
 ```Shell
 cd ./application/nlp_example
 export PYTHONPATH=../../:$PYTHONPATH
@@ -177,7 +177,7 @@ python ptq.py --config config.yaml
 
 ### NLP QAT
 
-Sophgo-mq supports QAT quantization for the BERT model on the SQuAD dataset.
+SOPHGO-mq supports QAT quantization for the BERT model on the SQuAD dataset.
 
 ```Shell
 cd ./application/nlp_example

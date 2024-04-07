@@ -33,9 +33,9 @@ cmdclass['build_ext'] = BuildExtension
 setuptools.setup(
     name="sophgo_mq",
     version=__version__,
-    author="Sophgo Technology",
+    author="SOPHGO Technology Co. Ltd.",
     author_email="",
-    description=("Quantization aware training."),
+    description=("PTQ and Quantization aware training for SOPHGO devices."),
     ext_modules=ext_modules,
     cmdclass=cmdclass,
     url="",
