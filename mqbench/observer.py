@@ -55,6 +55,28 @@ class ObserverBase(_ObserverBase):
         return scale, zero_point
 
     @torch.jit.export
+    def _calculate_qparams(
+        self, min_val: torch.Tensor, max_val: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        r"""Calculates the quantization parameters, given min and max
+        value tensors. Works for both per tensor and per channel cases
+
+        Args:
+            min_val: Minimum values per channel
+            max_val: Maximum values per channel
+
+        Returns:
+            scales: Scales tensor of shape (#channels,)
+            zero_points: Zero points tensor of shape (#channels,)
+        """
+        scale, zero_point = super()._calculate_qparams(min_val, max_val)
+        if _version_under_1100:
+            zero_point = zero_point.long()
+        else:
+            zero_point = zero_point.int()
+        return scale, zero_point
+
+    @torch.jit.export
     def _calculate_qmin_qmax(self) -> Tuple[int, int]:
         r"""Calculates actual qmin and qmax based on the quantization range,
         observer datatype and if range is reduced.
