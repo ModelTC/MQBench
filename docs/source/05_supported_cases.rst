@@ -15,7 +15,7 @@ CV model PTQ
       --batch_size=64 \
       --cali_batch_num=16 \
       --data_path=/home/data/imagenet \
-      --chip=SG2260 \
+      --chip=BM1690 \
       --quantmode=weight_activation \
       --seed=1005 \
       --pretrained \
@@ -40,7 +40,7 @@ CV model QAT
       --evaluate \
       --train_data=/home/data/imagenet \
       --val_data=/home/data/imagenet \
-      --chip=SG2260 \
+      --chip=BM1690 \
       --quantmode=weight_activation \
       --deploy_batch_size=10 \
       --pre_eval_and_export \

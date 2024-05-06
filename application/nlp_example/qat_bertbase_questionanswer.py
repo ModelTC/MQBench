@@ -385,7 +385,7 @@ prepare_custom_config_dict = {
             'exclude_module_name':['bert.embeddings.word_embeddings', 'bert.embeddings.token_type_embeddings', 'bert.embeddings.position_embeddings']
     },
     'quant_dict': {
-                    'chip':'SG2260',
+                    'chip':'BM1690',
                     'quantmode': 'weight_activation',
                     'strategy': 'Transformer',
                 },

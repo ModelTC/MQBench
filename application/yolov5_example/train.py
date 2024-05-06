@@ -300,7 +300,7 @@ def train(hyp, opt, device, callbacks):  # hyp is path/to/hyp.yaml or hyp dictio
     if opt.quantize:
         prepare_custom_config_dict= {
             'quant_dict': {
-                            'chip': 'SG2260',
+                            'chip': 'BM1690',
                             'quantmode': 'weight_activation',
                             'strategy': 'CNN',
                         },

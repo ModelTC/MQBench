@@ -16,7 +16,7 @@ model_list_all=[
 # output_path='/path-of-your-dir/'
 output_path='./ptq_test_before_push'
 
-cmd_str = f"--data_path=/sea/data/imagenet/for_train_val --chip=SG2260 --quantmode=weight_activation --seed=1005 --pretrained --quantize_type=naive_ptq --deploy\
+cmd_str = f"--data_path=/sea/data/imagenet/for_train_val --chip=BM1690 --quantmode=weight_activation --seed=1005 --pretrained --quantize_type=naive_ptq --deploy\
            --output_path={output_path}"
 
 def worker(cmd_line):

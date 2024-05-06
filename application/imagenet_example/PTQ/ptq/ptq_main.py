@@ -32,7 +32,7 @@ parser.add_argument('-b', '--batch_size', default=64, type=int,
                     help='mini-batch size (default: 64), this is the total '
                          'batch size of all GPUs on the current node when '
                          'using Data Parallel or Distributed Data Parallel')
-parser.add_argument('--chip', type=str, choices=['BM1688', 'BM1684X', 'SG2260', 'academic'], default='SG2260')
+parser.add_argument('--chip', type=str, choices=['BM1688', 'BM1684X', 'BM1690', 'academic'], default='BM1690')
 parser.add_argument('--quantmode', type=str, choices=['weight_activation', 'weight_only'], default='weight_activation')
 parser.add_argument('--cali_batch_num', default=16, type=int,
                     metavar='N', help='set calibration batch num (default: 16)')

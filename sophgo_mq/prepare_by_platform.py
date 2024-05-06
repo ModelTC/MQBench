@@ -68,7 +68,7 @@ ParamsTable = {
                                  default_act_quantize=LearnableFakeQuantize,
                                  default_weight_observer=MinMaxObserver,
                                  default_act_observer=EMAMinMaxObserver),
-    'SG2260':                 dict(qtype='affine',
+    'BM1690':                 dict(qtype='affine',
                                  w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8),
                                  a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
                                  default_weight_quantize=LearnableFakeQuantize,
@@ -165,12 +165,12 @@ def get_qconfig_by_platform(quant_dict:Dict,extra_qparams: Dict):
             ]
         }
     """
-    chip=quant_dict['chip'] #["BM1688","BM1684X","SG2260"]
+    chip=quant_dict['chip'] #["BM1688","BM1684X","BM1690"]
     if chip=="BM1688":
         chip_params,w_observer,a_observer,w_fakequantize,a_fakequantize=chipparams(chip,extra_qparams,FakeQuantizeDict_Chip)
     elif chip=="BM1684X":
         chip_params,w_observer,a_observer,w_fakequantize,a_fakequantize=chipparams(chip,extra_qparams,FakeQuantizeDict_Chip)
-    elif chip=="SG2260":
+    elif chip=="BM1690":
         chip_params,w_observer,a_observer,w_fakequantize,a_fakequantize=chipparams(chip,extra_qparams,FakeQuantizeDict_Chip)
     elif chip=="Academic":
         chip_params,w_observer,a_observer,w_fakequantize,a_fakequantize=chipparams(chip,extra_qparams,FakeQuantizeDict)
@@ -184,7 +184,7 @@ def get_qconfig_by_platform(quant_dict:Dict,extra_qparams: Dict):
     else:
         if chip=="BM1688":
             assert (w_qscheme['bit']==4  or w_qscheme['bit']==8), 'unsupported data type'
-        if chip=="BM1684X" or chip=="SG2260":
+        if chip=="BM1684X" or chip=="BM1690":
             assert (w_qscheme['bit']==8), 'unsupported data type'
         logger.info("Weight Quant Scheme is overrided!")
         w_qscheme = QuantizeScheme(**w_qscheme)
@@ -194,7 +194,7 @@ def get_qconfig_by_platform(quant_dict:Dict,extra_qparams: Dict):
     else:
         if chip=="BM1688":
             assert (a_qscheme['bit']==4  or a_qscheme['bit']==8),'unsupported data type'
-        if chip=="BM1684X" or chip=="SG2260":
+        if chip=="BM1684X" or chip=="BM1690":
             assert (a_qscheme['bit']==8),'unsupported data type'
         logger.info("Activation Quant Scheme is overrided!")
         a_qscheme = QuantizeScheme(**a_qscheme)

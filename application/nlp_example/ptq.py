@@ -61,7 +61,7 @@ def evaluate(trainer, eval_datasets, num_samples=-1):
 
 def quantize_model(model, config_quant):
     if not hasattr(config_quant, 'chip'):
-        config_quant.chip = 'SG2260'
+        config_quant.chip = 'BM1690'
     sig = inspect.signature(model.forward)
     input_names = ['input_ids', 'attention_mask', 'token_type_ids']
     concrete_args = {p.name: p.default for p in sig.parameters.values() if p.name not in input_names}

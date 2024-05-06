@@ -27,7 +27,7 @@ fast_test = '--fast_test'
 # pre_eval_and_export = '--pre_eval_and_export'
 pre_eval_and_export = ''
 
-cmd_str = f"--epochs={epochs} --deploy_batch_size=10 --cuda=0 --pretrained --evaluate --chip=SG2260 --quantmode=weight_activation --optim=sgd \
+cmd_str = f"--epochs={epochs} --deploy_batch_size=10 --cuda=0 --pretrained --evaluate --chip=BM1690 --quantmode=weight_activation --optim=sgd \
            --train_data=/sea/data/imagenet/for_train_val --val_data=/sea/data/imagenet/for_train_val --output_path={output_path} {fast_test} {pre_eval_and_export}"
 # cmd_str = f"--epochs={epochs} --deploy_batch_size=10 --cpu --pretrained --evaluate --backend=sophgo_tpu --optim=sgd \
 #            --train_data=/data/imagenet --val_data=/data/imagenet --output_path={output_path} {fast_test} {pre_eval_and_export}"

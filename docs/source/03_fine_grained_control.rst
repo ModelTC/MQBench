@@ -41,7 +41,7 @@ The specific definition is as follows:
 .. code-block:: python
 
   quant_dict = {
-                  'chip': 'SG2260', # ['BM1688', 'BM1684X', 'SG2260', 'Academic']
+                  'chip': 'BM1690', # ['BM1688', 'BM1684X', 'BM1690', 'Academic']
                   'quantmode': 'weight_activation', # ['weight_only', 'weight_activation'] 
                   'strategy': 'CNN', # ['CNN', 'Transformer']
               }

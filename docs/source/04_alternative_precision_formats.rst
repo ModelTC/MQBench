@@ -12,7 +12,7 @@ Below is a code example of performing FP8 quantization using the E4M3 format:
 
   prepare_custom_config_dict = {
         'quant_dict': {
-                        'chip': 'SG2260',
+                        'chip': 'BM1690',
                         'quantmode': 'weight_activation',
                         'strategy': 'CNN',
                        },
@@ -40,7 +40,7 @@ Below is a code example of performing FP8 quantization using the E5M2 format:
 
   prepare_custom_config_dict = {
         'quant_dict': {
-                        'chip': 'SG2260',
+                        'chip': 'BM1690',
                         'quantmode': 'weight_activation',
                         'strategy': 'CNN',
                        },

@@ -14,7 +14,7 @@ quant:
     scaling_method: no_scaling # 在这个地方选取一种scale获取的手段（max/mean/no_scaling，具体的获取流程可以阅读E4/E5的fake quant）
     calibrate: 64
     pot_scale: False
-    chip: SG2260
+    chip: BM1690
     quantmode: weight_only
 
 data:

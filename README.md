@@ -54,7 +54,7 @@ Let's take the PTQ quantization of ResNet18 as an example.
     ```python
     extra_prepare_dict = {
         'quant_dict': {
-                        'chip': 'SG2260',
+                        'chip': 'BM1690',
                         'quantmode': 'weight_activation',
                         'strategy': 'CNN',
                         },
@@ -123,7 +123,7 @@ CUDA_VISIBLE_DEVICES=0 python application/imagenet_example/PTQ/ptq/ptq_main.py \
     --batch_size=64 \
     --cali_batch_num=16 \
     --data_path=/home/data/imagenet \
-    --chip=SG2260 \
+    --chip=BM1690 \
     --quantmode=weight_activation \
     --seed=1005 \
     --pretrained \
@@ -146,7 +146,7 @@ CUDA_VISIBLE_DEVICES=0 python application/imagenet_example/main.py \
     --evaluate \
     --train_data=/home/data/imagenet \
     --val_data=/home/data/imagenet \
-    --chip=SG2260 \
+    --chip=BM1690 \
     --quantmode=weight_activation \
     --deploy_batch_size=10 \
     --pre_eval_and_export \

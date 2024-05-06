@@ -16,7 +16,7 @@ def resnet18_test():
     ## 2. prepare model
     extra_prepare_dict = {
         'quant_dict': {
-                        'chip': 'SG2260',
+                        'chip': 'BM1690',
                         'quantmode': 'weight_activation',
                         'strategy': 'CNN',
                        },
@@ -72,7 +72,7 @@ def bert_test():
             'exclude_module_name':['bert.embeddings.word_embeddings', 'bert.embeddings.token_type_embeddings', 'bert.embeddings.position_embeddings']
         },
         'quant_dict': {
-                       'chip': 'SG2260',
+                       'chip': 'BM1690',
                        'quantmode': 'weight_only',
                        'strategy': 'Transformer',
                        }

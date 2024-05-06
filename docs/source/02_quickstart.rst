@@ -36,7 +36,7 @@ When quantizing a model, it is necessary to specify the chip type, quantization 
 
   extra_prepare_dict = {
       'quant_dict': {
-                      'chip': 'SG2260',
+                      'chip': 'BM1690',
                       'quantmode': 'weight_activation',
                       'strategy': 'CNN',
                       },
