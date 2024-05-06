@@ -275,6 +275,16 @@ def main_worker(gpu, ngpus_per_node, args):
                                                                     'features_2_block_1_0_post_act_fake_quantizer',
                                                                     ]
                                                                 }
+        if "extra_qconfig_dict" not in extra_prepare_dict:
+            extra_prepare_dict["extra_qconfig_dict"] = {}
+        extra_prepare_dict["extra_qconfig_dict"]['object_type'] = {
+                                    nn.Linear: {
+                                        'mode': 'weight',
+                                        'bit': 8,
+                                        'wfakequantize': 'LearnableFakeQuantize',
+                                        'wobserver': 'MinMaxObserver',
+                                        }
+                                    }
         model = prepare_by_platform(model, input_shape_dict = {'data': [args.deploy_batch_size, 3, 224, 224]}, prepare_custom_config_dict=extra_prepare_dict)
         print('>>>>>prepared module:', model)
 
