@@ -17,6 +17,10 @@ class QuantizeBase(FakeQuantizeBase):
     """
     def __init__(self, observer=MovingAverageMinMaxObserver, **observer_kwargs):
         super().__init__()
+        self.only_enable_observer = False
+        self.run_fquant_time = 0
+        if observer is None:
+            return
         self.activation_post_process = observer(**observer_kwargs)
         self.dtype = self.activation_post_process.dtype
         self.qscheme = self.activation_post_process.qscheme
@@ -35,8 +39,6 @@ class QuantizeBase(FakeQuantizeBase):
         bitrange = torch.tensor(self.quant_max - self.quant_min + 1).double()
         self.bitwidth = int(torch.log2(bitrange).item())
         self.is_symmetric_quant = is_symmetric_quant(self.qscheme)
-        self.only_enable_observer = False
-        self.run_fquant_time = 0
     
     def enable_only_observer(self, enable = True):
         self.only_enable_observer = enable

@@ -268,14 +268,15 @@ class LinearQuantizer_process(object):
         clip_ranges = {}
         nodes_to_be_removed = []
         output_path = os.path.dirname(onnx_path)
-        file_name = os.path.join(output_path, 'layer_outputs.npz')
-        layer_out_tensor = None
         have_int4 = False
-        layer_out_tensor2 = {}
         tensor_name_to_node_name = {}
-
-        if os.path.exists(file_name):
-            layer_out_tensor = np.load(file_name)
+        
+        layer_out_tensor_list, layer_out_tensor2_list = [], []
+        for i in range(5):
+            file_name = os.path.join(output_path, f'layer_outputs_{i}.npz')
+            if os.path.exists(file_name):
+                layer_out_tensor_list.append(np.load(file_name))
+                layer_out_tensor2_list.append({})
         for node in graph.node:
             print(f'process node:{node.name}, type:{node.op_type}')
             if node.op_type in ALL_FAKEQUANTIZER:
@@ -361,10 +362,11 @@ class LinearQuantizer_process(object):
                         # else:
                         #     if bits == 4 and out2node[out2node[tensor_name].input[0]].op_type not in ['Conv', 'Gemm']:
                         #         tensor_name_new += '_4'
-                    if layer_out_tensor is not None and scale_name.endswith(post_str):
+                    if len(layer_out_tensor_list) > 0 and scale_name.endswith(post_str):
                         torch_name = scale_name[:len(scale_name)-len(post_str)]
-                        if torch_name in layer_out_tensor.files:
-                            layer_out_tensor2[tensor_name_new] = layer_out_tensor[torch_name]
+                        for layer_out_tensor, layer_out_tensor2 in zip(layer_out_tensor_list, layer_out_tensor2_list):
+                            if torch_name in layer_out_tensor.files:
+                                layer_out_tensor2[tensor_name_new] = layer_out_tensor[torch_name]
                     clip_ranges[tensor_name_new+f'_{bits}'] = {'threshold':float(scale * max(-qmin, qmax)), #对称量化时这个参数生效
                                                 'min': float(scale * (qmin - zero_point)),
                                                 'max': float(scale * (qmax - zero_point)),
@@ -382,12 +384,15 @@ class LinearQuantizer_process(object):
             print("input is :", list(subdict.values()))
             print("\n")
         print(">>>>> end")
-
-        if layer_out_tensor is not None and len(layer_out_tensor2) > 0:
+ 
+        i = 0
+        for layer_out_tensor, layer_out_tensor2 in zip(layer_out_tensor_list, layer_out_tensor2_list):
             if 'data' in layer_out_tensor.files:
                 layer_out_tensor2['data'] = layer_out_tensor['data']
+            file_name = os.path.join(output_path, f'layer_outputs_{i}.npz')
             os.system(f'rm -f {file_name}')
             np.savez(file_name, **layer_out_tensor2)
+            i += 1
         for node in nodes_to_be_removed:
             graph.node.remove(node)
         # delete initializer

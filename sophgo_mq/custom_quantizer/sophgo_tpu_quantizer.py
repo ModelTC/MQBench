@@ -12,6 +12,11 @@ import sophgo_mq.nn.qat as qnnqat
 from collections import OrderedDict
 from sophgo_mq.utils.logger import logger
 
+from sophgo_mq.fake_quantize import (
+    LearnableFakeQuantize,
+    Fp16FakeQuantize,
+    BF16FakeQuantize
+)
 from typing import (
     List, Dict, Any, Callable
 )
@@ -21,6 +26,7 @@ from sophgo_mq.utils import get_flattened_qconfig_dict
 @register_model_quantizer("BM1688")
 @register_model_quantizer("BM1690")
 @register_model_quantizer("BM1684X")
+@register_model_quantizer("CV183X")
 class SophgoTpuQuantizer(ModelQuantizer):
     """
     We quantize the input tensors and output tensors of all layers,
@@ -28,7 +34,7 @@ class SophgoTpuQuantizer(ModelQuantizer):
     For example add + relu pattern, there is no need to insert fake
     quantize node between them.
     """
-    def __init__(self, extra_quantizer_dict, extra_fuse_dict,quant_dict):
+    def __init__(self, extra_quantizer_dict, extra_fuse_dict,quant_dict,chip):
         super().__init__(extra_quantizer_dict, extra_fuse_dict,quant_dict)
         if self.quantmode=="weight_activation":
             self.additional_qat_module_mapping = {
@@ -45,6 +51,7 @@ class SophgoTpuQuantizer(ModelQuantizer):
                 qnni.ConvTransposeBn2d:qnniqat.ConvTransposeBn2d_sophgo,
             }
         self.exclude_module_name.append(nn.modules.dropout.Dropout)
+        self.chip = chip
 
     @property
     def module_type_to_quant_input(self) -> tuple:
@@ -152,6 +159,33 @@ class SophgoTpuQuantizer(ModelQuantizer):
             qnnqat.Conv2d_sophgo,
         )
 
+
+    def _insert_fake_quantizer(self, model, graph, modules, flattened_qconfig_dict, node, next_layers, fp16 = False):
+        if len(next_layers) > 0:
+            layer = next_layers[0] #选其中第1个就能正确决定节点类型
+            qconfig1 = flattened_qconfig_dict.get(layer.target, None) #首先根据层名去取，优先级最高
+            if qconfig1 is None and layer.target in modules:
+                print(f'layer.target:{layer.target}, type:',type(modules[layer.target]))
+                qconfig1 = flattened_qconfig_dict.get(type(modules[layer.target]), None) #其次根据type去取
+                if isinstance(modules[layer.target], self._layers_need_check_is_dw):
+                    if modules[layer.target].groups > 1:
+                        qconfig1 = None
+            if qconfig1 is None:
+                qconfig1 = flattened_qconfig_dict.get('', None) #最后找全局qconfig，优先级最低
+            fake_quantizer = qconfig1.activation()
+            if fp16:
+                print(f'insert bf16 node')
+                fake_quantizer = BF16FakeQuantize(None)
+            quantizer_name = layer.name + self.quantizer_prefix
+            if hasattr(model, quantizer_name):
+                quantizer_name = layer.name +'_n2_br'+ self.quantizer_prefix
+            setattr(model, quantizer_name, fake_quantizer)
+            logger.info("Insert act quant {}".format(quantizer_name))
+            with graph.inserting_after(node):
+                inserted_node = graph.create_node("call_module", quantizer_name, (node,), {})
+                for next_layer in next_layers:
+                    next_layer.args = self._fix_succ_recursivly(next_layer.args, node, inserted_node)
+
     def _insert_fake_quantize_for_act_quant(
             self,
             model: GraphModule,
@@ -160,14 +194,44 @@ class SophgoTpuQuantizer(ModelQuantizer):
         nodes = list(model.graph.nodes)
         modules = dict(model.named_modules())
 
-        quantizer_prefix = "_post_act_fake_quantizer"
-        node_to_quantize_output = self._find_act_quants(model)
+        self.quantizer_prefix = "_input_act_fake_quantizer"
+        user_specified_layers_need_to_quant = self._layers_need_scale_form_input_fake_quantizer if self.chip == 'CV183X' else None
+        node_to_quantize_output = self._find_act_quants(model, user_specified_layers_need_to_quant)
         self.node_to_quantize_output_transformer=self._find_act_quants_transformer(model)
         node_to_quantize_output.extend(node for node in self.node_to_quantize_output_transformer if node not in node_to_quantize_output)
         node_to_quantize_output = OrderedDict.fromkeys(node_to_quantize_output).keys()
         flattened_qconfig_dict = get_flattened_qconfig_dict(qconfig)
         logger.info('node_to_quantize_output:{}'.format(node_to_quantize_output))
         logger.info('flattened_qconfig_dict:{}'.format(flattened_qconfig_dict))
+
+        if self.chip == "CV183X":
+            def find_next_f16_and_int8_layers(node, int8_layers, f16_layers):
+                for user in node.users: #若后继有1个层或多个不同类型的层，则插入多个input量化节点  todo:多个节点，部分相同，部分不同
+                    if user.target in modules and type(modules[user.target]) in self.exclude_module_name:
+                        print(f'user:{user.name} is excluded')
+                        user.replace_all_uses_with(node)
+                        graph.erase_node(user)
+                        del modules[user.target]
+                        find_next_f16_and_int8_layers(user, int8_layers, f16_layers)
+                        continue #dropout等层前不要插入伪量化节点
+                    if user.op == "call_module" and isinstance(modules[user.target], self._layers_need_scale_form_input_fake_quantizer):
+                        int8_layers.append(user)
+                    else:
+                        f16_layers.append(user)
+
+            for node in node_to_quantize_output:
+                int8_layers, f16_layers = [],[] #找到node后的多个int4后继节点和多个int8后继节点，然后这多个int8或int4后继节点共享1个输入量化节点
+                find_next_f16_and_int8_layers(node, int8_layers, f16_layers)
+                print(f'node:{node}, f16_layers:', f16_layers, 'int8_layers:', int8_layers)
+                self._insert_fake_quantizer(model, graph, modules, flattened_qconfig_dict, node, f16_layers, True)
+                self._insert_fake_quantizer(model, graph, modules, flattened_qconfig_dict, node, int8_layers)
+            model.recompile()
+            model.graph.lint()
+            graph = model.graph
+            nodes = list(model.graph.nodes)
+            modules = dict(model.named_modules())
+
+        quantizer_prefix = "_post_act_fake_quantizer"
         for node in node_to_quantize_output:
             qconfig2 = flattened_qconfig_dict.get(node.name, None) #首先根据node.name去取，优先级最高
             if qconfig2 is None and node.target in modules:
@@ -178,6 +242,10 @@ class SophgoTpuQuantizer(ModelQuantizer):
             if qconfig2 is None:
                 qconfig2 = flattened_qconfig_dict.get('', None) #最后找全局qconfig，优先级最低
             node_fake_quantizer = qconfig2.activation()
+            if self.chip == "CV183X" and ((node.op == "call_module" and not isinstance(modules[node.target], self._layers_need_scale_form_input_fake_quantizer))
+                    or node.op == "placeholder"):
+                print(f'insert BF16FakeQuantize for output of {node.name}')
+                node_fake_quantizer = BF16FakeQuantize(None)
             quantizer_name2 = node.name + quantizer_prefix
             setattr(model, quantizer_name2, node_fake_quantizer)
             logger.info("Insert act quant {}".format(quantizer_name2))
@@ -185,6 +253,55 @@ class SophgoTpuQuantizer(ModelQuantizer):
                 inserted_node = graph.create_node("call_module", quantizer_name2, (node,), {})
                 for _node in nodes:
                     _node.args = self._fix_succ_recursivly(_node.args, node, inserted_node)
+
+        if self.chip == "CV183X":
+            model.recompile()
+            model.graph.lint()
+            graph = model.graph
+            modules = dict(model.named_modules())
+            nodes = list(model.graph.nodes)
+            for node in nodes:
+                if "_post_act_fake_quantizer" in node.name:
+                    if isinstance(modules[node.target], BF16FakeQuantize): #2个相邻的量化节点都为BF16FakeQuantize，则删除冗余的后1个节点
+                        for user in list(node.users.keys()):
+                            if "_input_act_fake_quantizer" in user.name:
+                                if isinstance(modules[user.target], BF16FakeQuantize):
+                                    user.replace_all_uses_with(node)
+                                    graph.erase_node(user)
+                                    del modules[user.target]
+                                    print(f'del {user.name}, {node.name} left')
+                    elif isinstance(modules[node.target], LearnableFakeQuantize):
+                        for user in list(node.users.keys()):
+                            if "_input_act_fake_quantizer" in user.name:
+                                if isinstance(modules[user.target], LearnableFakeQuantize):
+                                    user.replace_all_uses_with(node)
+                                    graph.erase_node(user)
+                                    del modules[user.target]
+                                    print(f'del {user.name}, {node.name} left')
+            model.recompile()
+            model.graph.lint()
+            graph = model.graph
+            modules = dict(model.named_modules())
+            nodes = list(model.graph.nodes)
+            bf16_layer_type = (torch.nn.modules.pooling.AdaptiveAvgPool2d)
+            for node in nodes:
+                if (node.op == "call_module" and isinstance(modules[node.target], self._layers_need_scale_form_input_fake_quantizer)):
+                    continue
+                if (node.op == "call_module" and isinstance(modules[node.target], bf16_layer_type)):
+                    node_fake_quantizer = BF16FakeQuantize(None)
+                    quantizer_name2 = node.name + "_post_act_fake_bf16_quantizer"
+                    setattr(model, quantizer_name2, node_fake_quantizer)
+                    logger.info("Insert out act bf16 quant {}".format(quantizer_name2))
+                    self.insert_node(model, node, quantizer_name2)
+                    input_node_list = self._flatten_args(node.all_input_nodes)     
+                    for n in input_node_list:
+                        valid, n = self.is_valid_fx_input_arg(model, node, n)
+                        if valid:
+                            node_fake_quantizer = BF16FakeQuantize(None)
+                            quantizer_name2 = node.name + "_input_act_fake_bf16_quantizer"
+                            setattr(model, quantizer_name2, node_fake_quantizer)
+                            logger.info("Insert input act bf16 quant {}".format(quantizer_name2))
+                            self.insert_node(model, n, quantizer_name2)
         model.recompile()
         model.graph.lint()        
         return model
@@ -196,11 +313,47 @@ class SophgoTpuQuantizer(ModelQuantizer):
             model = self._set_fake_quantizer_to_next_weight_layer(model)
             model = self._set_module_only_enable_observer(model)
         return model
+    
+    def insert_node(self, model, node, new_node_name):
+        graph = model.graph
+        nodes = list(model.graph.nodes)
+        with graph.inserting_after(node):
+            inserted_node = graph.create_node("call_module", new_node_name, (node,), {})
+            for _node in nodes:
+                _node.args = self._fix_succ_recursivly(_node.args, node, inserted_node)    
 
-    def _find_act_quants(self, model: GraphModule) -> list:
+    def insert_bf16_node(self, model: GraphModule):
         nodes = list(model.graph.nodes)
         modules = dict(model.named_modules())
-        node_need_to_quantize_output = super()._find_act_quants(model)
+        for node in nodes:
+            if '_post_act_fake_quantizer' in node.name:
+                continue
+            if ((node.op == "call_module" and not isinstance(modules[node.target], self._layers_need_scale_form_input_fake_quantizer )) or \
+                ((node.op == 'call_function' or node.op == 'call_method') and node.target in self.function_type_to_quant_input)):
+                node_fake_quantizer = BF16FakeQuantize(None)
+                quantizer_name2 = node.name + "_post_act_fake_bf16_quantizer"
+                setattr(model, quantizer_name2, node_fake_quantizer)
+                logger.info("Insert out act bf16 quant {}".format(quantizer_name2))
+                self.insert_node(model, node, quantizer_name2)
+                input_node_list = self._flatten_args(node.all_input_nodes)     
+                for n in input_node_list:
+                    valid, n = self.is_valid_fx_input_arg(model, node, n)
+                    if valid:
+                        node_fake_quantizer = BF16FakeQuantize(None)
+                        quantizer_name2 = node.name + "_input_act_fake_bf16_quantizer"
+                        setattr(model, quantizer_name2, node_fake_quantizer)
+                        logger.info("Insert input act bf16 quant {}".format(quantizer_name2))
+                        self.insert_node(model, n, quantizer_name2)
+        model.recompile()
+        model.graph.lint()    
+        return model    
+
+    def _find_act_quants(self, model: GraphModule, user_specified_layers_need_to_quant = None) -> list:
+        nodes = list(model.graph.nodes)
+        modules = dict(model.named_modules())
+        node_need_to_quantize_output = super()._find_act_quants(model, user_specified_layers_need_to_quant)
+        module_type_to_quant_input = self.module_type_to_quant_input if user_specified_layers_need_to_quant is None else user_specified_layers_need_to_quant
+        function_type_to_quant_input = self.function_type_to_quant_input if user_specified_layers_need_to_quant is None else []
         self.only_enable_ob = []
         if self.strategy == 'Transformer':
             for node in nodes:
@@ -213,20 +366,20 @@ class SophgoTpuQuantizer(ModelQuantizer):
                     node.target in self.exclude_function_type) or \
                         node.name in self.exclude_node_name:
                     continue
-                if (node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_input)) or \
+                if (node.op == "call_module" and isinstance(modules[node.target], module_type_to_quant_input)) or \
                     ((node.op == 'call_function' or node.op == 'call_method') and
-                        node.target in self.function_type_to_quant_input):
+                        node.target in function_type_to_quant_input):
                     for next_node in node.users:
                         if ((next_node.op == 'call_function' and next_node.target in self._passed_func_type) or
                                 (next_node.op == 'call_module' and isinstance(modules[next_node.target], self._passed_module_type))):
                             if next_node not in node_need_to_quantize_output:
                                 node_need_to_quantize_output.append(next_node)
-                                print(">>>>> append node ", next_node)
+                                print(">>>>> append node1 ", next_node)
                                 self.only_enable_ob.append(next_node.name)
                         else:
                             if node not in node_need_to_quantize_output:
                                 node_need_to_quantize_output.append(node)
-                                print(">>>>> append node ", node)
+                                print(">>>>> append node2 ", node)
                                 self.only_enable_ob.append(node.name)
         for node in nodes:
             # if node.target in modules and (type(modules[node.target]) in self.exclude_module_name or node.target in self.exclude_module_name) and (node in node_need_to_quantize_output):

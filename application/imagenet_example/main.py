@@ -89,7 +89,7 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'multi node data parallel training')
 parser.add_argument('--model_path', type=str, default=None)
 parser.add_argument('--output_path', type=str, default=None)
-parser.add_argument('--chip', type=str, choices=['BM1688', 'BM1684X', 'BM1690', 'academic'], default='BM1690')
+parser.add_argument('--chip', type=str, choices=['BM1688', 'BM1684X', 'BM1690', 'CV183X', 'academic'], default='BM1690')
 parser.add_argument('--quantmode', type=str, choices=['weight_activation', 'weight_only'], default='weight_activation')
 parser.add_argument('--optim', type=str, default='sgd')
 parser.add_argument('--not-quant', action='store_true')
@@ -153,6 +153,61 @@ def main():
 
     time_end = time.time()
     print('totally time is ', time_end-time_start)
+
+layer_names = []
+features_out_hook = {}
+i = 0
+def hook(module, fea_in, fea_out):
+    global i
+    if i >= len(layer_names):
+        return None
+    name = layer_names[i]
+    i += 1
+    global features_out_hook
+    features_out_hook[name] = fea_out.cpu().numpy()
+    return None
+
+def gen_test_ref_data(cali_loader, model, args):
+    model.eval()
+    global layer_names
+    hook_handles = []
+    input_data = {}
+    data_num = 5
+    exclude_module = ['fake_quantize', 'weight_fake_quant', 'observer', 'torch.fx', 'batchnorm', 'torch.nn.modules.module.Module']
+    for name, child in model.named_modules():
+        print("layer name:", name, ",type:", str(type(child)))
+        if not any([i in str(type(child)) for i in exclude_module]):
+            print("    add hook")
+            # if '_dup' in name:
+            #     name = name[:-5]
+            # layer_names.append(name.replace('.','_'))
+            node_name = get_node_name_by_module_name(name, model)
+            layer_names.append(node_name)
+            hd = child.register_forward_hook(hook=hook)
+            hook_handles.append(hd)
+    print('layer_names:', layer_names)
+    if args.cpu:
+        model = model.cpu()
+    with torch.no_grad():
+        for i, (images, target) in enumerate(cali_loader):
+            if args.cpu:
+                images = images.cpu()
+            else:
+                images = images.cuda(args.cuda, non_blocking=True)
+            output = model(images)
+            print("gen_test_ref_data ==> ", i)
+            if i < data_num:
+                input_data['data'] = images.cpu().numpy()
+                np.savez(os.path.join(args.output_path, f'input_data_{i}.npz'), **input_data)
+                global features_out_hook
+                features_out_hook['data'] = input_data['data']
+                np.savez(os.path.join(args.output_path, f'layer_outputs_{i}.npz'), **features_out_hook)
+            if i == data_num:
+                for hd in hook_handles:
+                    hd.remove()
+                break
+    print("End gen_test_ref_data.")
+    return
 
 def main_worker(gpu, ngpus_per_node, args):
     global best_acc1
@@ -395,6 +450,8 @@ def main_worker(gpu, ngpus_per_node, args):
             convert_deploy(model.eval(), args.chip, input_shape_dict={'data': [args.deploy_batch_size, 3, 224, 224]}, 
                 model_name='{}'.format(args.arch), output_path=args.output_path)
         exit(0)
+
+    gen_test_ref_data(cali_loader, model, args)
 
     if args.fast_test:
         args.epochs = 1
