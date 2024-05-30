@@ -4,19 +4,19 @@ import argparse
 from multiprocessing import Pool
 
 model_list_all=[
-  # "--arch=mobilenet_v2 --batch-size=64 --cali-batch-num=16",
-  # "--arch=resnet50 --batch-size=64 --cali-batch-num=16",
-  # "--arch=vgg11_bn --batch-size=64 --cali-batch-num=16",
-  "--arch=resnet18 --batch-size=64 --cali-batch-num=16",
-  # "--arch=shufflenet_v2_x0_5 --batch-size=64 --cali-batch-num=16",
-  # "--arch=squeezenet1_1 --batch-size=64 --cali-batch-num=16",
-  # "--arch=mobilenet_v3_small  --batch-size=64 --cali-batch-num=16"
+  # "--arch=mobilenet_v2 --batch_size=64 --cali_batch_num=16",
+  # "--arch=resnet50 --batch_size=64 --cali_batch_num=16",
+  # "--arch=vgg11_bn --batch_size=64 --cali_batch_num=16",
+  "--arch=resnet18 --batch_size=16 --cali_batch_num=16",
+  # "--arch=shufflenet_v2_x0_5 --batchi_size=64 --cali_batch_num=16",
+  # "--arch=squeezenet1_1 --batch_size=64 --cali_batch_num=16",
+  # "--arch=mobilenet_v3_small  --batch_size=64 --cali_batch_num=16"
 ]
 
 # output_path='/path-of-your-dir/'
 output_path='./ptq_test_before_push'
 
-cmd_str = f"--data_path=/sea/data/imagenet/for_train_val --chip=BM1690 --quantmode=weight_activation --seed=1005 --pretrained --quantize_type=naive_ptq --deploy\
+cmd_str = f"--data_path=/data/imagenet/for_train_val --chip=BM1690 --quantmode=weight_activation --seed=1005 --pretrained --quantize_type=naive_ptq --deploy\
            --output_path={output_path}"
 
 def worker(cmd_line):

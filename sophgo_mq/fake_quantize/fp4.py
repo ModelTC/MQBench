@@ -5,7 +5,7 @@ from sophgo_mq.fake_quantize.quantize_base import QuantizeBase
 from sophgo_mq.utils.hook import PerChannelLoadHook
 
 from sophgo_mq.fake_quantize.quantize_base import _version_under_1100
-import ipdb
+#import ipdb
 from scipy.stats import norm
 NF4 = [
     -1.0,

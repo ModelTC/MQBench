@@ -9,26 +9,26 @@ parser.add_argument('--debug_cmd', type=str, default='onnx,sym', help='exclude')
 opt = parser.parse_args()
 
 model_list_all=[
-  # "--arch=mobilenet_v2 --batch-size=64 --lr=1e-4",
-  # "--arch=resnet50 --batch-size=32 --lr=1e-4",
-  # "--arch=vgg11_bn --batch-size=32 --lr=1e-4",
-  "--arch=resnet18 --batch-size=128 --lr=1e-4",
-  # "--arch=shufflenet_v2_x0_5 --batch-size=320 --lr=1e-4",
-  # "--arch=squeezenet1_1 --batch-size=128 --lr=1e-4",
-  # "--arch=mobilenet_v3_small  --batch-size=128 --lr=1e-4"
+  # "--arch=mobilenet_v2 --batch_size=64 --lr=1e-4",
+  # "--arch=resnet50 --batch_size=32 --lr=1e-4",
+  # "--arch=vgg11_bn --batch_size=32 --lr=1e-4",
+  "--arch=resnet18 --batch_size=16 --lr=1e-4",
+  # "--arch=shufflenet_v2_x0_5 --batch_size=320 --lr=1e-4",
+  # "--arch=squeezenet1_1 --batch_size=128 --lr=1e-4",
+  # "--arch=mobilenet_v3_small  --batch_size=128 --lr=1e-4"
 ]
 
 
 epochs = 1
 output_path='./qat_test_before_push'
 
-# fast_test = ''
-fast_test = '--fast_test'
+fast_test = ''
+# fast_test = '--fast_test'
 # pre_eval_and_export = '--pre_eval_and_export'
 pre_eval_and_export = ''
 
 cmd_str = f"--epochs={epochs} --deploy_batch_size=10 --cuda=0 --pretrained --evaluate --chip=BM1690 --quantmode=weight_activation --optim=sgd \
-           --train_data=/sea/data/imagenet/for_train_val --val_data=/sea/data/imagenet/for_train_val --output_path={output_path} {fast_test} {pre_eval_and_export}"
+           --train_data=/data/imagenet/for_train_val --val_data=/data/imagenet/for_train_val --output_path={output_path} {fast_test} {pre_eval_and_export}"
 # cmd_str = f"--epochs={epochs} --deploy_batch_size=10 --cpu --pretrained --evaluate --backend=sophgo_tpu --optim=sgd \
 #            --train_data=/data/imagenet --val_data=/data/imagenet --output_path={output_path} {fast_test} {pre_eval_and_export}"
 
