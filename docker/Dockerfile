@@ -1,4 +1,4 @@
-FROM bernardxu6034/sgmq_base:v1
+FROM sophgo/tpuc_dev:v3.3-cuda
 
 WORKDIR /workspace
 
