@@ -96,7 +96,7 @@ class BF16FakeQuantize(QuantizeBase):
         self.dtype = 'BF16'
 
     def forward(self, X):
-        if self.fake_quant_enabled[0] == 1:
+        if self.fake_quant_enabled[0] == 1 and isinstance(X, torch.Tensor):
             X_quant = X.to(torch.bfloat16)
             X = X_quant.to(torch.float)
         return X

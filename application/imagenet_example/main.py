@@ -28,12 +28,13 @@ import torchvision.models as models
 from sophgo_mq.convert_deploy import convert_deploy, convert_onnx, export_onnx_with_fakequant_node
 from sophgo_mq.prepare_by_platform import prepare_by_platform
 from sophgo_mq.utils.state import enable_calibration, enable_quantization, disable_all
+from tools.model_runner import mlir_inference
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name]))
 
-cali_batch_size = 10
+
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('--train_data', metavar='DIR',
                     help='path to dataset', required=True)
@@ -89,7 +90,7 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'multi node data parallel training')
 parser.add_argument('--model_path', type=str, default=None)
 parser.add_argument('--output_path', type=str, default=None)
-parser.add_argument('--chip', type=str, choices=['BM1688', 'BM1684X', 'BM1690', 'CV183X', 'academic'], default='BM1690')
+parser.add_argument('--chip', type=str, choices=['BM1688', 'BM1684X', 'BM1690', 'academic', 'MARS3', 'SG2380','CV183X', 'CV182X', 'CV181X', 'CV180X', 'CV186X'], default='BM1690')
 parser.add_argument('--quantmode', type=str, choices=['weight_activation', 'weight_only'], default='weight_activation')
 parser.add_argument('--optim', type=str, default='sgd')
 parser.add_argument('--not-quant', action='store_true')
@@ -100,7 +101,9 @@ parser.add_argument('--pre_eval_and_export', action='store_true')
 parser.add_argument('--deploy_batch_size', default=1, type=int, help='deploy_batch_size.')
 parser.add_argument('--fp8_e4m3', action='store_true')
 parser.add_argument('--fp8_e5m2', action='store_true')
+parser.add_argument('--bf16_mix_prec', action='store_true')
 parser.add_argument('--export_onnx_before_training', action='store_true')
+parser.add_argument('--print_freq', default=5, type=int, help='print_freq')
 
 best_acc1 = 0
 
@@ -154,38 +157,33 @@ def main():
     time_end = time.time()
     print('totally time is ', time_end-time_start)
 
-layer_names = []
+def generate_random_string(length):
+    """
+    生成指定长度的随机字符串，包含大小写字母和数字。
+    """
+    chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    return ''.join(random.choices(chars, k=length))
+
 features_out_hook = {}
-i = 0
+
 def hook(module, fea_in, fea_out):
-    global i
-    if i >= len(layer_names):
-        return None
-    name = layer_names[i]
-    i += 1
+    name = generate_random_string(15)
     global features_out_hook
-    features_out_hook[name] = fea_out.cpu().numpy()
+    if name in features_out_hook:
+        name = generate_random_string(15)
+    if isinstance(fea_out, torch.Tensor):
+        features_out_hook[f'f_{name}'] = fea_out.cpu().numpy()
     return None
 
 def gen_test_ref_data(cali_loader, model, args):
     model.eval()
-    global layer_names
+
     hook_handles = []
     input_data = {}
-    data_num = 5
-    exclude_module = ['fake_quantize', 'weight_fake_quant', 'observer', 'torch.fx', 'batchnorm', 'torch.nn.modules.module.Module']
+    data_num = 3
     for name, child in model.named_modules():
-        print("layer name:", name, ",type:", str(type(child)))
-        if not any([i in str(type(child)) for i in exclude_module]):
-            print("    add hook")
-            # if '_dup' in name:
-            #     name = name[:-5]
-            # layer_names.append(name.replace('.','_'))
-            node_name = get_node_name_by_module_name(name, model)
-            layer_names.append(node_name)
-            hd = child.register_forward_hook(hook=hook)
-            hook_handles.append(hd)
-    print('layer_names:', layer_names)
+        hd = child.register_forward_hook(hook=hook)
+        hook_handles.append(hd)
     if args.cpu:
         model = model.cpu()
     with torch.no_grad():
@@ -195,13 +193,20 @@ def gen_test_ref_data(cali_loader, model, args):
             else:
                 images = images.cuda(args.cuda, non_blocking=True)
             output = model(images)
-            print("gen_test_ref_data ==> ", i)
+
             if i < data_num:
+                print("gen_test_ref_data ==> ", i)
                 input_data['data'] = images.cpu().numpy()
-                np.savez(os.path.join(args.output_path, f'input_data_{i}.npz'), **input_data)
+                file_name = f'input_data_{i}.npz'
+                os.system(f'rm -f {file_name}')
+                np.savez(os.path.join(args.output_path, file_name), **input_data)
                 global features_out_hook
                 features_out_hook['data'] = input_data['data']
-                np.savez(os.path.join(args.output_path, f'layer_outputs_{i}.npz'), **features_out_hook)
+                file_name = f'layer_outputs_{i}.npz'
+                os.system(f'rm -f {file_name}')
+                np.savez(os.path.join(args.output_path, file_name), **features_out_hook)
+                features_out_hook.clear()
+                input_data.clear()
             if i == data_num:
                 for hd in hook_handles:
                     hd.remove()
@@ -241,28 +246,28 @@ def main_worker(gpu, ngpus_per_node, args):
         print(f'load pretrained checkpoint from: {args.model_path}')
         model.load_state_dict(state_dict)
 
-    train_loader, train_sampler, val_loader, cali_loader = prepare_dataloader(args)
+    train_loader, train_sampler, val_loader, cali_loader, bmodel_test_loader = prepare_dataloader(args)
     criterion = nn.CrossEntropyLoss().cuda(args.cuda)
     if args.cuda is not None:
         model = model.cuda(args.cuda)
     else:
-        model = model.cpu() 
+        model = model.cpu()
 
     if args.pre_eval_and_export:
         print('原始onnx模型精度')
         validate(val_loader, model.eval(), criterion, args)  #这里未执行model.cuda()，会报错
 
-        kwargs = {
-            'input_shape_dict': {'data': [args.deploy_batch_size, 3, 224, 224]},
-            'output_path': args.output_path,
-            'model_name':  args.arch,
-            'dummy_input': None, 
-            'onnx_model_path':  os.path.join(args.output_path, '{}_ori.onnx'.format(args.arch)),
-        }
-        module_tmp = copy.deepcopy(model)
-        module_tmp = module_tmp.cpu()
-        convert_onnx(module_tmp.eval(), **kwargs)
-        del module_tmp
+        # kwargs = {
+        #     'input_shape_dict': {'data': [args.deploy_batch_size, 3, 224, 224]},
+        #     'output_path': args.output_path,
+        #     'model_name':  args.arch,
+        #     'dummy_input': None,
+        #     'onnx_model_path':  os.path.join(args.output_path, '{}_ori.onnx'.format(args.arch)),
+        # }
+        # module_tmp = copy.deepcopy(model)
+        # module_tmp = module_tmp.cpu()
+        # convert_onnx(module_tmp.eval(), **kwargs)
+        # del module_tmp
         model = model.train() #prepare前一定要是train模式!!
 
     # quantize model
@@ -272,6 +277,7 @@ def main_worker(gpu, ngpus_per_node, args):
                         'chip': args.chip,
                         'quantmode': args.quantmode,
                         'strategy': 'CNN',
+                        'bf16_mix_prec': args.bf16_mix_prec
                        },
         }
         if args.fp8_e4m3:
@@ -447,11 +453,11 @@ def main_worker(gpu, ngpus_per_node, args):
             validate(val_loader, module_tmp2, criterion, args)
             del module_tmp2
             gen_test_ref_data(cali_loader, model, args)
-            convert_deploy(model.eval(), args.chip, input_shape_dict={'data': [args.deploy_batch_size, 3, 224, 224]}, 
+            convert_deploy(model.eval(), args.chip, val_loader, input_shape_dict={'data': [args.deploy_batch_size, 3, 224, 224]},
                 model_name='{}'.format(args.arch), output_path=args.output_path)
         exit(0)
 
-    gen_test_ref_data(cali_loader, model, args)
+
 
     if args.fast_test:
         args.epochs = 1
@@ -468,25 +474,23 @@ def main_worker(gpu, ngpus_per_node, args):
             print('qat训练后的带量化节点的eval精度:')
         else:
             print(f'epoch{epoch}训练后eval精度:')
-        acc1 = validate(val_loader, model, criterion, args)
+        validate(val_loader, model, criterion, args)
 
-    print('disable_all后测试精度:')
-    disable_all(model)
-    validate(val_loader, model, criterion, args)
+    gen_test_ref_data(cali_loader, model, args)
     enable_quantization(model)
 
     net_type = 'CNN'
-    convert_deploy(model.eval(), net_type, input_shape_dict=
-        {'data': [args.deploy_batch_size, 3, 224, 224]}, 
-        model_name='{}'.format(args.arch), 
-        output_path=args.output_path)
+    mlir_model_path = convert_deploy(model.eval(), args.chip, val_loader, net_type, input_shape_dict=
+        {'data': [args.deploy_batch_size, 3, 224, 224]},
+        model_name='{}'.format(args.arch),
+        output_path=args.output_path, bf16_mix_prec = args.bf16_mix_prec)
+    validate_for_chip_model(bmodel_test_loader, mlir_model_path, criterion, args)
 
 def prepare_dataloader(args):
     traindir = os.path.join(args.train_data, 'train')
     valdir = os.path.join(args.val_data, 'val')
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])
-
+                                     std=[0.229, 0.224, 0.225] )
     train_dataset = datasets.ImageFolder(
         traindir,
         transforms.Compose([
@@ -495,7 +499,12 @@ def prepare_dataloader(args):
             transforms.ToTensor(),
             normalize,
         ]))
-
+    val_dataset = datasets.ImageFolder(valdir, transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            normalize,
+        ]))
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
     else:
@@ -505,22 +514,19 @@ def prepare_dataloader(args):
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
-    cali_batch = 20
-    cali_dataset = torch.utils.data.Subset(train_dataset, indices=torch.arange(cali_batch_size * cali_batch))
-    cali_loader = torch.utils.data.DataLoader(cali_dataset, batch_size=cali_batch_size, shuffle=False,
+    cali_num = 200
+    assert cali_num % args.deploy_batch_size == 0
+    cali_dataset = torch.utils.data.Subset(train_dataset, indices=torch.arange(cali_num))
+    cali_loader = torch.utils.data.DataLoader(cali_dataset, batch_size=args.deploy_batch_size, shuffle=False,
                                                 num_workers=args.workers, pin_memory=True)
 
+    bmodel_test_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.deploy_batch_size, shuffle=False,
+                                                num_workers=args.workers, pin_memory=True)
     val_loader = torch.utils.data.DataLoader(
-        datasets.ImageFolder(valdir, transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            normalize,
-        ])),
+        val_dataset,
         batch_size=args.batch_size, shuffle=False,
         num_workers=args.workers, pin_memory=True)
-
-    return train_loader, train_sampler, val_loader, cali_loader
+    return train_loader, train_sampler, val_loader, cali_loader, bmodel_test_loader
 
 def prepare_dataloader_batch(args, batch_size):
     valdir = os.path.join(args.val_data, 'val')
@@ -630,7 +636,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         if i % args.print_freq == 0:
             progress.display(i)
 
-        # # 检查训练过程参数是否异常  
+        # # 检查训练过程参数是否异常
         # for param in model.named_parameters():
         #     sum = torch.isnan(param[1]).sum()
         #     if sum > 0:
@@ -649,11 +655,10 @@ def validate(val_loader, model, criterion, args):
         len(val_loader),
         [batch_time, losses, top1, top5],
         prefix='Test: ')
-
+    print('args.print_freq:', args.print_freq)
     # switch to evaluate mode
     model.eval()
-    if args.cpu:
-        model = model.cpu()
+
 
 
     with torch.no_grad():
@@ -692,6 +697,53 @@ def validate(val_loader, model, criterion, args):
         # TODO: this should also be done with the ProgressMeter
         print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
             .format(top1=top1, top5=top5))
+    return top1.avg
+
+
+def validate_for_chip_model(bmodel_test_loader, mlir_model_path, criterion, args):
+    batch_time = AverageMeter('Time', ':6.3f')
+    losses = AverageMeter('Loss', ':.4e')
+    top1 = AverageMeter('Acc@1', ':6.2f')
+    top5 = AverageMeter('Acc@5', ':6.2f')
+    progress = ProgressMeter(
+        len(bmodel_test_loader),
+        [batch_time, losses, top1, top5],
+        prefix='Test: ')
+
+    # switch to evaluate mode
+    end = time.time()
+    inputs = {}
+    for i, (images, target) in enumerate(bmodel_test_loader):
+        images = images.cpu()
+        target = target.cpu()
+        # compute output
+        inputs['data'] = images.numpy()
+        output = mlir_inference(inputs, mlir_model_path, dump_all = False)
+        # print('output.names:', list(output.keys()))
+        output = torch.from_numpy(list(output.values())[0])
+        # print('output:', output.shape, ' target:', target.shape)
+        loss = criterion(output, target)
+
+        # measure accuracy and record loss
+        acc1, acc5 = accuracy(output, target, topk=(1, 5))
+        losses.update(loss.item(), images.size(0))
+        top1.update(acc1[0], images.size(0))
+        top5.update(acc5[0], images.size(0))
+
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
+
+        if i % args.print_freq == 0:
+            progress.display(i)
+
+        # if args.fast_test:
+        #     if i % 100 == 0:
+        #         break
+
+    # TODO: this should also be done with the ProgressMeter
+    print(' * Acc@1 {top1.avg:.3f} Acc@5 {top5.avg:.3f}'
+        .format(top1=top1, top5=top5))
 
     return top1.avg
 

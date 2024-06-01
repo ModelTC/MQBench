@@ -298,32 +298,11 @@ class ModelQuantizer(object):
         else:
             flattned_args.extend([node])
         return flattned_args
-    
-    def is_valid_fx_input_arg(self, model: GraphModule, node, _node):
-        g2node = getitem2node(model)
-        modules = dict(model.named_modules())
-        if _node.target in ["type_as","long"] or _node.name in ['arange','pixel_values'] or _node.target in [operator.mod,operator.floordiv]:#,"expand","to","long"]:
-            return False,None
-        if _node.op == 'call_function' and 'getitem' in _node.name:
-            if _node.args[0].target=="size":
-                return False,None
-        if self._is_implicit_merge(modules, (node, _node)):
-            logger.info("Implicit merge: {} + {}".format(_node.name, node.name))
-            return False,None
-        if _node.op == "placeholder" and 'tensor_meta' in node.meta:
-            if len(_node.meta['tensor_meta'].shape) == 1:
-                return False,None
-        if _node in g2node:
-            _node = g2node[_node]
-        return True, _node
-
-    def _find_act_quants(self, model: GraphModule, user_specified_layers_need_to_quant = None) -> List:
+    def _find_act_quants(self, model: GraphModule) -> List:
         nodes = list(model.graph.nodes)
         modules = dict(model.named_modules())
         node_need_to_quantize_output = []
         g2node = getitem2node(model)
-        module_type_to_quant_input = self.module_type_to_quant_input if user_specified_layers_need_to_quant is None else user_specified_layers_need_to_quant
-        function_type_to_quant_input = self.function_type_to_quant_input if user_specified_layers_need_to_quant is None else []
         for node in nodes:
             if node.name=="bert_encoder_layer_11_output_layer_norm":
                 node_need_to_quantize_output.append(node)
@@ -336,19 +315,29 @@ class ModelQuantizer(object):
             if (node.op == 'call_function' and node.target in self._passed_func_type) or \
                 (node.op == 'call_module' and isinstance(modules[node.target], self._passed_module_type)):
                 continue
-            if (node.op == "call_module" and isinstance(modules[node.target], module_type_to_quant_input)) or \
+            if (node.op == "call_module" and isinstance(modules[node.target], self.module_type_to_quant_input)) or \
                 ((node.op == 'call_function' or node.op == 'call_method') and
-                    node.target in function_type_to_quant_input) or node.name in self.additional_node_name:
+                    node.target in self.function_type_to_quant_input) or node.name in self.additional_node_name:
                 input_node_list = self._flatten_args(node.all_input_nodes)
                 # Means this is not Tensor + Tensor.
                 if not all([isinstance(_node, torch.fx.node.Node) for _node in input_node_list]):
                     continue
                 for _node in input_node_list:
-                    valid, _node = self.is_valid_fx_input_arg(model, node, _node)
-                    if not valid:
+                    if _node.target in ["type_as","long"] or _node.name in ['arange','pixel_values'] or _node.target in [operator.mod,operator.floordiv]:#,"expand","to","long"]:
                         continue
+                    if _node.op == 'call_function' and 'getitem' in _node.name:
+                        if _node.args[0].target=="size":
+                            continue   
+                    if self._is_implicit_merge(modules, (node, _node)):
+                        logger.info("Implicit merge: {} + {}".format(_node.name, node.name))
+                        continue
+                    if _node.op == "placeholder" and 'tensor_meta' in node.meta:
+                        if len(_node.meta['tensor_meta'].shape) == 1:
+                            continue
                     if _node in node_need_to_quantize_output:
                         continue
+                    if _node in g2node:
+                        _node = g2node[_node]
                     node_need_to_quantize_output.append(_node)
         return node_need_to_quantize_output
 

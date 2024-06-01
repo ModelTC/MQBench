@@ -68,7 +68,42 @@ ParamsTable = {
                                  default_act_quantize=LearnableFakeQuantize,
                                  default_weight_observer=MinMaxObserver,
                                  default_act_observer=EMAMinMaxObserver),
+    'MARS3':                dict(qtype='affine',
+                                 w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8, symmetric_range=True),
+                                 a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
+                                 default_weight_quantize=LearnableFakeQuantize,
+                                 default_act_quantize=LearnableFakeQuantize,
+                                 default_weight_observer=MinMaxObserver,
+                                 default_act_observer=EMAMinMaxObserver),
     'CV183X':                dict(qtype='affine',
+                                 w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8, symmetric_range=True),
+                                 a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
+                                 default_weight_quantize=LearnableFakeQuantize,
+                                 default_act_quantize=LearnableFakeQuantize,
+                                 default_weight_observer=MinMaxObserver,
+                                 default_act_observer=EMAMinMaxObserver),
+    'CV182X':                dict(qtype='affine',
+                                 w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8, symmetric_range=True),
+                                 a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
+                                 default_weight_quantize=LearnableFakeQuantize,
+                                 default_act_quantize=LearnableFakeQuantize,
+                                 default_weight_observer=MinMaxObserver,
+                                 default_act_observer=EMAMinMaxObserver),
+    'CV181X':                dict(qtype='affine',
+                                 w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8, symmetric_range=True),
+                                 a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
+                                 default_weight_quantize=LearnableFakeQuantize,
+                                 default_act_quantize=LearnableFakeQuantize,
+                                 default_weight_observer=MinMaxObserver,
+                                 default_act_observer=EMAMinMaxObserver),
+    'CV180X':                dict(qtype='affine',
+                                 w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8, symmetric_range=True),
+                                 a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
+                                 default_weight_quantize=LearnableFakeQuantize,
+                                 default_act_quantize=LearnableFakeQuantize,
+                                 default_weight_observer=MinMaxObserver,
+                                 default_act_observer=EMAMinMaxObserver),
+    'CV186X':                dict(qtype='affine',
                                  w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8, symmetric_range=True),
                                  a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8),
                                  default_weight_quantize=LearnableFakeQuantize,
@@ -179,6 +214,16 @@ def get_qconfig_by_platform(quant_dict:Dict,extra_qparams: Dict):
         chip_params,w_observer,a_observer,w_fakequantize,a_fakequantize=chipparams(chip,extra_qparams,FakeQuantizeDict_Chip)
     elif chip=="CV183X":
         chip_params,w_observer,a_observer,w_fakequantize,a_fakequantize=chipparams(chip,extra_qparams,FakeQuantizeDict_Chip)
+    elif chip=="MARS3":
+        chip_params,w_observer,a_observer,w_fakequantize,a_fakequantize=chipparams(chip,extra_qparams,FakeQuantizeDict_Chip)
+    elif chip=="CV182X":
+        chip_params,w_observer,a_observer,w_fakequantize,a_fakequantize=chipparams(chip,extra_qparams,FakeQuantizeDict_Chip)
+    elif chip=="CV181X":
+        chip_params,w_observer,a_observer,w_fakequantize,a_fakequantize=chipparams(chip,extra_qparams,FakeQuantizeDict_Chip)
+    elif chip=="CV180X":
+        chip_params,w_observer,a_observer,w_fakequantize,a_fakequantize=chipparams(chip,extra_qparams,FakeQuantizeDict_Chip)
+    elif chip=="CV186X":
+        chip_params,w_observer,a_observer,w_fakequantize,a_fakequantize=chipparams(chip,extra_qparams,FakeQuantizeDict_Chip)
     elif chip=="BM1690":
         chip_params,w_observer,a_observer,w_fakequantize,a_fakequantize=chipparams(chip,extra_qparams,FakeQuantizeDict_Chip)
     elif chip=="Academic":
@@ -211,10 +256,8 @@ def get_qconfig_by_platform(quant_dict:Dict,extra_qparams: Dict):
     # Set extra args for observers.
     w_observer_extra_args = extra_qparams.get('w_observer_extra_args', {})
     a_observer_extra_args = extra_qparams.get('a_observer_extra_args', {})
-    if w_qscheme:
-        w_qscheme.kwargs.update(w_observer_extra_args)
-    if a_qscheme:
-        a_qscheme.kwargs.update(a_observer_extra_args)
+    w_qscheme.kwargs.update(w_observer_extra_args)
+    a_qscheme.kwargs.update(a_observer_extra_args)
     # Get weight / act fake quantize function and params. And bias fake quantizer if needed(Vitis)
     if not w_fakequantize:
         w_fakequantize = chip_params['default_weight_quantize']
@@ -230,29 +273,21 @@ def get_qconfig_by_platform(quant_dict:Dict,extra_qparams: Dict):
 
     # Create qconfig.
     # here, rewrited by with_args
-    w_qconfig = None
-    if w_qscheme:
-        w_qconfig = w_fakequantize.with_args(observer=w_observer, **w_fakeq_params, **w_qscheme.to_observer_params())
-    else:
-        if w_fakequantize:
-            w_qconfig = w_fakequantize.with_args(observer=w_observer, **w_fakeq_params)
-    if a_qscheme:
-        a_qconfig = a_fakequantize.with_args(observer=a_observer, **a_fakeq_params, **a_qscheme.to_observer_params())
-    else:
-        a_qconfig = a_fakequantize.with_args(observer=a_observer, **a_fakeq_params)
+    w_qconfig = w_fakequantize.with_args(observer=w_observer, **w_fakeq_params, **w_qscheme.to_observer_params())
+    a_qconfig = a_fakequantize.with_args(observer=a_observer, **a_fakeq_params, **a_qscheme.to_observer_params())
     assert not(quant_dict["quantmode"]=="weight_only"and quant_dict["strategy"]=="CNN") ,"unsupport this combination"
     if quant_dict["quantmode"]=="weight_activation":
         logger.info('Weight Qconfig:\n    FakeQuantize: {} Params: {}\n'
-                    '    Oberver:      {} Params: {}'.format(w_fakequantize.__name__ if w_fakequantize else "None", w_fakeq_params,
-                                                            w_observer.__name__ if w_observer else "None", str(w_qscheme)))
+                    '    Oberver:      {} Params: {}'.format(w_fakequantize.__name__, w_fakeq_params,
+                                                            w_observer.__name__, str(w_qscheme)))
         logger.info('Activation Qconfig:\n    FakeQuantize: {} Params: {}\n'
                     '    Oberver:      {} Params: {}'.format(a_fakequantize.__name__, a_fakeq_params,
-                                                            a_observer.__name__ if a_observer else "None", str(a_qscheme)))
+                                                            a_observer.__name__, str(a_qscheme)))
         logger.info('Bias will also be quantified')
     elif quant_dict["quantmode"]=="weight_only":
         logger.info('Weight Qconfig:\n    FakeQuantize: {} Params: {}\n'
-                    '    Oberver:      {} Params: {}'.format(w_fakequantize.__name__ if w_fakequantize else "None", w_fakeq_params,
-                                                            w_observer.__name__ if w_observer else "None", str(w_qscheme)))
+                    '    Oberver:      {} Params: {}'.format(w_fakequantize.__name__, w_fakeq_params,
+                                                            w_observer.__name__, str(w_qscheme)))
     else:
         logger.info("The quantmode is currently not supported")
     
@@ -273,7 +308,7 @@ def get_qconfig_by_platform(quant_dict:Dict,extra_qparams: Dict):
             elif mode=="weight":
                 wfq=object_type.get(type_name,{}).get("wfakequantize")
                 wob=object_type.get(type_name,{}).get("wobserver")
-                qconfig['object_type'][type_name]=createQConfigForSophgo_weight(bit_num = bit, w_fakequantize = wfq, w_observer = wob)
+                qconfig['object_type'][type_name]=createQConfigForSophgo_weight(chip, bit_num = bit, w_fakequantize = wfq, w_observer = wob)
             else:
                 raise ValueError(f'无效的模式: {mode}。模式应该是 "activation" 或 "weight"。')
     # if object_type is not None:
@@ -281,13 +316,7 @@ def get_qconfig_by_platform(quant_dict:Dict,extra_qparams: Dict):
     #         qconfig["object_type"].update(object_type)
     #     else:
     #         qconfig["object_type"] = object_type
-
-    # if chip=="CV183X":
-    #     from sophgo_mq.custom_quantizer.sophgo_tpu_quantizer import SophgoTpuQuantizer
-    #     conv_matmul_types = SophgoTpuQuantizer({},{},{},None)._layers_need_scale_form_input_fake_quantizer
-    #     for type in conv_matmul_types:
-    #         qconfig['object_type'][type]=createQConfig()
-
+            
     module_name = extra_qparams.get('module_name', None)
     if module_name:
         if "module_name" not in qconfig:
@@ -302,7 +331,7 @@ def get_qconfig_by_platform(quant_dict:Dict,extra_qparams: Dict):
             elif mode=="weight":
                 wfq=module_name.get(type_name,{}).get("wfakequantize")
                 wob=module_name.get(type_name,{}).get("wobserver")
-                qconfig["module_name"][type_name]=createQConfigForSophgo_weight(bit_num = bit, w_fakequantize = wfq, w_observer = wob)
+                qconfig["module_name"][type_name]=createQConfigForSophgo_weight(chip, bit_num = bit, w_fakequantize = wfq, w_observer = wob)
             else:
                 raise ValueError(f'无效的模式: {mode}。模式应该是 "activation" 或 "weight"。')
 
@@ -420,10 +449,13 @@ def createQConfigForSophgo_activation(bit_num = 4, a_fakequantize = 'LearnableFa
     a_qscheme.kwargs.update(a_observer_extra_args)
     a_qconfig = a_fakequantize.with_args(observer=a_observer, **a_fakeq_params, **a_qscheme.to_observer_params())
     return QConfig(activation=a_qconfig, weight=None)
-def createQConfigForSophgo_weight(bit_num = 4, w_fakequantize = 'FixedFakeQuantize', w_observer = 'MinMaxObserver', w_fakeq_params = {}, w_observer_extra_args = {}):
+def createQConfigForSophgo_weight(chip, bit_num = 4, w_fakequantize = 'FixedFakeQuantize', w_observer = 'MinMaxObserver', w_fakeq_params = {}, w_observer_extra_args = {}):
     w_observer = ObserverDict[w_observer]
     w_fakequantize = FakeQuantizeDict[w_fakequantize]
-    w_qscheme = QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=bit_num, symmetric_range=True) #Sophgo_TPU use sym per-layer
+    sym_range = False
+    if chip in ['MARS3', 'CV183X', 'CV182X', 'CV181X', 'CV180X', 'CV186X']:
+        sym_range = True
+    w_qscheme = QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=bit_num, symmetric_range = sym_range) #Sophgo_TPU use sym per-layer
     w_qscheme.kwargs.update(w_observer_extra_args)
     w_qconfig = w_fakequantize.with_args(observer=w_observer, **w_fakeq_params, **w_qscheme.to_observer_params())
     return QConfig(activation=torch.nn.Identity, weight=w_qconfig) #activation use global quant conifg
@@ -436,7 +468,7 @@ def createQConfig(w_fakequantize = 'LearnableFakeQuantize', a_fakequantize = 'Le
     if w_qscheme is not None:
         w_qscheme = QuantizeScheme(**w_qscheme)
     else:
-        w_qscheme = QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8, symmetric_range=True)
+        w_qscheme = QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8)
 
     w_qscheme.kwargs.update(w_observer_extra_args)
     w_qconfig = w_fakequantize.with_args(observer=w_observer, **w_fakeq_params, **w_qscheme.to_observer_params())
@@ -608,7 +640,7 @@ def prepare_by_platform(
     # Prepare
     import sophgo_mq.custom_quantizer  # noqa: F401
     extra_quantizer_dict = prepare_custom_config_dict.get('extra_quantizer_dict', {})
-    quantizer = DEFAULT_MODEL_QUANTIZER[chip](extra_quantizer_dict, extra_fuse_dict,quant_dict,chip)
+    quantizer = DEFAULT_MODEL_QUANTIZER[chip](extra_quantizer_dict, extra_fuse_dict,quant_dict)
     if chip == "Academic":
         prepared = quantizer.prepare_swint(graph_module, qconfig)
     else:

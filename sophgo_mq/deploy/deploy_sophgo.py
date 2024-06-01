@@ -26,7 +26,8 @@ PERTENSOR_FAKEQUANTIZER = ['LearnablePerTensorAffine',
                            'FixedPerTensorAffine',
                            'FakeQuantizeDSQPertensor',
                            'FakeQuantizeTqtAffine',
-                           'FPEmuOp_per_tensor']
+                           'FPEmuOp_per_tensor',
+                           'Cast']
 ALL_FAKEQUANTIZER = PERCHANNEL_FAKEQUANTIZER + PERTENSOR_FAKEQUANTIZER
 
 
@@ -269,14 +270,10 @@ class LinearQuantizer_process(object):
         nodes_to_be_removed = []
         output_path = os.path.dirname(onnx_path)
         have_int4 = False
+        pre_op_is_cast = False
         tensor_name_to_node_name = {}
         
-        layer_out_tensor_list, layer_out_tensor2_list = [], []
-        for i in range(5):
-            file_name = os.path.join(output_path, f'layer_outputs_{i}.npz')
-            if os.path.exists(file_name):
-                layer_out_tensor_list.append(np.load(file_name))
-                layer_out_tensor2_list.append({})
+
         for node in graph.node:
             print(f'process node:{node.name}, type:{node.op_type}')
             if node.op_type in ALL_FAKEQUANTIZER:
@@ -335,19 +332,29 @@ class LinearQuantizer_process(object):
                 else:
                     # fake quantize for activations
                     self.deal_with_activation_fakequant(node, inp2node)
+                    output_name = node.output[0]
+                    for out in graph.output:
+                        if out.name == output_name:
+                            out.name = node.input[0]
+                    if node.op_type == 'Cast':
+                        pre_op_is_cast = True
+                        # if node.name.endswith('_post_act_fake_quantizer/Cast'):
+                        #     tensor_name = node.input[0]
+                        #     tensor_name_new = f'{tensor_name}_{out2node[tensor_name].op_type}' if tensor_name in out2node else tensor_name
+                        #     clip_ranges[tensor_name_new] = {'threshold':0.0, 
+                        #                                 'min': 0.0,
+                        #                                 'max': 0.0,
+                        #                                 'bit': 16,
+                        #                                 'type': 'bf16',
+                        #                                 'ori_name': 'none',
+                        #                                 'quant_type': 'BF16'
+                        #                                 }
+                        continue
                     tensor_name, scale, zero_point, qmin, qmax, dtype, quant_type = self.parse_qparams(node, name2data, quant_type_dict)
                     bits = 4 if qmax == 7 else 8
                     if bits == 4:
                         have_int4 = True
-                    for out in graph.output:
-                        output_name = node.output[0]
-                        # if inp2node[node.output[0]][0][0].op_type == 'Add':
-                        #     output_name = inp2node[node.output[0]][0][0].output[0]
-                        if out.name == output_name:
-                            out.name = tensor_name
 
-                    scale_name = node.input[1]
-                    post_str = '_post_act_fake_quantizer.scale'
                     tensor_name_new = tensor_name
                     if tensor_name in out2node:
                         tensor_name_new += '_{}'.format(out2node[tensor_name].op_type)
@@ -362,11 +369,8 @@ class LinearQuantizer_process(object):
                         # else:
                         #     if bits == 4 and out2node[out2node[tensor_name].input[0]].op_type not in ['Conv', 'Gemm']:
                         #         tensor_name_new += '_4'
-                    if len(layer_out_tensor_list) > 0 and scale_name.endswith(post_str):
-                        torch_name = scale_name[:len(scale_name)-len(post_str)]
-                        for layer_out_tensor, layer_out_tensor2 in zip(layer_out_tensor_list, layer_out_tensor2_list):
-                            if torch_name in layer_out_tensor.files:
-                                layer_out_tensor2[tensor_name_new] = layer_out_tensor[torch_name]
+                    if pre_op_is_cast:
+                        quant_type = 'BF16_to_INT8'
                     clip_ranges[tensor_name_new+f'_{bits}'] = {'threshold':float(scale * max(-qmin, qmax)), #对称量化时这个参数生效
                                                 'min': float(scale * (qmin - zero_point)),
                                                 'max': float(scale * (qmax - zero_point)),
@@ -376,6 +380,7 @@ class LinearQuantizer_process(object):
                                                 'quant_type': quant_type
                                                 }
                     tensor_name_to_node_name[tensor_name_new+f'_{bits}'] = {node.name: node.input}
+            pre_op_is_cast = False
 
         ### show relation between tensor name in clip_ranges with fake quant node name
         print(">>>>> print tensor name to node name dict")
@@ -385,14 +390,7 @@ class LinearQuantizer_process(object):
             print("\n")
         print(">>>>> end")
  
-        i = 0
-        for layer_out_tensor, layer_out_tensor2 in zip(layer_out_tensor_list, layer_out_tensor2_list):
-            if 'data' in layer_out_tensor.files:
-                layer_out_tensor2['data'] = layer_out_tensor['data']
-            file_name = os.path.join(output_path, f'layer_outputs_{i}.npz')
-            os.system(f'rm -f {file_name}')
-            np.savez(file_name, **layer_out_tensor2)
-            i += 1
+
         for node in nodes_to_be_removed:
             graph.node.remove(node)
         # delete initializer

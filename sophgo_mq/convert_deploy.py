@@ -41,6 +41,10 @@ from sophgo_mq.fake_quantize import (
     FP4GROUPFakeQuantize,
     FP4GROUPFakeQuantize1
 )
+# from utils.mlir_shell import mlir_opt_for_top, mlir_lowering, mlir_to_model, f32_blobs_compare
+# from tools.model_runner import mlir_inference, free_mlir_module
+import torchvision.transforms as TorchTransforms
+
 FP8_FAKEQUANTIZER = [E4M3FakeQuantize, E5M2FakeQuantize]
 FP4_FAKEQUANTIZER = [FP4FakeQuantize, GPTQFP4FakeQuantize, FP4GROUPFakeQuantize, FP4GROUPFakeQuantize1]
 INT_FAKEQUANTIZER = [LearnableFakeQuantize, NNIEFakeQuantize, FixedFakeQuantize, DoReFaFakeQuantize, DSQFakeQuantize, PACTFakeQuantize,\
@@ -244,7 +248,9 @@ def export_qtable(context_filename, model_name, output_path, quant_mode):
             for name,value in blob_range.items():
                 if 'quant_type' in value:
                     quant_type = value['quant_type']
-                    if 'threshold' in value:
+                    if quant_type in ['None', 'BF16_to_INT8']:
+                        continue
+                    if 'threshold' in value and quant_type != 'BF16':
                         f.write("{} {}\n".format(name[:-2], quant_type))
                     else:
                         f.write("{} {}\n".format(name, quant_type))
@@ -267,7 +273,7 @@ def deploy_qparams_Academic_NLP(model: GraphModule, onnx_model_path, model_name,
     for name, submodule in model.named_modules():
         if isinstance(submodule, torch.quantization.FakeQuantizeBase):
             if submodule.only_enable_observer==True:
-                node_name_only_observer.append(name)  
+                node_name_only_observer.append(name)
     quant_mode = "INT8"
     for name, submodule in model.named_modules():
         class_of_submodule = submodule.__class__
@@ -426,7 +432,7 @@ def get_quant_type_from_fakequant_type(model: GraphModule):
 
     return quant_type_dict
 
-def convert_deploy(model: GraphModule, net_type='CNN',
+def convert_deploy(model: GraphModule, chip, val_loader, net_type='CNN',
                    input_shape_dict=None, dummy_input=None, output_path='./',
                    model_name='sophgo_mq_qmodel', deploy_to_qlinear=False, **extra_kwargs):
     r"""Convert model to onnx model and quantization params depends on backend.
@@ -461,6 +467,62 @@ def convert_deploy(model: GraphModule, net_type='CNN',
     deploy_model = deepcopy_graphmodule(model)
     for convert_function in NET_DEPLOY_FUNCTION[net_type]:
         convert_function(deploy_model, **kwargs)
+
+    if chip != 'academic':
+        mlir_scale = '1,1,1'
+        mlir_mean = '0,0,0'
+        transforms = val_loader.dataset.transform.transforms
+        for i, transform in enumerate(transforms):
+            if isinstance(transform, TorchTransforms.Normalize) and isinstance(transforms[i - 1], TorchTransforms.ToTensor):
+                mean_np = np.array(transform.mean)
+                std_np = np.array(transform.std)
+                mlir_scale=1/(255*std_np)
+                mlir_mean=mean_np/(std_np*mlir_scale)
+                mlir_scale = ','.join([str(round(i,4)) for i in mlir_scale.tolist()])
+                mlir_mean = ','.join([str(round(i,4)) for i in mlir_mean.tolist()])
+
+        onnx_filename = os.path.join(output_path, '{}_deploy_model.onnx'.format(model_name))
+        shape_str_list = []
+        for name in input_shape_dict:
+            shape_str = ','.join([str(i) for i in input_shape_dict[name]])
+            shape_str_list.append(f'[{shape_str}]')
+        shape_str_list = ','.join(shape_str_list)
+        cmd_str = f"model_transform.py \
+        --model_name {model_name}_qat \
+        --model_def {onnx_filename} \
+        --input_shapes [{shape_str_list}] \
+        --mean {mlir_scale} \
+        --scale {mlir_mean} \
+        --keep_aspect_ratio \
+        --pixel_format rgb \
+        --mlir {model_name}_qat.mlir"
+        print('cmd_str:', cmd_str)
+        os.system(cmd_str)
+
+        calibration_table = os.path.join(output_path, '{}_cali_table_from_sophgo_mq_sophgo_tpu'.format(model_name))
+        test_input = os.path.join(output_path, 'input_data_0.npz')
+        test_reference = os.path.join(output_path, 'layer_outputs_0.npz')
+        quantize_table = ''
+        quantize_mode = 'INT8'
+        quantize_str = 'int8_sym'
+        if 'bf16_mix_prec' in kwargs and kwargs['bf16_mix_prec']:
+            quantize_table = os.path.join(output_path, '{}_q_table_from_sophgo_mq_sophgo_tpu'.format(model_name))
+            quantize_table = f'--quantize_table {quantize_table}'
+            quantize_mode = 'BF16'
+            quantize_str = 'bf16'
+        bmodel_ext = 'cvimodel' if chip in ['MARS3', 'CV183X', 'CV182X', 'CV181X', 'CV180X', 'CV186X'] else 'bmodel'
+        os.system(f"model_deploy.py \
+        --mlir {model_name}_qat.mlir \
+        --quantize {quantize_mode} \
+        --calibration_table {calibration_table} {quantize_table} \
+        --chip {chip} \
+        --test_input {test_input} \
+        --test_reference {test_reference} \
+        --fazzy_match \
+        --tolerance 0.99,0.90 --debug \
+        --model {model_name}_qat_{chip.lower()}_{quantize_str}.{bmodel_ext}")
+        return f'./{model_name}_qat_{chip.lower()}_{quantize_str}_tpu.mlir'
+
 
 def export_onnx_with_fakequant_node(model: GraphModule, net_type='CNN',
                    input_shape_dict=None, dummy_input=None, output_path='./',
