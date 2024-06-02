@@ -13,6 +13,10 @@ jobs:
       uses: actions/checkout@v2
       with:
           ref: ${{ github.event.pull_request.head.sha }}
+    - name: Print PR number and title
+      run: |
+        echo "PR number: ${{ github.event.pull_request.number }}"
+        echo "PR title: ${{ github.event.pull_request.title }}"          
     - name: Cache Docker images
       uses: actions/cache@v2
       with:
@@ -24,7 +28,7 @@ jobs:
       run: |
         pwd
         ls
-        docker run -v  "$(pwd):/workspace" bernardxu6034/sgmq_base:v1 bash -c \
+        docker run -v  "$(pwd):/workspace" sophgo/tpuc_dev:v3.3-cuda bash -c \
         "
         pwd
         ls
