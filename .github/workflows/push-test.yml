@@ -16,7 +16,11 @@ jobs:
     - name: Print PR number and title
       run: |
         echo "PR number: ${{ github.event.pull_request.number }}"
-        echo "PR title: ${{ github.event.pull_request.title }}"          
+        echo "PR title: ${{ github.event.pull_request.title }}"
+        echo "Current branch: ${{ github.ref }}"
+        # 提取分支名称
+        CURRENT_BRANCH=$(echo${{ github.ref }} | sed 's|^refs/heads/||')
+        echo "Current branch name: $CURRENT_BRANCH"        
     - name: Cache Docker images
       uses: actions/cache@v2
       with:
