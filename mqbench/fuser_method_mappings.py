@@ -1,35 +1,94 @@
 import torch
 import torch.nn as nn
-from torch.quantization.fx.fusion_patterns import ConvBNReLUFusion, ModuleReLUFusion
+# from torch.quantization.fx.fusion_patterns import ConvBNReLUFusion, ModuleReLUFusion
 from torch.quantization.fx.quantization_types import QuantizerCls
 from torch.fx.graph import Node
+from collections import namedtuple
 
 import mqbench.nn as qnn
 import mqbench.nn.intrinsic as qnni
 import mqbench.nn.intrinsic.qat as qnniqat
 from mqbench.utils.fusion import fuse_deconv_bn_eval
 from mqbench.nn.modules import FrozenBatchNorm2d
+from torch.ao.quantization.fx.fuse_handler import DefaultFuseHandler
+from torch.ao.quantization.backend_config import (
+    BackendPatternConfig,
+    DTypeConfig,
+    DTypeWithConstraints,
+    ObservationType,
+)
+import torch.ao.nn.intrinsic as nni
+import torch.ao.nn.intrinsic.qat as nniqat
+import torch.ao.nn.qat as nnqat
+import torch.ao.nn.quantized.reference as nnqr
+import torch.nn.functional as F
 
 
-class ConvExtendBnReLUFusion(ConvBNReLUFusion):
-    def __init__(self, quantizer: QuantizerCls, node: Node):
-        super(ConvBNReLUFusion, self).__init__(quantizer, node)
-        self.relu_node = None
-        self.bn_node = None
-        if (node.op == 'call_function' and node.target is torch.nn.functional.relu) or \
-           (node.op == 'call_module' and type(quantizer.modules[node.target]) == torch.nn.ReLU):
-            self.relu_node = node
-            assert isinstance(node.args[0], Node)
-            node = node.args[0]
-        assert node.op == 'call_module'
-        if type(quantizer.modules[node.target]) in [torch.nn.BatchNorm1d, torch.nn.BatchNorm2d, torch.nn.BatchNorm3d, FrozenBatchNorm2d]:
-            self.bn_node = node
-            self.bn = quantizer.modules[self.bn_node.target]
-            assert isinstance(node.args[0], Node)
-            node = node.args[0]
-        assert node.op == 'call_module'
-        self.conv_node = node
-        self.conv = quantizer.modules[self.conv_node.target]
+
+
+def _get_custom_conv_configs(dtype_configs):
+    """
+    Return all configs related to conv modules and ops.
+    """
+    conv_configs = []
+    observation_type = ObservationType.OUTPUT_USE_DIFFERENT_OBSERVER_AS_INPUT
+    # 1 conv transpose + bn + relu
+    conv_configs.append(
+        BackendPatternConfig((nn.ConvTranspose2d, nn.BatchNorm2d, nn.ReLU))
+        .set_dtype_configs(dtype_configs)  # noqa: E131
+        .set_fuser_method(fuse_deconv_bn_relu)
+        .set_fused_module(qnni.ConvTransposeBnReLU2d)
+    )
+
+    conv_configs.append(
+        BackendPatternConfig(qnni.ConvTransposeBnReLU2d)
+        .set_dtype_configs(dtype_configs)  # noqa: E131
+        .set_observation_type(observation_type)
+        .set_root_module(nn.ConvTranspose2d)
+        .set_reference_quantized_module(nnqr.ConvTranspose2d)
+        .set_qat_module(qnniqat.ConvTransposeBnReLU2d)
+    )
+    # 2 conv transpose + bn
+    conv_configs.append(
+        BackendPatternConfig((nn.ConvTranspose2d, nn.BatchNorm2d))
+        .set_dtype_configs(dtype_configs)  # noqa: E131
+        .set_fuser_method(fuse_deconv_bn)
+        .set_fused_module(qnni.ConvTransposeBn2d)
+    )
+    conv_configs.append(
+        BackendPatternConfig(qnni.ConvTransposeBn2d)
+        .set_dtype_configs(dtype_configs)  # noqa: E131
+        .set_observation_type(observation_type)
+        .set_root_module(nn.ConvTranspose2d)
+        .set_reference_quantized_module(nnqr.ConvTranspose2d)
+        .set_qat_module(qnniqat.ConvTransposeBn2d)
+    )
+    # 3 conv transpose
+    conv_configs.append(
+        BackendPatternConfig(nn.ConvTranspose2d)
+        .set_dtype_configs(dtype_configs)  # noqa: E131
+        .set_observation_type(observation_type)
+        .set_root_module(nn.ConvTranspose2d)
+        .set_reference_quantized_module(nnqr.ConvTranspose2d)
+        .set_qat_module(qnn.qat.ConvTranspose2d)
+    )
+    # 4 linear bn
+    conv_configs.append(
+        BackendPatternConfig((nn.Linear, nn.BatchNorm1d))
+        .set_dtype_configs(dtype_configs)  # noqa: E131
+        .set_fuser_method(fuse_linear_bn)
+        .set_fused_module(qnni.LinearBn1d)
+    )
+    conv_configs.append(
+        BackendPatternConfig(qnni.LinearBn1d)
+        .set_dtype_configs(dtype_configs)  # noqa: E131
+        .set_observation_type(observation_type)
+        .set_root_module(nn.Linear)
+        .set_reference_quantized_module(nnqr.Linear)
+        .set_qat_module(qnniqat.LinearBn1d)
+    )
+
+    return conv_configs
 
 
 def fuse_linear_bn(linear, bn):
@@ -56,7 +115,7 @@ def fuse_linear_bn(linear, bn):
         return nn.utils.fusion.fuse_linear_bn_eval(linear, bn)
 
 
-def fuse_deconv_bn(deconv, bn):
+def fuse_deconv_bn(is_qat, deconv, bn):
     assert deconv.training == bn.training, \
         'DeConv and BN must be in the same mode (train or eval)'
 
@@ -69,7 +128,7 @@ def fuse_deconv_bn(deconv, bn):
         return fuse_deconv_bn_eval(deconv, bn)
 
 
-def fuse_deconv_bn_relu(deconv, bn, relu):
+def fuse_deconv_bn_relu(is_qat, deconv, bn, relu):
     assert deconv.training == bn.training == relu.training, \
         "DeConv and BN both must be in the same mode (train or eval)."
 
@@ -82,7 +141,7 @@ def fuse_deconv_bn_relu(deconv, bn, relu):
         return qnni.ConvTransposeReLU2d(fuse_deconv_bn_eval(deconv, bn), relu)
 
 
-def fuse_conv_freezebn(conv, bn):
+def fuse_conv_freezebn(is_qat, conv, bn):
     assert bn.training is False, "Freezebn must be eval."
 
     if conv.training:
@@ -94,7 +153,7 @@ def fuse_conv_freezebn(conv, bn):
         return nn.utils.fuse_conv_bn_eval(conv, bn)
 
 
-def fuse_conv_freezebn_relu(conv, bn, relu):
+def fuse_conv_freezebn_relu(is_qat, conv, bn, relu):
     assert conv.training == relu.training and bn.training is False, \
         "Conv and relu both must be in the same mode (train or eval) and bn must be eval."
 
@@ -108,7 +167,7 @@ def fuse_conv_freezebn_relu(conv, bn, relu):
         return nn.intrinsic.ConvReLU2d(fused_conv, relu)
 
 
-def fuse_deconv_freezebn(deconv, bn):
+def fuse_deconv_freezebn(is_qat, deconv, bn):
     assert bn.training is False, "Freezebn must be eval."
 
     if deconv.training:
@@ -120,7 +179,7 @@ def fuse_deconv_freezebn(deconv, bn):
         return fuse_deconv_bn_eval(deconv, bn)
 
 
-def fuse_deconv_freezebn_relu(deconv, bn, relu):
+def fuse_deconv_freezebn_relu(is_qat, deconv, bn, relu):
     assert deconv.training == relu.training and bn.training is False, \
         "Conv and relu both must be in the same mode (train or eval) and bn must be eval."
 
@@ -133,77 +192,4 @@ def fuse_deconv_freezebn_relu(deconv, bn, relu):
         return qnni.ConvTransposeReLU2d(fuse_deconv_bn_eval(deconv, bn), relu)
 
 
-fuse_custom_config_dict = {
-    "additional_fuser_method_mapping": {
-        (torch.nn.Linear, torch.nn.BatchNorm1d): fuse_linear_bn,
-        (torch.nn.ConvTranspose2d, torch.nn.BatchNorm2d): fuse_deconv_bn,
-        (torch.nn.ConvTranspose2d, torch.nn.BatchNorm2d, torch.nn.ReLU): fuse_deconv_bn_relu,
-        (torch.nn.ConvTranspose2d, torch.nn.ReLU): qnni.ConvTransposeReLU2d,
-        (nn.Conv2d, FrozenBatchNorm2d, nn.ReLU): fuse_conv_freezebn_relu,
-        (nn.Conv2d, FrozenBatchNorm2d): fuse_conv_freezebn,
-        (nn.ConvTranspose2d, FrozenBatchNorm2d, nn.ReLU): fuse_deconv_freezebn_relu,
-        (nn.ConvTranspose2d, FrozenBatchNorm2d): fuse_deconv_freezebn,
-    },
-    "additional_fusion_pattern": {
-        (torch.nn.BatchNorm1d, torch.nn.Linear):
-        ConvBNReLUFusion,
-        (torch.nn.BatchNorm2d, torch.nn.ConvTranspose2d):
-        ConvBNReLUFusion,
-        (torch.nn.ReLU, torch.nn.ConvTranspose2d):
-        ConvBNReLUFusion,
-        (torch.nn.ReLU, (torch.nn.BatchNorm2d, torch.nn.ConvTranspose2d)):
-        ConvBNReLUFusion,
-        (torch.nn.functional.relu, torch.nn.ConvTranspose2d):
-        ConvBNReLUFusion,
-        (torch.nn.functional.relu, (torch.nn.BatchNorm2d, torch.nn.ConvTranspose2d)):
-        ConvBNReLUFusion,
-        (torch.nn.ReLU, (FrozenBatchNorm2d, torch.nn.Conv2d)):
-        ConvExtendBnReLUFusion,
-        (FrozenBatchNorm2d, torch.nn.Conv2d):
-        ConvExtendBnReLUFusion,
-        (torch.nn.ReLU, (FrozenBatchNorm2d, torch.nn.ConvTranspose2d)):
-        ConvExtendBnReLUFusion,
-        (FrozenBatchNorm2d, torch.nn.ConvTranspose2d):
-        ConvExtendBnReLUFusion,
-    },
-    "additional_qat_module_mappings": {
-        nn.ConvTranspose2d: qnn.qat.ConvTranspose2d,
-        qnni.LinearBn1d: qnniqat.LinearBn1d,
-        qnni.ConvTransposeBn2d: qnniqat.ConvTransposeBn2d,
-        qnni.ConvTransposeReLU2d: qnniqat.ConvTransposeReLU2d,
-        qnni.ConvTransposeBnReLU2d: qnniqat.ConvTransposeBnReLU2d,
-        qnni.ConvFreezebn2d: qnniqat.ConvFreezebn2d,
-        qnni.ConvFreezebnReLU2d: qnniqat.ConvFreezebnReLU2d,
-        qnni.ConvTransposeFreezebn2d: qnniqat.ConvTransposeFreezebn2d,
-        qnni.ConvTransposeFreezebnReLU2d: qnniqat.ConvTransposeFreezebnReLU2d,
-        nn.Embedding: qnn.qat.Embedding,
-    },
-}
 
-
-def _sort_fusion_patterns(pats):
-    keys = []
-    for key in pats.keys():
-        if pats[key] is ModuleReLUFusion:
-            keys.append(key)
-    for key in keys:
-        pats.move_to_end(key)
-
-
-# Sinse additional_fuser_method_mapping will not be set because fuser.py:54
-# do not pass this dict.
-from torch.quantization.fuser_method_mappings import DEFAULT_OP_LIST_TO_FUSER_METHOD
-from torch.quantization.fx.pattern_utils import DEFAULT_FUSION_PATTERNS
-from torch.quantization.quantization_mappings import DEFAULT_QAT_MODULE_MAPPINGS
-
-DEFAULT_OP_LIST_TO_FUSER_METHOD.update(
-    fuse_custom_config_dict['additional_fuser_method_mapping'])
-DEFAULT_FUSION_PATTERNS.update(
-    fuse_custom_config_dict['additional_fusion_pattern'])
-# Make longer matched pattern prior.
-# i.e. Conv + BN + Relu should match ConvBnRelu before BNRelu.
-# Any thing registered in class ConvBNReLUFusion should be
-# proir than class ModuleReLUFusion.
-_sort_fusion_patterns(DEFAULT_FUSION_PATTERNS)
-DEFAULT_QAT_MODULE_MAPPINGS.update(
-    fuse_custom_config_dict['additional_qat_module_mappings'])

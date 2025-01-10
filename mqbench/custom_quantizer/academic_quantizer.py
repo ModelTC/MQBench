@@ -6,7 +6,7 @@ from typing import List
 import torch
 from torch.fx import GraphModule
 from torch.quantization import propagate_qconfig_
-from torch.quantization.fx.qconfig_utils import get_flattened_qconfig_dict
+from mqbench.quantization.qconfig_mapping_utils import get_flattened_qconfig_dict
 
 from mqbench.utils import is_symmetric_quant, getitem2node
 from mqbench.utils.logger import logger
@@ -25,14 +25,14 @@ class AcademicQuantizer(ModelQuantizer):
         self.io_module = {}
         self.post_act_8bit_node_name = []
 
-    def prepare(self, model: GraphModule, qconfig):
+    def prepare(self, model: GraphModule, qconfig, is_qat, backend_config, freeze_bn):
         self._get_io_module(model)
         self._get_post_act_8bit_node_name(model)
-        model = self._weight_quant(model, qconfig)
+        model = self._weight_quant(model, qconfig, backend_config, freeze_bn)
         model = self._insert_fake_quantize_for_act_quant(model, qconfig)
         return model
 
-    def _weight_quant(self, model: GraphModule, qconfig):
+    def _weight_quant(self, model: GraphModule, qconfig, backend_config, freeze_bn):
         logger.info("Replace module to qat module.")
         wqconfig_8bit = copy.deepcopy(qconfig)
         wq_symmetry = True if is_symmetric_quant(qconfig.weight.p.keywords['qscheme']) else False
@@ -44,7 +44,7 @@ class AcademicQuantizer(ModelQuantizer):
                 module.qconfig = wqconfig_8bit
         flattened_qconfig_dict = get_flattened_qconfig_dict({'': qconfig})
         propagate_qconfig_(model, flattened_qconfig_dict)
-        self._qat_swap_modules(model, self.additional_qat_module_mapping)
+        self._qat_swap_modules(model, self.additional_qat_module_mapping, backend_config, freeze_bn)
         return model
 
     @property

@@ -16,34 +16,33 @@ from mqbench.deploy.common import (
     parse_attrs
 )
 
-PERCHANNEL_FAKEQUANTIZER = ['FakeQuantizeLearnablePerchannelAffine', 
-                            'FixedPerChannelAffine',
-                            'FakeQuantizeDSQPerchannel']
-PERTENSOR_FAKEQUANTIZER = ['LearnablePerTensorAffine', 
-                           'FixedPerTensorAffine',
-                           'FakeQuantizeDSQPertensor',
-                           'FakeQuantizeTqtAffine']
-ALL_FAKEQUANTIZER = PERCHANNEL_FAKEQUANTIZER + PERTENSOR_FAKEQUANTIZER
+ALL_FAKEQUANTIZER = ['QuantizeLinear', 'DequantizeLinear']
 
+def get_dequant_node(node, inp2node):
+    dequant_node = inp2node[node.output[0]][0][0]
+    if dequant_node.op_type == 'Clip':
+        dequant_node = inp2node[dequant_node.output[0]][0][0]
+    assert dequant_node.op_type == 'DequantizeLinear', "This is not correct fakequant node!"
+    return dequant_node
 
 class OPENVINO_process(object):
 
     def parse_qparams(self, node, name2data):
         tensor_name, scale, zero_point = node.input[:3]
         scale, zero_point = name2data[scale], name2data[zero_point]
-        if len(node.input) > 3:
-            qmin, qmax = node.input[-2:]
-            qmin, qmax = name2data[qmin], name2data[qmax]
-        elif len(node.attribute) > 0:
-            qparams = parse_attrs(node.attribute)
-            qmin = qparams['quant_min']
-            qmax = qparams['quant_max']
-        else:
-            logger.info(f'qmin and qmax are not found for <{node.name}>!')
-            qmax = qmin = None
-        return tensor_name, scale, zero_point, qmin, qmax
+        # if len(node.input) > 3:
+        #     qmin, qmax = node.input[-2:]
+        #     qmin, qmax = name2data[qmin], name2data[qmax]
+        # elif len(node.attribute) > 0:
+        #     qparams = parse_attrs(node.attribute)
+        #     qmin = qparams['quant_min']
+        #     qmax = qparams['quant_max']
+        # else:
+        #     logger.info(f'qmin and qmax are not found for <{node.name}>!')
+        #     qmax = qmin = None
+        return tensor_name, scale, zero_point
 
-    def replace_fakequantize_and_collect_params(self, onnx_path, model_name):
+    def replace_fakequantize_and_collect_params(self, onnx_path, model_name, qmin_max_dict):
         onnx_graph = ONNXGraph(onnx_path)
         model = onnx_graph.model
         graph = model.graph
@@ -59,10 +58,15 @@ class OPENVINO_process(object):
         insert_initializer_names = set()
         for node in graph.node:
             if node.op_type in ALL_FAKEQUANTIZER:
+                next_node = inp2node[node.output[0]][0][0]
+                if next_node.op_type == 'Clip' and inp2node[next_node.output[0]][0][0].op_type == 'DequantizeLinear':
+                    nodes_to_be_removed.append(next_node)
                 nodes_to_be_removed.append(node)
                 nodes_to_be_removed.extend(get_constant_inputs(node, out2node))
-
-                tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
+            if node.op_type == 'QuantizeLinear':
+                qmin, qmax = qmin_max_dict[node.name]
+                dequant_node = get_dequant_node(node, inp2node)
+                tensor_name, scale, zero_point = self.parse_qparams(node, name2data)
                 qmax = int(qmax)
                 qmin = int(qmin)
                 levels = qmax - qmin + 1
@@ -71,7 +75,7 @@ class OPENVINO_process(object):
                     levels = 256
                     qmax = qmax * 2 + 1
                     qmin = qmin * 2
-                output_name = node.output[0]
+                output_name = dequant_node.output[0]
                 # Create a node (FakeQuantize)
                 fakeq_inputnames = [item % tensor_name for item in ['input_min_%s', 'input_max_%s', 'output_min_%s', 'output_max_%s']]
                 node_def = helper.make_node(
@@ -93,7 +97,7 @@ class OPENVINO_process(object):
                 input_low_size = input_low.size
 
                 try:
-                    next_node = inp2node[node.output[0]][0][0]
+                    next_node = inp2node[dequant_node.output[0]][0][0]
                     # node for save weights
                     fake_node = out2node[next_node.input[1]]
                     tensor = name2data[fake_node.input[0]]
@@ -116,7 +120,8 @@ class OPENVINO_process(object):
                     graph.initializer.append(initializer)
 
         for node in nodes_to_be_removed:
-            graph.node.remove(node)
+            if node in graph.node:
+                graph.node.remove(node)
         graph.node.extend(node_defs)
         onnx_graph.topologize_graph()
         onnx_graph.prepare_initializer()

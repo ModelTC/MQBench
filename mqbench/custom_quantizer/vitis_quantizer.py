@@ -29,9 +29,9 @@ class VitisQuantizer(ModelQuantizer):
         super().__init__(extra_quantizer_dict, extra_fuse_dict)
         self.additional_qat_module_mapping = {
             # Intrinsic modules:
-            nni.ConvBn2d: qnniqat.ConvBn2d,
-            nni.ConvBnReLU2d: qnniqat.ConvBnReLU2d,
-            nni.ConvReLU2d: qnniqat.ConvReLU2d,
+            # nni.ConvBn2d: qnniqat.ConvBn2d,
+            # nni.ConvBnReLU2d: qnniqat.ConvBnReLU2d,
+            # nni.ConvReLU2d: qnniqat.ConvReLU2d,
         }
 
     @property
@@ -83,9 +83,9 @@ class VitisQuantizer(ModelQuantizer):
             torch.nn.functional.interpolate,
         ] 
 
-    def prepare(self, model: GraphModule, qconfig):
-        model = _fuse_fx(model, self.extra_fuse_dict)
-        model = self._weight_quant(model, qconfig)
+    def prepare(self, model: GraphModule, qconfig, is_qat, backend_config, freeze_bn):
+        model = _fuse_fx(model, is_qat, self.extra_fuse_dict, backend_config)
+        model = self._weight_quant(model, qconfig, backend_config, freeze_bn)
         model = self._insert_fake_quantize_for_act_quant(model, qconfig)
         prepared = model
         self._set_quant_type(prepared)

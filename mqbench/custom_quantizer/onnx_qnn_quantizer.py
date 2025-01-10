@@ -12,7 +12,9 @@ import mqbench.nn.intrinsic as qnni
 from mqbench.utils.registry import register_model_quantizer
 from mqbench.prepare_by_platform import BackendType
 from mqbench.custom_quantizer import ModelQuantizer
-
+from torch.ao.quantization.backend_config import (
+    BackendConfig,
+)
 
 @register_model_quantizer(BackendType.ONNX_QNN)
 class ONNXQNNQuantizer(ModelQuantizer):
@@ -52,14 +54,14 @@ class ONNXQNNQuantizer(ModelQuantizer):
                         node_need_to_quantize_output.append(next_node)
         return node_need_to_quantize_output
 
-    def _qat_swap_modules(self, root: GraphModule, additional_qat_module_mapping: Dict[Callable, Callable]):
+    def _qat_swap_modules(self, root: GraphModule, additional_qat_module_mapping: Dict[Callable, Callable], backend_config: BackendConfig, freeze_bn: bool):
         all_mappings = get_combined_dict(
             get_default_qat_module_mappings(), additional_qat_module_mapping)
         # There is no QLinearFC in ONNX for now.
         del all_mappings[torch.nn.modules.linear.Linear]
         del all_mappings[torch.nn.intrinsic.modules.fused.LinearReLU]
-        del all_mappings[qnni.modules.fused.LinearBn1d]
-        root = self._convert(root, all_mappings, inplace=True)
+        # del all_mappings[qnni.modules.fused.LinearBn1d]
+        root = self._convert(root, all_mappings, inplace=True, backend_config = backend_config, freeze_bn=freeze_bn)
         return root
 
     @property

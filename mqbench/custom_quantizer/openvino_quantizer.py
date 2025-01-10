@@ -6,7 +6,7 @@ from typing import Any
 import torch
 from torch.fx import GraphModule
 from torch.quantization import propagate_qconfig_
-from torch.quantization.fx.qconfig_utils import get_flattened_qconfig_dict
+from mqbench.quantization.qconfig_mapping_utils import get_flattened_qconfig_dict
 from torch.quantization.quantize_fx import _fuse_fx
 
 from mqbench.utils import is_symmetric_quant
@@ -137,10 +137,10 @@ class OPENVINOQuantizer(ModelQuantizer):
     def module_type_maybe_unsigned(self) -> tuple:
         return (torch.nn.Upsample, torch.nn.modules.pooling.MaxPool2d, torch.nn.modules.pooling.AvgPool2d, torch.nn.modules.pooling.AdaptiveAvgPool2d)
 
-    def prepare(self, model: GraphModule, qconfig):
+    def prepare(self, model: GraphModule, qconfig, is_qat, backend_config, freeze_bn):
         if not self.academic_mode:
-            model = _fuse_fx(model, self.extra_fuse_dict)
-        model = self._weight_quant(model, qconfig)
+            model = _fuse_fx(model, is_qat, self.extra_fuse_dict, backend_config)
+        model = self._weight_quant(model, qconfig, backend_config, freeze_bn)
         model = self._insert_fake_quantize_for_act_quant(model, qconfig)
         return model
 
@@ -199,7 +199,7 @@ class OPENVINOQuantizer(ModelQuantizer):
                     break
         return node_need_to_quantize_output
 
-    def _weight_quant(self, model: GraphModule, qconfig):
+    def _weight_quant(self, model: GraphModule, qconfig, backend_config, freeze_bn):
         logger.info("Replace module to qat module.")
         wqconfig_8bit = copy.deepcopy(qconfig)
         wq_symmetry = True if is_symmetric_quant(qconfig.weight.p.keywords['qscheme']) else False
@@ -213,7 +213,7 @@ class OPENVINOQuantizer(ModelQuantizer):
             wqconfig_8bit.weight.p.keywords['quant_max'] = 2 ** (numbits - 2) - 1
         flattened_qconfig_dict = get_flattened_qconfig_dict({'': wqconfig_8bit})
         propagate_qconfig_(model, flattened_qconfig_dict)
-        self._qat_swap_modules(model, self.additional_qat_module_mapping)
+        self._qat_swap_modules(model, self.additional_qat_module_mapping, backend_config, freeze_bn)
         return model
 
 

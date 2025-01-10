@@ -3,7 +3,7 @@ import torch
 from mqbench.fake_quantize.quantize_base import QuantizeBase
 
 
-_version_under_1100 = int(torch.__version__.split('.')[1]) < 10
+_version_under_1100 = int(torch.__version__.split('.')[0]) == 1 and int(torch.__version__.split('.')[1]) < 10
 
 class DoReFaFakeQuantize(QuantizeBase):
     def __init__(self, observer, **observer_kwargs):

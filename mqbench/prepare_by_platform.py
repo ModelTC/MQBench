@@ -9,7 +9,7 @@ from torch.fx import Tracer
 from torch.fx.graph_module import GraphModule
 from torch.quantization.quantize_fx import _swap_ff_with_fxff
 from torch.quantization import QConfig
-
+from mqbench.fuser_method_mappings import _get_custom_conv_configs
 
 from mqbench.fake_quantize import (
     LearnableFakeQuantize,
@@ -33,13 +33,25 @@ from mqbench.observer import (
     MSEObserver,
     EMAMSEObserver,
 )
-from mqbench.fuser_method_mappings import fuse_custom_config_dict
+# from mqbench.fuser_method_mappings import fuse_custom_config_dict
 from mqbench.utils.logger import logger
 from mqbench.utils.registry import DEFAULT_MODEL_QUANTIZER
 from mqbench.scheme import QuantizeScheme
-
+from torch.ao.quantization.backend_config import (
+    BackendConfig,
+    get_native_backend_config,
+get_tensorrt_backend_config,
+DTypeConfig
+)
+from torch.ao.quantization.backend_config.native import weighted_op_quint8_dtype_config
 __all__ = ['prepare_by_platform']
 
+weighted_op_qint8_dtype_config = DTypeConfig(
+    input_dtype=torch.qint8,
+    output_dtype=torch.qint8,
+    weight_dtype=torch.qint8,
+    bias_dtype=torch.float,
+)
 class BackendType(Enum):
     Academic = 'Academic'
     Tensorrt = 'Tensorrt'
@@ -54,6 +66,7 @@ class BackendType(Enum):
     Tensorrt_NLP = "Tensorrt_NLP"
     Academic_NLP = "Academic_NLP"
     STPU = "STPU"
+    QDQ = "QDQ"
 
 
 ParamsTable = {
@@ -129,6 +142,15 @@ ParamsTable = {
                                  default_act_quantize=FixedFakeQuantize,
                                  default_weight_observer=MinMaxObserver,
                                  default_act_observer=EMAMinMaxObserver),
+    BackendType.QDQ: dict(qtype='affine',  # noqa: E241
+                               w_qscheme=QuantizeScheme(symmetry=True, per_channel=True, pot_scale=False, bit=8,
+                                                        symmetric_range=True),
+                               a_qscheme=QuantizeScheme(symmetry=True, per_channel=False, pot_scale=False, bit=8,
+                                                        symmetric_range=True),
+                               default_weight_quantize=LearnableFakeQuantize,
+                               default_act_quantize=LearnableFakeQuantize,
+                               default_weight_observer=MinMaxObserver,
+                               default_act_observer=EMAMinMaxObserver),
 }
 ParamsTable[BackendType.Tensorrt_NLP] = ParamsTable[BackendType.Tensorrt]
 ParamsTable[BackendType.Academic_NLP] = ParamsTable[BackendType.Academic]
@@ -341,8 +363,10 @@ def prepare_constant_dict(graph: torch.fx.Graph, model: torch.nn.Module):
 def prepare_by_platform(
         model: torch.nn.Module,
         deploy_backend: BackendType,
+        is_qat: bool = False,
         prepare_custom_config_dict: Dict[str, Any] = {},
-        custom_tracer: Tracer = None):
+        custom_tracer: Tracer = None,
+        freeze_bn: bool = True):
     """
     Args:
         model (torch.nn.Module):
@@ -367,7 +391,8 @@ def prepare_by_platform(
     # Get Qconfig
     extra_qconfig_dict = prepare_custom_config_dict.get('extra_qconfig_dict', {})
     qconfig = get_qconfig_by_platform(deploy_backend, extra_qconfig_dict)
-
+    backend_config = get_native_backend_config()
+    backend_config.set_backend_pattern_configs(_get_custom_conv_configs(weighted_op_qint8_dtype_config))
     _swap_ff_with_fxff(model)
     # Preserve attr.
     preserve_attr_dict = dict()
@@ -396,12 +421,12 @@ def prepare_by_platform(
     graph_module = GraphModule(modules, graph, name)
     # Model fusion.
     extra_fuse_dict = prepare_custom_config_dict.get('extra_fuse_dict', {})
-    extra_fuse_dict.update(fuse_custom_config_dict)
+    # extra_fuse_dict.update(fuse_custom_config_dict)
     # Prepare
     import mqbench.custom_quantizer  # noqa: F401
     extra_quantizer_dict = prepare_custom_config_dict.get('extra_quantizer_dict', {})
     quantizer = DEFAULT_MODEL_QUANTIZER[deploy_backend](extra_quantizer_dict, extra_fuse_dict)
-    prepared = quantizer.prepare(graph_module, qconfig)
+    prepared = quantizer.prepare(graph_module, qconfig, is_qat, backend_config, freeze_bn)
     # Restore attr.
     if 'preserve_attr' in prepare_custom_config_dict:
         for submodule_name in prepare_custom_config_dict['preserve_attr']:

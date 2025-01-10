@@ -123,7 +123,7 @@ class MinMaxObserver(ObserverBase):
             return x_orig
         x = x_orig.to(self.min_val.dtype)
         if self.ch_axis == -1:
-            min_val_cur, max_val_cur = torch._aminmax(x)
+            min_val_cur, max_val_cur = torch.aminmax(x)
         else:
             x_dim = x.size()
             new_axis_list = [i for i in range(len(x_dim))]
@@ -131,7 +131,7 @@ class MinMaxObserver(ObserverBase):
             new_axis_list[0] = self.ch_axis
             y = x.permute(new_axis_list)
             y = torch.flatten(y, start_dim=1)
-            min_val_cur, max_val_cur = torch._aminmax(y, 1)
+            min_val_cur, max_val_cur = torch.aminmax(y, dim = 1)
         self.min_val = torch.min(self.min_val, min_val_cur)
         self.max_val = torch.max(self.max_val, max_val_cur)
 
@@ -162,10 +162,10 @@ class MinMaxFloorObserver(ObserverBase):
             return x_orig
         x = x_orig.to(self.min_val.dtype)
         if self.ch_axis == -1:
-            min_val_cur, max_val_cur = torch._aminmax(x)
+            min_val_cur, max_val_cur = torch.aminmax(x)
         else:
             logger.warn('The per-tensor observer does not support per-channel min-max!')
-            min_val_cur, max_val_cur = torch._aminmax(x)
+            min_val_cur, max_val_cur = torch.aminmax(x)
 
         self.min_val = min_val_cur
         self.max_val = max_val_cur
@@ -232,7 +232,7 @@ class EMAMinMaxObserver(ObserverBase):
             return x_orig
         x = x_orig.to(self.min_val.dtype)
         if self.ch_axis == -1:
-            min_val_cur, max_val_cur = torch._aminmax(x)
+            min_val_cur, max_val_cur = torch.aminmax(x)
         else:
             x_dim = x.size()
             new_axis_list = [i for i in range(len(x_dim))]  # noqa: C416
@@ -240,7 +240,7 @@ class EMAMinMaxObserver(ObserverBase):
             new_axis_list[0] = self.ch_axis
             y = x.permute(new_axis_list)
             y = torch.flatten(y, start_dim=1)
-            min_val_cur, max_val_cur = torch._aminmax(y, 1)
+            min_val_cur, max_val_cur = torch.aminmax(y, dim=1)
 
         if self.max_val.numel() <= 1 and self.max_val.isinf():
             self.min_val = min_val_cur
@@ -270,10 +270,10 @@ class PoTModeObserver(ObserverBase):
             return x_orig
         x = x_orig.to(self.min_val.dtype)
         if self.ch_axis == -1:
-            min_val_cur, max_val_cur = torch._aminmax(x)
+            min_val_cur, max_val_cur = torch.aminmax(x)
         else:
             logger.warn('The per-tensor observer does not support per-channel min-max!')
-            min_val_cur, max_val_cur = torch._aminmax(x)
+            min_val_cur, max_val_cur = torch.aminmax(x)
 
         self.min_val = min_val_cur
         self.max_val = max_val_cur
@@ -344,7 +344,7 @@ class EMAQuantileObserver(ObserverBase):
         if x_orig.numel() == 0:
             return x_orig
         x = x_orig.to(self.min_val.dtype)
-        min_val_cur, max_val_cur = torch._aminmax(x)
+        min_val_cur, max_val_cur = torch.aminmax(x)
         max_hist_range = torch.max(-min_val_cur, max_val_cur)
         hist = torch.histc(torch.abs(x), bins=self.bins, min=0., max=max_hist_range)
         cur_total = 0
@@ -381,7 +381,7 @@ class ClipStdObserver(ObserverBase):
             return x_orig
         x = x_orig.to(self.min_val.dtype)
         if self.ch_axis == -1:
-            min_val_cur, max_val_cur = torch._aminmax(x)
+            min_val_cur, max_val_cur = torch.aminmax(x)
             mean = x.mean()
             std = x.std()
         else:
@@ -391,7 +391,7 @@ class ClipStdObserver(ObserverBase):
             new_axis_list[0] = self.ch_axis
             y = x.permute(new_axis_list)
             y = torch.flatten(y, start_dim=1)
-            min_val_cur, max_val_cur = torch._aminmax(y, 1)
+            min_val_cur, max_val_cur = torch.aminmax(y, dim=1)
             mean = y.mean(1)
             std = y.std(1)
 
@@ -422,7 +422,7 @@ class LSQObserver(ObserverBase):
         x = x_orig.to(self.min_val.dtype)
         if self.ch_axis == -1:
             self.tensor_norm = x.abs().mean()
-            self.min_val, self.max_val = torch._aminmax(x)
+            self.min_val, self.max_val = torch.aminmax(x)
         else:
             # compute channel-wise mean
             x_dim = x.size()
@@ -432,7 +432,7 @@ class LSQObserver(ObserverBase):
             y = x.permute(new_axis_list)
             y = torch.flatten(y, start_dim=1)
             self.tensor_norm = y.abs().mean(1)
-            self.min_val, self.max_val = torch._aminmax(y, 1)
+            self.min_val, self.max_val = torch.aminmax(y, dim=1)
 
         return x
 
@@ -468,7 +468,7 @@ class LSQPlusObserver(ObserverBase):
         if self.ch_axis == -1:
             self.mean = x.mean()
             self.std = x.std()
-            self.min_val, self.max_val = torch._aminmax(x)
+            self.min_val, self.max_val = torch.aminmax(x)
         else:
             # compute channel-wise mean
             x_dim = x.size()
@@ -479,7 +479,7 @@ class LSQPlusObserver(ObserverBase):
             y = torch.flatten(y, start_dim=1)
             self.mean = y.mean(1)
             self.std = y.std(1)
-            self.min_val, self.max_val = torch._aminmax(y)
+            self.min_val, self.max_val = torch.aminmax(y)
 
         return x
 
@@ -487,10 +487,11 @@ class LSQPlusObserver(ObserverBase):
         scale = torch.maximum((self.mean - 3 * self.std).abs(),
                               (self.mean + 3 * self.std).abs()) / (self.quant_max - self.quant_min + 1)
         sync_tensor(scale)
-        sync_tensor(zero_point)
+        # sync_tensor(zero_point)
         if self.pot_scale:
             scale = pot_quantization(scale)
         zero_point = torch.zeros_like(self.mean)
+        sync_tensor(zero_point)
         if not is_symmetric_quant(self.qscheme):
             if self.min_val >= 0.:
                 zero_point = self.quant_min - torch.round(self.min_val / scale)
@@ -560,7 +561,7 @@ class MSEObserver(ObserverBase):
             return x_orig
         x = x_orig.clone().detach().to(self.min_val.dtype)
         if self.ch_axis == -1:
-            min_val_cur, max_val_cur = torch._aminmax(x)
+            min_val_cur, max_val_cur = torch.aminmax(x)
             min_val_cur, max_val_cur = self.mse(x, min_val_cur, max_val_cur, iter=95)
         else:
             x_dim = x.size()
@@ -569,7 +570,7 @@ class MSEObserver(ObserverBase):
             new_axis_list[0] = self.ch_axis
             x_channel = x.permute(new_axis_list)
             y = torch.flatten(x_channel, start_dim=1)
-            min_val_cur, max_val_cur = torch._aminmax(y, 1)
+            min_val_cur, max_val_cur = torch.aminmax(y, dim=1)
             min_val_cur, max_val_cur = self.mse_perchannel(x, min_val_cur, max_val_cur, iter=80, ch_axis=self.ch_axis)
 
         self.min_val = torch.min(self.min_val, min_val_cur)
@@ -639,7 +640,7 @@ class EMAMSEObserver(ObserverBase):
             return x_orig
         x = x_orig.clone().detach().to(self.min_val.dtype)
         if self.ch_axis == -1:
-            min_val_cur, max_val_cur = torch._aminmax(x)
+            min_val_cur, max_val_cur = torch.aminmax(x)
             min_val_cur, max_val_cur = self.mse(x, min_val_cur, max_val_cur, iter=95)
         else:
             x_dim = x.size()
@@ -648,7 +649,7 @@ class EMAMSEObserver(ObserverBase):
             new_axis_list[0] = self.ch_axis
             x_channel = x.permute(new_axis_list)
             y = torch.flatten(x_channel, start_dim=1)
-            min_val_cur, max_val_cur = torch._aminmax(y, 1)
+            min_val_cur, max_val_cur = torch.aminmax(y, dim=1)
             min_val_cur, max_val_cur = self.mse_perchannel(x, min_val_cur, max_val_cur, iter=80, ch_axis=self.ch_axis)
 
         if self.max_val.numel() <= 1 and self.max_val.isinf():

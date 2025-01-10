@@ -17,25 +17,25 @@ class ONNXQLinearPass(ONNXQNNPass):
     def parse_qparams(self, node, name2data):
         tensor_name, scale, zero_point = node.input[:3]
         scale, zero_point = name2data[scale], name2data[zero_point]
-        if len(node.input) > 3:
-            qmin, qmax = node.input[-2:]
-            qmin, qmax = name2data[qmin], name2data[qmax]
-        elif len(node.attribute) > 0:
-            qparams = parse_attrs(node.attribute)
-            qmin = qparams['quant_min']
-            qmax = qparams['quant_max']
-        else:
-            logger.info(f'qmin and qmax are not found for <{node.name}>!')
-        return tensor_name, scale, zero_point, qmin, qmax
+        # if len(node.input) > 3:
+        #     qmin, qmax = node.input[-2:]
+        #     qmin, qmax = name2data[qmin], name2data[qmax]
+        # elif len(node.attribute) > 0:
+        #     qparams = parse_attrs(node.attribute)
+        #     qmin = qparams['quant_min']
+        #     qmax = qparams['quant_max']
+        # else:
+        #     logger.info(f'qmin and qmax are not found for <{node.name}>!')
+        return tensor_name, scale, zero_point
 
-    def clip_weight(self, node, name2data, named_initializer):
-        tensor_name, scale, zero_point, qmin, qmax = self.parse_qparams(node, name2data)
+    def clip_weight(self, quant, dequant, name2data, named_initializer, qmin, qmax):
+        tensor_name, scale, zero_point = self.parse_qparams(quant, name2data)
         data = name2data[tensor_name]
         clip_range_min = (qmin - zero_point) * scale
         clip_range_max = (qmax - zero_point) * scale
         if scale.shape[0] > 1:
             new_data = []
-            next_node = self.onnx_model.get_tensor_consumer(node.output[0])[0]
+            next_node = self.onnx_model.get_tensor_consumer(dequant.output[0])[0]
             if next_node.op_type == 'ConvTranspose':
                 for c in range(data.shape[1]):
                     new_data.append(np.clip(data[:, c], clip_range_min[c], clip_range_max[c]))
@@ -64,20 +64,14 @@ class ONNXQLinearPass(ONNXQNNPass):
         else:
             return np.array(data)
 
-    def format_qlinear_dtype_pass(self):
+    def format_qlinear_dtype_pass(self, qmin_max_dict):
         name2data = prepare_data(self.onnx_model.graph)
         named_initializer = prepare_initializer(self.onnx_model.graph)
         for node in self.onnx_model.graph.node:
-            if node.op_type in FAKE_QUANTIZE_OP:
-                if node.op_type == 'FakeQuantizeLearnablePerchannelAffine':
-                    scale, zero_point = node.input[1], node.input[2]
-                    assert node.attribute[0].name == 'quant_max' and node.attribute[1].name == 'quant_min'
-                    qmax = node.attribute[0].i
-                    qmin = node.attribute[1].i
-                else:
-                    scale, zero_point, qmin, qmax = node.input[-4:]
-                    qmin = self.onnx_model.get_constant(qmin)
-                    qmax = self.onnx_model.get_constant(qmax)
+                scale, zero_point= node.input[-2:]
+                qmin, qmax = qmin_max_dict[node.name]
+                qmin = self.onnx_model.get_constant(qmin)
+                qmax = self.onnx_model.get_constant(qmax)
                 assert qmax - qmin in (2 ** 8 - 1, 2 ** 8 - 2), "Only 8 bit quantization support deployment to ONNX."
                 # In onnx, quantize linear node value is within [-128, 127]. This step is to remove inconsistency for
                 # fake quantize node which clips to [-127, 127] by clipping its value to [-127 * scale, 127 * scale]
