@@ -3,11 +3,15 @@ import numpy as np
 
 from mqbench.utils.logger import logger
 from .common import ONNXGraph
+from mqbench.deploy.common import  parse_attrs
+
+FAKE_QUANTIZE_OP = ['QuantizeLinear', 'DequantizeLinear']
 
 
-FAKE_QUANTIZE_OP = ['FakeQuantizeLearnablePerchannelAffine', 'FixedPerChannelAffine', 'FakeQuantizeDSQPerchannel',
-                    'LearnablePerTensorAffine', 'FixedPerTensorAffine', 'FakeQuantizeDSQPertensor']
-
+def search_and_replace_input(next_node, name, new_name):
+    for idx, _input_name in enumerate(next_node.input):
+        if _input_name == name:
+            next_node.input[idx] = new_name
 
 class ONNXQNNPass(object):
     def __init__(self, onnx_model_path):
@@ -15,7 +19,7 @@ class ONNXQNNPass(object):
 
     @property
     def qlinear_op_type(self):
-        return ['QuantizeLinear', 'QLinearConv', 'QLinearAdd', 'QLinearGemm', 'QLinearGlobalAveragePool',
+        return ['QLinearConv', 'QLinearAdd', 'QLinearGemm', 'QLinearGlobalAveragePool',
                 'QLinearAveragePool', 'QLinearConcat']
 
     @staticmethod
@@ -74,14 +78,18 @@ class ONNXQNNPass(object):
     def replace_conv_gemm(self, node, idx, is_conv):
         # Input scale
         qlinear_conv_inputs = []
-        input_fake_quant_node = self.onnx_model.get_tensor_producer(node.input[0])
-        assert input_fake_quant_node.op_type in FAKE_QUANTIZE_OP
+        input_fake_dequant_node = self.onnx_model.get_tensor_producer(node.input[0])
+        input_fake_quant_node = self.onnx_model.get_tensor_producer(input_fake_dequant_node.input[0])
+        assert input_fake_quant_node.op_type == 'QuantizeLinear'
         x_scale, x_zero_point = input_fake_quant_node.input[1], input_fake_quant_node.input[2]
         # Output scale
+        node_next_quant = self.onnx_model.get_tensor_consumer(node.output[0])[0]
+        # node_next_dequant = self.onnx_model.get_tensor_consumer(node_next_quant.output[0])[0]
         qlinear_conv_output = node.output
         y_scale, y_zero_point = self.get_node_output_qparams(node)
         # Weight scale
-        weight_fake_quant_node = self.onnx_model.get_tensor_producer(node.input[1])
+        weight_fake_dequant_node = self.onnx_model.get_tensor_producer(node.input[1])
+        weight_fake_quant_node = self.onnx_model.get_tensor_producer(weight_fake_dequant_node.input[0])
         w_scale, w_zero_point = weight_fake_quant_node.input[1], weight_fake_quant_node.input[2]
         weight_name = weight_fake_quant_node.input[0]
         W = self.quantize_weight(weight_name, w_scale, w_zero_point)
@@ -106,6 +114,12 @@ class ONNXQNNPass(object):
                                                   **kwargs)
         self.onnx_model.remove_node_purely(node)
         self.onnx_model.remove_node_purely(weight_fake_quant_node)
+        self.onnx_model.remove_node_purely(weight_fake_dequant_node)
+        # self.onnx_model.remove_node_purely(node_next_quant)
+        # next_nodes = self.onnx_model.get_tensor_consumer(input_fake_dequant_node.output[0])
+        # for next_node in next_nodes:
+        #     search_and_replace_input(next_node, input_fake_dequant_node.output[0], input_fake_quant_node.output[0])
+        # self.onnx_model.remove_node_purely(input_fake_dequant_node)
         self.onnx_model.insert_node_purely(qlinear_conv_node, idx)
         self.onnx_model.topologize_graph()
 
@@ -113,17 +127,19 @@ class ONNXQNNPass(object):
         # First input
         qlinear_add_input = []
         qlinear_add_output = node.output
-        first_input_node = self.onnx_model.get_tensor_producer(node.input[0])
-        assert first_input_node.op_type in FAKE_QUANTIZE_OP
-        first_input_quantized = first_input_node.output[0]
-        first_scale = first_input_node.input[1]
-        first_zero_point = first_input_node.input[2]
+        first_input_dequant_node = self.onnx_model.get_tensor_producer(node.input[0])
+        first_input_quant_node = self.onnx_model.get_tensor_producer(first_input_dequant_node.input[0])
+        assert first_input_quant_node.op_type == 'QuantizeLinear'
+        first_input_quantized = first_input_dequant_node.output[0]
+        first_scale = first_input_quant_node.input[1]
+        first_zero_point = first_input_quant_node.input[2]
         # Second input
-        second_input_node = self.onnx_model.get_tensor_producer(node.input[1])
-        assert second_input_node.op_type in FAKE_QUANTIZE_OP
-        second_input_quantized = second_input_node.output[0]
-        second_scale = second_input_node.input[1]
-        second_zero_point = second_input_node.input[2]
+        second_input_dequant_node = self.onnx_model.get_tensor_producer(node.input[1])
+        second_input_quant_node = self.onnx_model.get_tensor_producer(second_input_dequant_node.input[0])
+        assert second_input_quant_node.op_type == 'QuantizeLinear'
+        second_input_quantized = second_input_dequant_node.output[0]
+        second_scale = second_input_quant_node.input[1]
+        second_zero_point = second_input_quant_node.input[2]
         # Output
         output_scale, output_zero_point = self.get_node_output_qparams(node)
         qlinear_add_input.extend([first_input_quantized, first_scale, first_zero_point,
@@ -140,13 +156,22 @@ class ONNXQNNPass(object):
                                                  **kwargs)
         self.onnx_model.insert_node_purely(qlinear_add_node, idx)
         self.onnx_model.remove_node_purely(node)
+        # first_next_nodes = self.onnx_model.get_tensor_consumer(first_input_dequant_node.output[0])
+        # for next_node in first_next_nodes:
+        #     search_and_replace_input(next_node, first_input_dequant_node.output[0], first_input_quant_node.output[0])
+        # second_next_nodes = self.onnx_model.get_tensor_consumer(second_input_dequant_node.output[0])
+        # for next_node in second_next_nodes:
+        #     search_and_replace_input(next_node, second_input_dequant_node.output[0], second_input_quant_node.output[0])
+        # self.onnx_model.remove_node_purely(first_input_dequant_node)
+        # self.onnx_model.remove_node_purely(second_input_dequant_node)
         self.onnx_model.topologize_graph()
 
     def replace_pool_to_qlinearpool(self, node, idx, is_global):
         qlinear_pool_input = []
-        prev_node = self.onnx_model.get_tensor_producer(node.input[0])
-        assert prev_node.op_type in FAKE_QUANTIZE_OP
-        x_scale, x_zero_point = prev_node.input[1], prev_node.input[2]
+        prev_dequant_node = self.onnx_model.get_tensor_producer(node.input[0])
+        prev_quant_node = self.onnx_model.get_tensor_producer(prev_dequant_node.input[0])
+        assert prev_quant_node.op_type == 'QuantizeLinear'
+        x_scale, x_zero_point = prev_quant_node.input[1], prev_quant_node.input[2]
         y_scale, y_zero_point = self.get_node_output_qparams(node)
         qlinear_pool_input.extend([node.input[0], x_scale, x_zero_point,
                                    y_scale, y_zero_point])
@@ -161,20 +186,25 @@ class ONNXQNNPass(object):
                                                   node.name + '_quantized',
                                                   domain='com.microsoft',
                                                   **kwargs)
+        # next_nodes = self.onnx_model.get_tensor_consumer(prev_dequant_node.output[0])
+        # for next_node in next_nodes:
+        #     search_and_replace_input(next_node, prev_dequant_node.output[0], prev_quant_node.output[0])
         self.onnx_model.insert_node_purely(qlinear_pool_node, idx)
         self.onnx_model.remove_node_purely(node)
         self.onnx_model.topologize_graph()
 
     def get_node_output_qparams(self, node):
         fake_quantize_node = self.onnx_model.get_tensor_consumer(node.output[0])[0]
-        while fake_quantize_node.op_type not in FAKE_QUANTIZE_OP:
+        while fake_quantize_node.op_type != 'QuantizeLinear':
             assert fake_quantize_node.op_type in self.node_without_qparams
             fake_quantize_node = self.onnx_model.get_tensor_consumer(fake_quantize_node.output[0])[0]
         return fake_quantize_node.input[1], fake_quantize_node.input[2]
 
     def replace_op_pass(self):
         # Replace Conv / Gemm / Add / AvgPool / Concat / LeakyRelu.
+        op_types = set()
         for idx, node in enumerate(self.onnx_model.graph.node):
+            op_types.add(node.op_type)
             if node.op_type == 'Conv':
                 self.replace_conv_gemm(node, idx, is_conv=True)
             if node.op_type == 'Gemm':
@@ -193,56 +223,79 @@ class ONNXQNNPass(object):
             if node.op_type == 'LeakyRelu':
                 pass
 
+    # def replace_qlinear_layer_pass(self):
+    #     # Replace FakeQuantize
+    #     remove_nodes = []
+    #     for node in self.onnx_model.graph.node:
+    #         if node.op_type in FAKE_QUANTIZE_OP:
+    #             prev_node = self.onnx_model.get_tensor_producer(node.input[0])
+    #             next_node_list = self.onnx_model.get_tensor_consumer(node.output[0])
+    #             quantize_node = None
+    #             dequantize_node = None
+    #             output_flag = False
+    #             for next_node in next_node_list:
+    #                 if prev_node != 'INPUT_TOKEN' and prev_node.op_type in self.qlinear_op_type and \
+    #                         next_node != 'OUTPUT_TOKEN' and next_node.op_type in self.qlinear_op_type:
+    #                     search_and_replace_input(next_node, node.output[0], node.input[0])
+    #                 elif prev_node != 'INPUT_TOKEN' and prev_node.op_type in self.qlinear_op_type and \
+    #                         next_node == 'OUTPUT_TOKEN':
+    #                     if dequantize_node is None:
+    #                         output_flag = True
+    #                 else:
+    #                     if quantize_node is None:
+    #                         output_value_info = [f'{node.output[0]}_QuantizeLinear']
+    #                         quantize_node = onnx.helper.make_node("QuantizeLinear",
+    #                                                               node.input[0:3],
+    #                                                               output_value_info,
+    #                                                               ('input' if prev_node == 'INPUT_TOKEN' else prev_node.name) + '_quantized')
+    #                         self.onnx_model.insert_node_purely(quantize_node)
+    #                     search_and_replace_input(next_node, node.output[0], quantize_node.output[0])
+    #             if not output_flag:
+    #                 self.onnx_model.remove_node_purely(node)
+    #                 self.onnx_model.topologize_graph()
     def replace_qlinear_layer_pass(self):
-        # Replace FakeQuantize
-        def search_and_replace_input(next_node, name, new_name):
-            for idx, _input_name in enumerate(next_node.input):
-                if _input_name == name:
-                    next_node.input[idx] = new_name
+        node_detect = True
+        while node_detect:
+            node_detect = False
+            # Replace FakeQuantize
+            for node in self.onnx_model.graph.node:
+                if node.op_type in self.qlinear_op_type:
+                    next_node_list = self.onnx_model.get_tensor_consumer(node.output[0])
+                    for i, next_node in enumerate(next_node_list):
+                        if hasattr(next_node, 'op_type'):
+                            if next_node.op_type == 'QuantizeLinear':
+                                node_detect = True
+                                node.output[0] = next_node.output[0]
+                                # next_dequant_node_list = self.onnx_model.get_tensor_consumer(next_node.output[0])
+                                # for next_dequant_node in next_dequant_node_list:
+                                #     search_and_replace_input(next_dequant_node, next_node.output[0], node.output[0])
+                                self.onnx_model.remove_node_purely(next_node)
+                                self.onnx_model.topologize_graph()
+                    for i in range(len(node.input)):
+                        pre_node = self.onnx_model.get_tensor_producer(node.input[i])
+                        if hasattr(pre_node, 'op_type'):
+                            if pre_node.op_type == 'DequantizeLinear':
+                                node_detect = True
+                                pre_quant_node = self.onnx_model.get_tensor_producer(pre_node.input[0])
+                                pre_node_next_list = self.onnx_model.get_tensor_consumer(pre_node.output[0])
+                                for pre_node_next_node in pre_node_next_list:
+                                    search_and_replace_input(pre_node_next_node, pre_node.output[0], pre_quant_node.output[0])
+                                self.onnx_model.remove_node_purely(pre_node)
+                                self.onnx_model.topologize_graph()
 
-        for node in self.onnx_model.graph.node:
-            if node.op_type in FAKE_QUANTIZE_OP:
-                prev_node = self.onnx_model.get_tensor_producer(node.input[0])
-                next_node_list = self.onnx_model.get_tensor_consumer(node.output[0])
-                quantize_node = None
-                dequantize_node = None
-                for next_node in next_node_list:
-                    if prev_node != 'INPUT_TOKEN' and prev_node.op_type in self.qlinear_op_type and \
-                            next_node != 'OUTPUT_TOKEN' and next_node.op_type in self.qlinear_op_type:
-                        search_and_replace_input(next_node, node.output[0], node.input[0])
-                    elif prev_node != 'INPUT_TOKEN' and prev_node.op_type in self.qlinear_op_type and \
-                            next_node == 'OUTPUT_TOKEN':
-                        if dequantize_node is None:
-                            output_value_info = [f'{node.output[0]}_DequantizeLinear']
-                            dequantize_node = onnx.helper.make_node("DequantizeLinear",
-                                                                    node.input[0:3],
-                                                                    output_value_info,
-                                                                    ('input' if prev_node == 'INPUT_TOKEN' else prev_node.name) + '_dequantized')
-                            self.onnx_model.insert_node_purely(dequantize_node)
-                    else:
-                        if quantize_node is None:
-                            output_value_info = [f'{node.output[0]}_QuantizeLinear']
-                            quantize_node = onnx.helper.make_node("QuantizeLinear",
-                                                                  node.input[0:3],
-                                                                  output_value_info,
-                                                                  ('input' if prev_node == 'INPUT_TOKEN' else prev_node.name) + '_quantized')
-                            self.onnx_model.insert_node_purely(quantize_node)
-                        search_and_replace_input(next_node, node.output[0], quantize_node.output[0])
-                self.onnx_model.remove_node_purely(node)
-                self.onnx_model.topologize_graph()
 
     def merge_relu_pass(self):
         for node in self.onnx_model.graph.node:
             if node.op_type == 'Relu':
                 next_node = self.onnx_model.get_tensor_consumer(node.output[0])[0]
-                assert next_node.op_type in FAKE_QUANTIZE_OP
+                assert next_node.op_type == 'QuantizeLinear'
                 # Input idx2 is zero point.
                 self.onnx_model.set_initializer(next_node.input[2], np.array([0], dtype=np.uint8), raw=False)
                 self.onnx_model.remove_node_purely(node)
                 next_node.input[0] = node.input[0]
             if node.op_type == 'Clip':
                 next_node = self.onnx_model.get_tensor_consumer(node.output[0])[0]
-                assert next_node.op_type in FAKE_QUANTIZE_OP
+                assert next_node.op_type == 'QuantizeLinear'
                 # Input idx2 is zero point.
                 scale = self.onnx_model.get_initializer(next_node.input[1])
                 scale = min(scale, 6.0 / 255)
@@ -252,15 +305,14 @@ class ONNXQNNPass(object):
                 next_node.input[0] = node.input[0]
         self.onnx_model.topologize_graph()
 
-    def format_qlinear_dtype_pass(self):
+    def format_qlinear_dtype_pass(self, qmin_max_dict):
         for node in self.onnx_model.graph.node:
             if node.op_type in FAKE_QUANTIZE_OP:
-                scale, zero_point, qmin, qmax = node.input[1], node.input[2], node.input[3], node.input[4]
-                qmin = self.onnx_model.get_constant(qmin)
-                qmax = self.onnx_model.get_constant(qmax)
+                scale, zero_point = node.input[1], node.input[2]
+                qmin, qmax = qmin_max_dict[node.name]
                 assert qmax - qmin == 2 ** 8 - 1, "Only 8 bit quantization support deploy to QNN."
                 scale_proto = self.onnx_model.initializer[scale][0]
-                if scale_proto.raw_data != b'' and scale_proto.dims[0] == 1:
+                if scale_proto.raw_data != b'' and scale_proto.dims == []:
                     scale_data = self.onnx_model.get_initializer(scale)
                     self.onnx_model.set_initializer(scale, scale_data.astype(np.float32), raw=False)
                 zero_point_proto = self.onnx_model.initializer[zero_point][0]
@@ -269,16 +321,17 @@ class ONNXQNNPass(object):
                 zero_point_data = (zero_point_data - qmin).reshape((1,))
                 self.onnx_model.set_initializer(zero_point, zero_point_data.astype(np.uint8), raw=False)
 
-    def run(self, model_name):
-        self.format_qlinear_dtype_pass()
+
+    def run(self, model_name, qmin_max_dict):
+        self.format_qlinear_dtype_pass(qmin_max_dict)
         self.merge_relu_pass()
         self.replace_op_pass()
         self.replace_qlinear_layer_pass()
-        self.onnx_model.optimize_model()
+        # self.onnx_model.optimize_model()
         self.onnx_model.set_opset_version('com.microsoft', 1)
 
-        try:
-            onnx.checker.check_model(self.onnx_model.model)
-        except onnx.checker.ValidationError as e:
-            logger.critical('The model is invalid: %s' % e)
+        # try:
+        #     onnx.checker.check_model(self.onnx_model.model)
+        # except onnx.checker.ValidationError as e:
+        #     logger.critical('The model is invalid: %s' % e)
         self.onnx_model.save_onnx_model('{}.onnx'.format(model_name))

@@ -11,7 +11,7 @@ from ..version import GITHUB_RES
 
 class TestQuantizeBackend(unittest.TestCase):
     def test_quantize_acedemic(self):
-        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
+        model_to_quantize = torchvison.models.resnet18(pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         extra_qconfig_dict = {
@@ -40,10 +40,10 @@ class TestQuantizeBackend(unittest.TestCase):
         loss = model_prepared(dummy_input).sum()
         loss.backward()
         model_prepared.eval()
-        convert_deploy(model_prepared, BackendType.Academic, {'x': [1, 3, 224, 224]}, model_name='resnet18_acedemic_4bit.onnx')
+        convert_deploy(model_prepared, BackendType.Academic, {'x': [1, 3, 224, 224]}, model_name='resnet18_acedemic_4bit')
 
     def test_quantize_tensorrt(self):
-        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
+        model_to_quantize = torchvison.models.resnet18(pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         model_prepared = prepare_by_platform(model_to_quantize, BackendType.Tensorrt)
@@ -53,10 +53,10 @@ class TestQuantizeBackend(unittest.TestCase):
         loss = model_prepared(dummy_input).sum()
         loss.backward()
         model_prepared.eval()
-        convert_deploy(model_prepared, BackendType.Tensorrt, {'x': [1, 3, 224, 224]}, model_name='resnet18_trt.onnx')
+        convert_deploy(model_prepared, BackendType.Tensorrt, {'x': [1, 3, 224, 224]}, model_name='resnet18_trt')
 
     def test_quantize_nnie(self):
-        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
+        model_to_quantize = torchvison.models.resnet18(pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         model_prepared = prepare_by_platform(model_to_quantize, BackendType.NNIE)
@@ -66,10 +66,10 @@ class TestQuantizeBackend(unittest.TestCase):
         loss = model_prepared(dummy_input).sum()
         loss.backward()
         model_prepared.eval()
-        convert_deploy(model_prepared, BackendType.NNIE, {'x': [1, 3, 224, 224]}, model_name='resnet18_nnie.onnx')
+        convert_deploy(model_prepared, BackendType.NNIE, {'x': [1, 3, 224, 224]}, model_name='resnet18_nnie')
 
     def test_quantize_snpe(self):
-        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
+        model_to_quantize = torchvison.models.resnet18(pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         model_prepared = prepare_by_platform(model_to_quantize, BackendType.SNPE)
@@ -79,10 +79,10 @@ class TestQuantizeBackend(unittest.TestCase):
         loss = model_prepared(dummy_input).sum()
         loss.backward()
         model_prepared.eval()
-        convert_deploy(model_prepared, BackendType.SNPE, {'x': [1, 3, 224, 224]}, model_name='resnet18_snpe.onnx')
+        convert_deploy(model_prepared, BackendType.SNPE, {'x': [1, 3, 224, 224]}, model_name='resnet18_snpe')
 
     def test_quantize_pplw8a16(self):
-        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
+        model_to_quantize = torchvison.models.resnet18(pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         model_prepared = prepare_by_platform(model_to_quantize, BackendType.PPLW8A16)
@@ -92,7 +92,7 @@ class TestQuantizeBackend(unittest.TestCase):
         loss = model_prepared(dummy_input).sum()
         loss.backward()
         model_prepared.eval()
-        convert_deploy(model_prepared, BackendType.PPLW8A16, {'x': [1, 3, 224, 224]}, model_name='resnet18_pplw8a16.onnx')
+        convert_deploy(model_prepared, BackendType.PPLW8A16, {'x': [1, 3, 224, 224]}, model_name='resnet18_pplw8a16')
 
     def test_quantize_vitis(self):
         try:
@@ -104,7 +104,7 @@ class TestQuantizeBackend(unittest.TestCase):
             USE_XIR = False
 
         if USE_XIR:
-            model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
+            model_to_quantize = torchvison.models.resnet18(pretrained=False)
             dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
             model_to_quantize.train()
             model_prepared = prepare_by_platform(model_to_quantize, BackendType.Vitis)
@@ -114,12 +114,12 @@ class TestQuantizeBackend(unittest.TestCase):
             loss = model_prepared(dummy_input).sum()
             loss.backward()
             model_prepared.eval()
-            convert_deploy(model_prepared, BackendType.Vitis, {'x': [1, 3, 224, 224]}, model_name='resnet18_vitis.onnx')
+            convert_deploy(model_prepared, BackendType.Vitis, {'x': [1, 3, 224, 224]}, model_name='resnet18_vitis')
         else:
             pass
 
     def test_quantize_onnxqnn_1(self):
-        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
+        model_to_quantize = torchvison.models.resnet18(pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         model_prepared = prepare_by_platform(model_to_quantize, BackendType.ONNX_QNN)
@@ -129,7 +129,7 @@ class TestQuantizeBackend(unittest.TestCase):
         loss = model_prepared(dummy_input).sum()
         loss.backward()
         model_prepared.eval()
-        convert_deploy(model_prepared, BackendType.ONNX_QNN, {'x': [1, 3, 224, 224]}, model_name='resnet18_onnx_qnn.onnx')
+        convert_deploy(model_prepared, BackendType.ONNX_QNN, {'x': [1, 3, 224, 224]}, model_name='resnet18_onnx_qnn')
 
     def test_quantize_onnxqnn_2(self):
         model_to_quantize = UNet(3, 2)
@@ -142,11 +142,11 @@ class TestQuantizeBackend(unittest.TestCase):
         loss = model_prepared(dummy_input).sum()
         loss.backward()
         model_prepared.eval()
-        convert_deploy(model_prepared, BackendType.ONNX_QNN, {'x': [1, 3, 224, 224]}, model_name='resnet18_onnx_qnn.onnx')
+        convert_deploy(model_prepared, BackendType.ONNX_QNN, {'x': [1, 3, 224, 224]}, model_name='resnet18_onnx_qnn')
 
     def test_quantize_ppl_cuda(self):
         import numpy as np
-        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
+        model_to_quantize = torchvison.models.resnet18(pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         model_prepared = prepare_by_platform(model_to_quantize, BackendType.PPLCUDA)
@@ -156,7 +156,7 @@ class TestQuantizeBackend(unittest.TestCase):
         loss = model_prepared(dummy_input).sum()
         loss.backward()
         model_prepared.eval()
-        convert_deploy(model_prepared, BackendType.PPLCUDA, {'x': [1, 3, 224, 224]}, model_name='resnet18_ppl_cuda.onnx')
+        convert_deploy(model_prepared, BackendType.PPLCUDA, {'x': [1, 3, 224, 224]}, model_name='resnet18_ppl_cuda')
 
     def test_quantize_openvino(self):
         import torchvision.models as models
@@ -173,7 +173,7 @@ class TestQuantizeBackend(unittest.TestCase):
         convert_deploy(model_prepared, BackendType.OPENVINO, {'x': [1, 3, 224, 224]}, model_name='resnet18_openvino')
 
     def test_quantize_tengine_u8(self):
-        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
+        model_to_quantize = torchvison.models.resnet18(pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         model_prepared = prepare_by_platform(model_to_quantize, BackendType.Tengine_u8)
@@ -186,7 +186,7 @@ class TestQuantizeBackend(unittest.TestCase):
         convert_deploy(model_prepared, BackendType.Tengine_u8, {'x': [1, 3, 224, 224]}, model_name='resnet18')
 
     def test_quantize_stpu(self):
-        model_to_quantize = torch.hub.load(GITHUB_RES, 'resnet18', pretrained=False)
+        model_to_quantize = torchvison.models.resnet18(pretrained=False)
         dummy_input = torch.randn(2, 3, 224, 224, device='cpu')
         model_to_quantize.train()
         model_prepared = prepare_by_platform(model_to_quantize, BackendType.STPU)

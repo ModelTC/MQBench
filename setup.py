@@ -16,7 +16,7 @@ setuptools.setup(
     author="The Great Cold",
     author_email="",
     description=("Quantization aware training."),
-    python_requires='>=3.6',
+    python_requires='>=3.10',
     packages=setuptools.find_packages(),
     classifiers=(
         'Development Status :: 3 - Alpha',

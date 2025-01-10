@@ -2,8 +2,10 @@ import torch
 
 from mqbench.fake_quantize.quantize_base import QuantizeBase
 from mqbench.utils import no_jit_trace
-
-
+from torch.onnx import (
+    symbolic_helper,
+)
+from torch.onnx import register_custom_op_symbolic
 class NNIEFakeQuantize(QuantizeBase):
     def __init__(self, observer, **observer_kwargs):
         super(NNIEFakeQuantize, self).__init__(observer, **observer_kwargs)
@@ -40,5 +42,7 @@ class NNIEQuantizeFunc(torch.autograd.Function):
         return grad_input, None
 
     @staticmethod
+    @symbolic_helper.parse_args("v", "f")
     def symbolic(g, x, data_max):
-        return g.op("::NNIEQuantize", x, data_max)
+        quantized = g.op("QuantizeLinear", x, data_max_f=data_max)
+        return g.op("DequantizeLinear", quantized, data_max_f=data_max)

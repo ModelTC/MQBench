@@ -10,7 +10,7 @@ from mqbench.utils.logger import logger
 from mqbench.deploy.common import (
     update_inp2node_out2node,
     prepare_initializer,
-    prepare_data,
+    prepare_data_nnie,
     OnnxPreprocess,
     get_constant_inputs
 )
@@ -51,7 +51,7 @@ class NNIE_process(object):
         model = onnx.load(onnx_path)
         graph = model.graph
         out2node, inp2node = update_inp2node_out2node(graph)
-        name2data = prepare_data(graph)
+        name2data = prepare_data_nnie(graph)
         named_initializer = prepare_initializer(graph)
 
         preprocess = OnnxPreprocess()
@@ -62,8 +62,9 @@ class NNIE_process(object):
         nodes_to_be_removed = []
         clip_ranges = {}
         for node in graph.node:
-            if node.op_type == 'NNIEQuantize':
-                next_nodes = inp2node[node.output[0]]
+            if node.op_type == 'QuantizeLinear':
+                dequant_node = inp2node[node.output[0]][0][0]
+                next_nodes = inp2node[dequant_node.output[0]]
                 if len(next_nodes) == 1 and next_nodes[0][1] == 1 and next_nodes[0][0].op_type in ['Gemm', 'Conv']:
                     # fake quantize for weights
                     next_node, idx = next_nodes[0]
@@ -71,14 +72,14 @@ class NNIE_process(object):
                     # clip weights
                     tensor_name = node.input[0]
                     data = name2data[tensor_name]
-                    clip_range = name2data[node.input[1]]
+                    clip_range = name2data[dequant_node.input[0]]
                     new_data = np.clip(data, -clip_range, clip_range)
                     new_data = numpy_helper.from_array(new_data)
                     named_initializer[tensor_name].raw_data = new_data.raw_data
                     logger.info(f'Clip weights {tensor_name} to range [{-clip_range}, {clip_range}].')
                 else:
                     # fake quantize for activations
-                    clip_ranges[node.input[0]] = name2data[node.input[1]]
+                    clip_ranges[node.input[0]] = name2data[dequant_node.input[0]]
                     for next_node, idx in next_nodes:
                         next_node.input[idx] = node.input[0]
 

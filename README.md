@@ -7,6 +7,10 @@
 [![Lint and test](https://github.com/ModelTC/MQBench/actions/workflows/lint-and-test.yml/badge.svg?branch=main)](https://github.com/ModelTC/MQBench/actions/workflows/lint-and-test.yml)
 [![license](https://img.shields.io/github/license/ModelTC/MQBench)](https://github.com/ModelTC/MQBench/blob/main/LICENSE)
 
+## Latest News
+
+- **Jan 10, 2025:** 🚀 MQBench already supports torch2.5.1!!!
+
 ## Introduction
 
 MQBench is an open-source model quantization toolkit based on PyTorch fx.
@@ -21,7 +25,7 @@ The envision of MQBench is to provide:
 ```shell
 git clone git@github.com:ModelTC/MQBench.git
 cd MQBench
-python setup.py install
+pip install -v -e .
 ```
 
 ## Documentation

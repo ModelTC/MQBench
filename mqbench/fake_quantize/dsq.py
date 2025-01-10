@@ -5,8 +5,13 @@ import torch
 from mqbench.fake_quantize.quantize_base import QuantizeBase
 from mqbench.utils import is_tracing_state
 from mqbench.utils.hook import PerChannelLoadHook
-
-
+import torch._C._onnx as _C_onnx
+from torch.onnx import _type_utils
+from torch.onnx import (
+    _type_utils,
+    symbolic_helper,
+    symbolic_opset9 as opset9,
+)
 def dsq_function_per_tensor(x, scale, zero_point, quant_min, quant_max, alpha):
     tanh_scale = 1 / (1 - alpha)
     tanh_k = math.log((tanh_scale + 1) / (tanh_scale - 1))
@@ -84,7 +89,19 @@ class FakeQuantizeDSQPerchannel(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, x, scale, zero_point, quant_min, quant_max, ch_axis, alpha):
-        return g.op("::FakeQuantizeDSQPerchannel", x, scale, zero_point, quant_min_i=quant_min, quant_max_i=quant_max, alpha_f=alpha)
+        if quant_min == 0:
+            zero_point = g.op("Cast", zero_point, to_i=_C_onnx.TensorProtoDataType.UINT8)
+        else:
+            zero_point = g.op("Cast", zero_point, to_i=_C_onnx.TensorProtoDataType.INT8)
+        quantized = g.op("QuantizeLinear", x, scale, zero_point, axis_i=ch_axis)
+        if (quant_min, quant_max) == (0, 127):
+            quantized = g.op(
+                "Clip",
+                quantized,
+                opset9.unused(g),
+                g.op("Constant", value_t=torch.tensor(127, dtype=torch.uint8)),
+            )
+        return g.op("DequantizeLinear", quantized, scale, zero_point, axis_i=ch_axis)
 
 
 class FakeQuantizeDSQPertensor(torch.autograd.Function):
@@ -94,4 +111,21 @@ class FakeQuantizeDSQPertensor(torch.autograd.Function):
 
     @staticmethod
     def symbolic(g, x, scale, zero_point, quant_min, quant_max, alpha):
-        return g.op("::FakeQuantizeDSQPertensor", x, scale, zero_point, quant_min_i=quant_min, quant_max_i=quant_max, alpha_f=alpha)
+        if quant_min == 0:
+            zero_point = g.op("Cast", zero_point, to_i=_C_onnx.TensorProtoDataType.UINT8)
+        else:
+            zero_point = g.op("Cast", zero_point, to_i=_C_onnx.TensorProtoDataType.INT8)
+        if (
+                _type_utils.JitScalarType.from_value(scale, _type_utils.JitScalarType.UNDEFINED)
+                != _type_utils.JitScalarType.FLOAT
+        ):
+            scale = g.op("Cast", scale, to_i=_C_onnx.TensorProtoDataType.FLOAT)
+        quantized = g.op("QuantizeLinear", x, scale, zero_point)
+        if (quant_min, quant_max) == (0, 127):
+            quantized = g.op(
+                "Clip",
+                quantized,
+                opset9.unused(g),
+                g.op("Constant", value_t=torch.tensor(127, dtype=torch.uint8)),
+            )
+        return g.op("DequantizeLinear", quantized, scale, zero_point)
