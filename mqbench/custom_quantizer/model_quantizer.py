@@ -275,7 +275,7 @@ class ModelQuantizer(object):
             reassign[name] = swap_module(mod, mapping, {}, False)
             if freeze_bn:
                 if (hasattr(reassign[name], 'freeze_bn')):
-                    reassign[name].freeze_bn = True
+                    reassign[name].freeze_bn_stats()
         for key, value in reassign.items():
             module._modules[key] = value
 
