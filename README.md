@@ -9,7 +9,7 @@
 
 ## Latest News
 
-- **Jan 10, 2025:** 🚀 MQBench already supports torch2.5.1!!!
+- **Jan 10, 2025:** 🚀 MQBench already supports torch2.5.1!!! The old version that supports torch1.10 is [here](https://github.com/ModelTC/MQBench/tree/mqb-torch1.10).
 
 ## Introduction
 
