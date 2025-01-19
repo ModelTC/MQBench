@@ -2,7 +2,6 @@ import torch
 
 from mqbench.fake_quantize.quantize_base import QuantizeBase
 from mqbench.utils.hook import PerChannelLoadHook
-_version_under_1100 = int(torch.__version__.split('.')[0]) == 1 and int(torch.__version__.split('.')[1]) < 10
 class FixedFakeQuantize(QuantizeBase):
     """This is actually torch.quantization.FakeQuantize.
     """
@@ -27,7 +26,7 @@ class FixedFakeQuantize(QuantizeBase):
             if self.is_per_channel:
                 X = torch.fake_quantize_per_channel_affine(
                     X, self.scale,
-                    self.zero_point.long() if _version_under_1100 else self.zero_point,
+                    self.zero_point,
                     self.ch_axis, self.quant_min, self.quant_max)
             else:
                 X = torch.fake_quantize_per_tensor_affine(
