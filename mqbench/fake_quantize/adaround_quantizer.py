@@ -1,7 +1,7 @@
 import torch
 from torch.nn.parameter import Parameter
 
-from mqbench.fake_quantize.quantize_base import QuantizeBase, _version_under_1100 
+from mqbench.fake_quantize.quantize_base import QuantizeBase
 from mqbench.utils.hook import PerChannelLoadHook
 
 def _rectified_sigmoid(alpha, zeta, gamma):
@@ -108,7 +108,7 @@ class AdaRoundFakeQuantize(QuantizeBase):
                 if self.is_per_channel:
                     X = torch.fake_quantize_per_channel_affine(
                         X, self.scale,
-                        self.zero_point.long() if _version_under_1100 else self.zero_point,
+                        self.zero_point,
                         self.ch_axis, self.quant_min, self.quant_max)
                 else:
                     X = torch.fake_quantize_per_tensor_affine(

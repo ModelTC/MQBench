@@ -38,6 +38,8 @@ from torch.ao.quantization.backend_config import (
 from torch.ao.quantization.backend_config.utils import (
     get_module_to_qat_module,
 )
+from mqbench.fake_quantize.lsq import LearnableFakeQuantize
+
 @register_model_quantizer(BackendType.Tensorrt)
 @register_model_quantizer(BackendType.NNIE)
 @register_model_quantizer(BackendType.QDQ)
@@ -276,6 +278,20 @@ class ModelQuantizer(object):
             if freeze_bn:
                 if (hasattr(reassign[name], 'freeze_bn')):
                     reassign[name].freeze_bn_stats()
+            if (
+                getattr(reassign[name].qconfig.weight.p, 'func', None) is LearnableFakeQuantize  
+                and reassign[name].qconfig.weight.p.keywords['ch_axis'] != -1
+                and hasattr(reassign[name], 'weight_fake_quant')
+            ):  
+                channels_len = -2
+                if hasattr(reassign[name], 'out_channels'):
+                    channels_len = reassign[name].out_channels
+                if hasattr(reassign[name], 'out_features'):
+                    channels_len = reassign[name].out_features
+                assert channels_len != -2, "Can not find out_channels or out_features"
+                reassign[name].weight_fake_quant.scale = torch.nn.Parameter(torch.tensor([1.] * channels_len))
+                reassign[name].weight_fake_quant.zero_point = torch.nn.Parameter(torch.tensor([0.] * channels_len))
+
         for key, value in reassign.items():
             module._modules[key] = value
 

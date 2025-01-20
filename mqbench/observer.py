@@ -3,8 +3,6 @@ from typing import Tuple
 
 import torch
 from torch.quantization.observer import _ObserverBase
-
-from mqbench.fake_quantize.quantize_base import _version_under_1100 
 from mqbench.utils import sync_tensor, pot_quantization, is_symmetric_quant
 from mqbench.utils.logger import logger
 from mqbench.utils.hook import PerChannelLoadHook
@@ -70,10 +68,7 @@ class ObserverBase(_ObserverBase):
             zero_points: Zero points tensor of shape (#channels,)
         """
         scale, zero_point = super()._calculate_qparams(min_val, max_val)
-        if _version_under_1100:
-            zero_point = zero_point.long()
-        else:
-            zero_point = zero_point.int()
+        zero_point = zero_point.int()
         return scale, zero_point
 
     @torch.jit.export
@@ -546,7 +541,7 @@ class MSEObserver(ObserverBase):
             new_max = x_max * (1.0 - (i * 0.01))
             scale, zero_point = self._calculate_qparams(new_min, new_max)
             x_q = torch.fake_quantize_per_channel_affine(
-                x, scale, zero_point.long() if _version_under_1100 else zero_point, ch_axis, 
+                x, scale, zero_point, ch_axis, 
                 self.quant_min, self.quant_max)
             score = self.lp_loss(x_q, x, reduce_dim)
             update_idx = (score < best_score)
@@ -625,7 +620,7 @@ class EMAMSEObserver(ObserverBase):
             new_max = x_max * (1.0 - (i * 0.01))
             scale, zero_point = self._calculate_qparams(new_min, new_max)
             x_q = torch.fake_quantize_per_channel_affine(
-                x, scale, zero_point.long() if _version_under_1100 else zero_point, ch_axis, 
+                x, scale, zero_point, ch_axis, 
                 self.quant_min, self.quant_max)
             score = self.lp_loss(x_q, x, reduce_dim)
             update_idx = (score < best_score)

@@ -363,9 +363,9 @@ def prepare_constant_dict(graph: torch.fx.Graph, model: torch.nn.Module):
 def prepare_by_platform(
         model: torch.nn.Module,
         deploy_backend: BackendType,
-        is_qat: bool = False,
         prepare_custom_config_dict: Dict[str, Any] = {},
         custom_tracer: Tracer = None,
+        is_qat: bool = True,
         freeze_bn: bool = True):
     """
     Args:
