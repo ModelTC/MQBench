@@ -426,7 +426,10 @@ def prepare_by_platform(
     import mqbench.custom_quantizer  # noqa: F401
     extra_quantizer_dict = prepare_custom_config_dict.get('extra_quantizer_dict', {})
     quantizer = DEFAULT_MODEL_QUANTIZER[deploy_backend](extra_quantizer_dict, extra_fuse_dict)
+    
+    # 这里给模型插入权重和激活的伪量化节点
     prepared = quantizer.prepare(graph_module, qconfig, is_qat, backend_config, freeze_bn)
+    
     # Restore attr.
     if 'preserve_attr' in prepare_custom_config_dict:
         for submodule_name in prepare_custom_config_dict['preserve_attr']:

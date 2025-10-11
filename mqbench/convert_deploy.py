@@ -63,6 +63,7 @@ def convert_merge_bn(model: GraphModule, **kwargs):
 @register_deploy_function(BackendType.Vitis)
 @register_deploy_function(BackendType.OPENVINO)
 @register_deploy_function(BackendType.QDQ)
+
 def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_path, **kwargs):
     logger.info("Export to onnx.")
     output_names = kwargs.get('output_names', [])
@@ -76,16 +77,17 @@ def convert_onnx(model: GraphModule, input_shape_dict, dummy_input, onnx_model_p
     # Per-channel QuantizeLinear and DequantizeLinear is supported since opset 13
     opset_version = 13 if kwargs.get('deploy_to_qlinear', False) else 13
     with torch.no_grad():
-        # try:
-        #     from torch.onnx.utils import ONNXCheckerError
-        #     try:
-        torch.onnx.export(model, dummy_input, onnx_model_path,
-                          input_names=input_names,
-                          output_names=output_names,
-                          opset_version=opset_version,
-                          dynamic_axes=dynamic_axes,
-                          do_constant_folding=True,
-                          custom_opsets={'' : opset_version})
+        torch.onnx.export(
+            model,
+            dummy_input, 
+            onnx_model_path,
+            input_names=input_names,
+            output_names=output_names,
+            opset_version=opset_version,
+            dynamic_axes=dynamic_axes,
+            do_constant_folding=True,
+            custom_opsets={'' : opset_version}
+        )
 
 
         #     except ONNXCheckerError:

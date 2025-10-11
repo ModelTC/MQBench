@@ -12,7 +12,7 @@ class FixedFakeQuantize(QuantizeBase):
         self.load_state_dict_hook = PerChannelLoadHook(self)
 
     def forward(self, X):
-        if self.observer_enabled[0] == 1:
+        if self.observer_enabled[0].item() == 1:
             self.activation_post_process(X.detach())
             _scale, _zero_point = self.calculate_qparams()
             _scale, _zero_point = _scale.to(self.scale.device), _zero_point.to(self.zero_point.device)
@@ -22,7 +22,7 @@ class FixedFakeQuantize(QuantizeBase):
             self.scale.copy_(_scale)
             self.zero_point.copy_(_zero_point)
 
-        if self.fake_quant_enabled[0] == 1:
+        if self.fake_quant_enabled[0].item() == 1:
             if self.is_per_channel:
                 X = torch.fake_quantize_per_channel_affine(
                     X, self.scale,

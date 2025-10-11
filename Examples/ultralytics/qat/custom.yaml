@@ -1,0 +1,9 @@
+epochs: 10
+optimizer: SGD
+amp: False
+lr0: 0.001
+lrf: 0.1
+cos_lr: True
+weight_decay: 0.0
+warmup_epochs: 0.0001
+save_dir: ./train_log_7
